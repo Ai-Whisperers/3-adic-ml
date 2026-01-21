@@ -642,10 +642,102 @@ class MonotonicRadialLoss(nn.Module):
         return total_loss, metrics
 
 
+class RichHierarchyLoss(nn.Module):
+    """Rich Hierarchy Loss - Unified Training Objective.
+
+    Combines:
+    1. Hierarchy Loss: Enforces target radii per valuation level
+    2. Coverage Loss: Standard CrossEntropy on reconstruction
+    3. Separation Loss: Enforces margins between valuation levels
+
+    Refactored to use pure Hyperbolic distance for radii.
+    """
+
+    def __init__(self, inner_radius=0.1, outer_radius=0.85, curvature=1.0):
+        super().__init__()
+        self.inner_radius = inner_radius
+        self.outer_radius = outer_radius
+        self.curvature = curvature
+        # Precompute target radii for valuations 0..9
+        target_radii = torch.tensor([
+            outer_radius - (v / 9) * (outer_radius - inner_radius)
+            for v in range(10)
+        ])
+        self.register_buffer("target_radii", target_radii)
+
+    def forward(self, z_hyp, indices_batch, logits, targets):
+        device = z_hyp.device
+        
+        # FIX: Use Hyperbolic Distance to origin, not Euclidean norm
+        origin = torch.zeros_like(z_hyp)
+        radii = poincare_distance(z_hyp, origin, c=self.curvature)
+        
+        valuations = TERNARY.valuation(indices_batch).long().to(device)
+
+        # 1. Hierarchy loss (MSE to target radius)
+        hierarchy_loss = torch.tensor(0.0, device=device)
+        present_levels = torch.unique(valuations)
+        
+        for v in present_levels:
+            mask = valuations == v
+            if mask.sum() > 0:
+                mean_r = radii[mask].mean()
+                target_r = self.target_radii[v]
+                hierarchy_loss = hierarchy_loss + (mean_r - target_r) ** 2
+        
+        if len(present_levels) > 0:
+            hierarchy_loss = hierarchy_loss / len(present_levels)
+
+        # 2. Coverage loss (Reconstruction)
+        # logits shape: (B, 9, 3) or (B, 27) depending on decoder
+        if logits.shape[-1] == 3: # (B, 9, 3)
+             coverage_loss = F.cross_entropy(
+                logits.view(-1, 3),
+                (targets + 1).long().view(-1),
+            )
+        elif logits.shape[-1] == 27: # (B, 27) flattened
+             coverage_loss = F.cross_entropy(
+                logits.view(-1, 9, 3).permute(0, 2, 1), # (B, 3, 9)
+                (targets + 1).long().clamp(0, 2)       # (B, 9)
+             )
+        else:
+             coverage_loss = torch.tensor(0.0, device=device)
+
+        # 3. Separation loss (Margin between levels)
+        separation_loss = torch.tensor(0.0, device=device)
+        mean_radii = []
+        # Sort levels to ensure we compare adjacent levels correctly
+        # v=0 (Outer) -> v=9 (Inner)
+        # We want r[v] > r[v+1] (Outer > Inner)
+        sorted_levels = sorted(present_levels.tolist())
+        
+        for v in sorted_levels:
+            mask = valuations == v
+            if mask.sum() > 0:
+                mean_radii.append(radii[mask].mean())
+
+        # Enforce r[v] > r[v+1] + margin
+        # violation = max(0, r[v+1] - r[v] + margin)
+        # Original logic: violation = torch.relu(mean_radii[i + 1] - mean_radii[i] + 0.01)
+        # Here mean_radii list corresponds to sorted levels (0, 1, 2...)
+        # So mean_radii[i] is level v, mean_radii[i+1] is level v+k
+        # We expect mean_radii[i] (outer) > mean_radii[i+1] (inner)
+        # So mean_radii[i+1] - mean_radii[i] should be negative.
+        # If it's positive, inner is larger than outer -> violation.
+        for i in range(len(mean_radii) - 1):
+            violation = F.relu(mean_radii[i + 1] - mean_radii[i] + 0.01)
+            separation_loss = separation_loss + violation
+
+        total = 5.0 * hierarchy_loss + 1.0 * coverage_loss + 3.0 * separation_loss
+
+        return {"total": total, "hierarchy": hierarchy_loss, "coverage": coverage_loss, "separation": separation_loss}
+
+
 __all__ = [
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",
     "CombinedGeodesicLoss",
     "GlobalRankLoss",
     "MonotonicRadialLoss",
+    "RichHierarchyLoss",
 ]

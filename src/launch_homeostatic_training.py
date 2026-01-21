@@ -352,6 +352,7 @@ def train_statenet_model(args, device, dirs, project_root):
     from src.core import TERNARY
     from src.data import generate_all_ternary_operations
     from src.models import StateNet, compute_Q
+    from src.losses import RichHierarchyLoss
 
     # Load model
     print("Loading model architecture...")
@@ -443,54 +444,6 @@ def train_statenet_model(args, device, dirs, project_root):
     )
 
     # Loss function
-    class RichHierarchyLoss(torch.nn.Module):
-        def __init__(self, inner_radius=0.1, outer_radius=0.85):
-            super().__init__()
-            self.inner_radius = inner_radius
-            self.outer_radius = outer_radius
-            target_radii = torch.tensor([
-                outer_radius - (v / 9) * (outer_radius - inner_radius)
-                for v in range(10)
-            ])
-            self.register_buffer("target_radii", target_radii)
-
-        def forward(self, z_hyp, indices_batch, logits, targets):
-            device = z_hyp.device
-            radii = z_hyp.norm(dim=-1)
-            valuations = TERNARY.valuation(indices_batch).long().to(device)
-
-            # Hierarchy loss
-            hierarchy_loss = torch.tensor(0.0, device=device)
-            for v in torch.unique(valuations):
-                mask = valuations == v
-                if mask.sum() > 0:
-                    mean_r = radii[mask].mean()
-                    target_r = self.target_radii[v]
-                    hierarchy_loss = hierarchy_loss + (mean_r - target_r) ** 2
-            hierarchy_loss = hierarchy_loss / 10
-
-            # Coverage loss
-            coverage_loss = torch.nn.functional.cross_entropy(
-                logits.view(-1, 3),
-                (targets + 1).long().view(-1),
-            )
-
-            # Separation loss
-            separation_loss = torch.tensor(0.0, device=device)
-            mean_radii = []
-            for v in sorted(torch.unique(valuations).tolist()):
-                mask = valuations == v
-                if mask.sum() > 0:
-                    mean_radii.append(radii[mask].mean())
-
-            for i in range(len(mean_radii) - 1):
-                violation = torch.relu(mean_radii[i + 1] - mean_radii[i] + 0.01)
-                separation_loss = separation_loss + violation
-
-            total = 5.0 * hierarchy_loss + 1.0 * coverage_loss + 3.0 * separation_loss
-
-            return {"total": total, "hierarchy": hierarchy_loss, "coverage": coverage_loss, "separation": separation_loss}
-
     loss_fn = RichHierarchyLoss().to(device)
 
     # Training loop
