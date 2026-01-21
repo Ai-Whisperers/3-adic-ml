@@ -225,7 +225,7 @@ class TernaryVAEV5_11_PartialFreeze(TernaryVAEV5_11):
         for param in self.fc_logvar_B.parameters():
             param.requires_grad = not frozen
 
-    def apply_homeostasis_state(self, state: Dict[str, Any]):
+    def apply_statenet_state(self, state: Dict[str, Any]):
         """Apply freeze states from StateNet controller."""
         if "encoder_a_frozen" in state:
             self.set_encoder_a_frozen(state["encoder_a_frozen"])

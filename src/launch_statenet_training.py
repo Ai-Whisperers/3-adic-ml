@@ -351,7 +351,7 @@ def train_statenet_model(args, device, dirs, project_root):
 
     from src.core import TERNARY
     from src.data import generate_all_ternary_operations
-    from src.models import StateNet, compute_Q
+    from src.models import StateNet, compute_Q, TernaryVAEV5_11_PartialFreeze
     from src.losses import RichHierarchyLoss
 
     # Load model
@@ -512,7 +512,7 @@ def train_statenet_model(args, device, dirs, project_root):
                     out = model(batch, compute_control=False)
                     all_radii.append(out["z_A_hyp"].norm(dim=-1).cpu().numpy())
 
-                    logits = model.decoder_A(out["mu_A"])
+                    logits = model.decoder_A(out["mu_A"]).view(-1, 9, 3)
                     preds = torch.argmax(logits, dim=-1) - 1
                     correct = (preds == batch.long()).float().mean(dim=1).cpu().numpy()
                     all_correct.append(correct)
