@@ -1,0 +1,187 @@
+# V5.12.3 Configuration: Validation of Hyperbolic Audit Fixes
+#
+# This config validates the V5.12.2 hyperbolic audit fixes:
+# 1. All radii computed using poincare_distance() not Euclidean norm
+# 2. Loss functions use proper hyperbolic metrics
+# 3. Decoder input uses log_map_zero(z_hyp)
+#
+# Short training run (50 epochs) to validate improvements.
+#
+# Expected improvements over pre-audit:
+# - More accurate hierarchy correlation (computed in hyperbolic space)
+# - Better richness measurement (hyperbolic within-level variance)
+# - Cleaner separation between valuation levels
+#
+# Baseline comparison: sandbox-training/checkpoints/homeostatic_rich/best.pt
+
+# Device Configuration
+device:
+  name: "v5_12_3_audit_validation"
+  cuda_device: 0
+  use_amp: false
+  pin_memory: true
+  num_workers: 4
+
+# Model Architecture (same as V5.12.1)
+model:
+  name: TernaryVAEV5_11_PartialFreeze
+  latent_dim: 16
+  hidden_dim: 64
+  max_radius: 0.95
+  curvature: 1.0
+
+  use_controller: true
+  use_dual_projection: true
+  learnable_curvature: true
+  manifold_aware: true
+
+  projection_layers: 2
+  projection_dropout: 0.1
+
+# Option C: Partial Freeze
+option_c:
+  enabled: true
+  encoder_b_lr_scale: 0.1
+  encoder_a_lr_scale: 0.05
+
+# Frozen Checkpoint
+frozen_checkpoint:
+  path: sandbox-training/checkpoints/v5_5/latest.pt
+  encoder_to_load: both
+  decoder_to_load: decoder_A
+
+# Homeostatic Control
+homeostasis:
+  enabled: true
+  coverage_freeze_threshold: 0.995
+  coverage_unfreeze_threshold: 1.0
+  coverage_floor: 0.95
+  warmup_epochs: 3
+  hysteresis_epochs: 2
+  enable_annealing: true
+  annealing_step: 0.003
+  hierarchy_plateau_threshold: 0.001
+  hierarchy_plateau_patience: 5
+  hierarchy_patience_ceiling: 15
+  controller_grad_threshold: 0.01
+  controller_grad_patience: 3
+
+# Progressive Unfreezing (disabled)
+progressive_unfreeze:
+  enabled: false
+
+# Loss Configuration
+loss:
+  # PRIMARY: RichHierarchyLoss
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0
+    coverage_weight: 1.0
+    richness_weight: 2.0
+    separation_weight: 3.0
+    min_richness_ratio: 0.5
+
+  # AUXILIARY: Radial targets
+  radial:
+    enabled: true
+    inner_radius: 0.08
+    outer_radius: 0.90
+    radial_weight: 1.0
+    margin_weight: 0.5
+
+  # Phase 2: Geodesic (starts at epoch 25 for short run)
+  geodesic:
+    enabled: true
+    phase_start_epoch: 25
+    curvature: 1.0
+    max_target_distance: 3.0
+    n_pairs: 2000
+    use_smooth_l1: true
+    weight: 0.3
+
+  # Global rank loss
+  rank:
+    enabled: true
+    weight: 0.5
+    temperature: 0.1
+    n_pairs: 2000
+
+  # Zero-structure loss
+  zero_structure:
+    enabled: true
+    valuation_weight: 0.5
+    sparsity_weight: 0.3
+
+# Riemannian Optimization
+riemannian:
+  enabled: true
+  optimizer: adam
+
+# Training Configuration (SHORT RUN for validation)
+training:
+  epochs: 50
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+
+  use_stratified: true
+  high_v_budget_ratio: 0.25
+
+  use_adaptive: true
+  hierarchy_threshold: -0.75
+  patience: 15
+  min_epochs: 25
+
+  scheduler:
+    type: cosine_warmup_restart
+    T_0: 15
+    T_mult: 2
+
+  eval_every: 2
+  save_every: 10
+  print_every: 2
+
+# Data Configuration
+data:
+  use_full_dataset: true
+  n_operations: 19683
+
+# Logging
+logging:
+  tensorboard: true
+  log_dir: runs/v5_12_3_audit_validation
+  print_every: 2
+
+# Checkpoints
+checkpoints:
+  save_dir: sandbox-training/checkpoints/v5_12_3
+  save_best: true
+  best_metric: composite_score
+  checkpoint_name: v5_12_3_audit_validation
+
+# Success Criteria
+targets:
+  coverage: 1.0
+  hierarchy_B: -0.80
+  richness: 0.005
+  r_v9: 0.15
+  distance_correlation: 0.65
+  Q_target: 1.8
+
+# Memory Optimization
+memory:
+  gradient_checkpointing: false
+  empty_cache_freq: 10
+  cudnn_benchmark: true
+
+# Version tracking
+version:
+  model: "5.12.3"
+  config: "1.0"
+  date: "2025-12-30"
+  changes:
+    - "Validation run for V5.12.2 hyperbolic audit fixes"
+    - "All metrics use proper poincare_distance()"
+    - "Short 50-epoch run for quick validation"
+    - "Comparison baseline: homeostatic_rich checkpoint"

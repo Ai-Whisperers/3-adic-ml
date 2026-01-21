@@ -1,0 +1,197 @@
+# V5.12.4 Configuration: Improved Encoder/Decoder Architecture
+#
+# This config introduces improved encoder/decoder components:
+# 1. SiLU activation (smoother gradients, no dead neurons)
+# 2. LayerNorm (stable training, better gradient flow)
+# 3. Dropout regularization (prevents overfitting)
+# 4. Logvar clamping (numerical stability)
+#
+# The improved components can load v5.5 weights for Linear layers,
+# with fresh LayerNorm initialization.
+#
+# Expected improvements:
+# - Smoother training curves (SiLU + LayerNorm)
+# - Better generalization (Dropout)
+# - No KL collapse/explosion (logvar clamping)
+# - Maintains backwards compatibility with v5.5 checkpoint
+
+# Device Configuration
+device:
+  name: "v5_12_4_improved_arch"
+  cuda_device: 0
+  use_amp: false
+  pin_memory: true
+  num_workers: 4
+
+# Model Architecture
+model:
+  name: TernaryVAEV5_11_PartialFreeze
+  latent_dim: 16
+  hidden_dim: 64
+  max_radius: 0.95
+  curvature: 1.0
+
+  use_controller: true
+  use_dual_projection: true
+  learnable_curvature: true
+  manifold_aware: true
+
+  projection_layers: 2
+  projection_dropout: 0.1
+
+  # V5.12.4: Improved encoder/decoder
+  encoder_type: improved
+  decoder_type: improved
+  encoder_dropout: 0.1
+  decoder_dropout: 0.1
+  logvar_min: -10.0
+  logvar_max: 2.0
+
+# Option C: Partial Freeze
+option_c:
+  enabled: true
+  encoder_b_lr_scale: 0.1
+  encoder_a_lr_scale: 0.05
+
+# Frozen Checkpoint (for initializing Linear weights)
+frozen_checkpoint:
+  path: sandbox-training/checkpoints/v5_5/latest.pt
+  encoder_to_load: both
+  decoder_to_load: decoder_A
+
+# Homeostatic Control
+homeostasis:
+  enabled: true
+  coverage_freeze_threshold: 0.995
+  coverage_unfreeze_threshold: 1.0
+  coverage_floor: 0.95
+  warmup_epochs: 5
+  hysteresis_epochs: 2
+  enable_annealing: true
+  annealing_step: 0.003
+  hierarchy_plateau_threshold: 0.001
+  hierarchy_plateau_patience: 5
+  hierarchy_patience_ceiling: 15
+  controller_grad_threshold: 0.01
+  controller_grad_patience: 3
+
+# Progressive Unfreezing (disabled)
+progressive_unfreeze:
+  enabled: false
+
+# Loss Configuration
+loss:
+  # PRIMARY: RichHierarchyLoss
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0
+    coverage_weight: 1.0
+    richness_weight: 2.0
+    separation_weight: 3.0
+    min_richness_ratio: 0.5
+
+  # AUXILIARY: Radial targets
+  radial:
+    enabled: true
+    inner_radius: 0.08
+    outer_radius: 0.90
+    radial_weight: 1.0
+    margin_weight: 0.5
+
+  # Phase 2: Geodesic (starts at epoch 30)
+  geodesic:
+    enabled: true
+    phase_start_epoch: 30
+    curvature: 1.0
+    max_target_distance: 3.0
+    n_pairs: 2000
+    use_smooth_l1: true
+    weight: 0.3
+
+  # Global rank loss
+  rank:
+    enabled: true
+    weight: 0.5
+    temperature: 0.1
+    n_pairs: 2000
+
+  # Zero-structure loss
+  zero_structure:
+    enabled: true
+    valuation_weight: 0.5
+    sparsity_weight: 0.3
+
+# Riemannian Optimization
+riemannian:
+  enabled: true
+  optimizer: adam
+
+# Training Configuration
+training:
+  epochs: 100
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+
+  use_stratified: true
+  high_v_budget_ratio: 0.25
+
+  use_adaptive: true
+  hierarchy_threshold: -0.75
+  patience: 20
+  min_epochs: 40
+
+  scheduler:
+    type: cosine_warmup_restart
+    T_0: 20
+    T_mult: 2
+
+  eval_every: 2
+  save_every: 10
+  print_every: 2
+
+# Data Configuration
+data:
+  use_full_dataset: true
+  n_operations: 19683
+
+# Logging
+logging:
+  tensorboard: true
+  log_dir: runs/v5_12_4_improved_arch
+  print_every: 2
+
+# Checkpoints
+checkpoints:
+  save_dir: sandbox-training/checkpoints/v5_12_4
+  save_best: true
+  best_metric: composite_score
+  checkpoint_name: v5_12_4_improved_arch
+
+# Success Criteria
+targets:
+  coverage: 1.0
+  hierarchy_B: -0.82
+  richness: 0.006
+  r_v9: 0.15
+  distance_correlation: 0.65
+  Q_target: 1.8
+
+# Memory Optimization
+memory:
+  gradient_checkpointing: false
+  empty_cache_freq: 10
+  cudnn_benchmark: true
+
+# Version tracking
+version:
+  model: "5.12.4"
+  config: "1.0"
+  date: "2025-12-30"
+  changes:
+    - "Improved encoder with SiLU, LayerNorm, Dropout"
+    - "Improved decoder with SiLU, LayerNorm, Dropout"
+    - "Logvar clamping [-10, 2] for numerical stability"
+    - "Backwards compatible with v5.5 checkpoint weights"
+    - "100-epoch training run"

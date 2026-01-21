@@ -1,0 +1,266 @@
+# V5.12.4 Extended Configuration: Grokking Detection and Extended Training
+#
+# This config is optimized for:
+# 1. Extended training runs (500 epochs) to observe emergent phenomena
+# 2. Enhanced grokking detection and monitoring
+# 3. Multi-phase learning rate strategy
+# 4. Detailed logging for emergence analysis
+#
+# Expected runtime: 4-8 hours on RTX 4090, 8-16 hours on RTX 2060 SUPER
+# Target: Observe grokking patterns, phase transitions, emergent behaviors
+
+# Device Configuration (Enhanced for long-term stability)
+device:
+  name: "v5_12_4_extended_grokking"
+  cuda_device: 0
+  use_amp: false
+  pin_memory: true
+  num_workers: 4
+  empty_cache_freq: 25  # More frequent cache clearing for stability
+
+# Model Architecture (V5.12.4 with grokking optimizations)
+model:
+  name: TernaryVAEV5_11_PartialFreeze
+  latent_dim: 16
+  hidden_dim: 64
+  max_radius: 0.95
+  curvature: 1.0
+
+  use_controller: true
+  use_dual_projection: true
+  learnable_curvature: true
+  manifold_aware: true
+
+  projection_layers: 2
+  projection_dropout: 0.1
+
+  # V5.12.4: Improved encoder/decoder for smoother gradients
+  encoder_type: improved
+  decoder_type: improved
+  encoder_dropout: 0.1
+  decoder_dropout: 0.1
+  logvar_min: -10.0
+  logvar_max: 2.0
+
+# Option C: Partial Freeze (optimized for long training)
+option_c:
+  enabled: true
+  encoder_b_lr_scale: 0.1
+  encoder_a_lr_scale: 0.05
+
+# Frozen Checkpoint (REQUIRED for V5.11+ architecture to achieve 100% coverage)
+frozen_checkpoint:
+  path: sandbox-training/checkpoints/v5_12_4/best_Q.pt  # Use compatible V5.12.4 checkpoint
+  encoder_to_load: both  # Load both encoders for coverage preservation
+  decoder_to_load: decoder_A  # Load decoder for reconstruction
+
+# Homeostatic Control (Enhanced for extended training)
+homeostasis:
+  enabled: true
+  coverage_freeze_threshold: 0.995
+  coverage_unfreeze_threshold: 1.0
+  coverage_floor: 0.95
+  warmup_epochs: 10  # Longer warmup for stability
+  hysteresis_epochs: 5  # More conservative state changes
+  enable_annealing: true
+  annealing_step: 0.002  # Slower annealing for long training
+  hierarchy_plateau_threshold: 0.0005  # More sensitive plateau detection
+  hierarchy_plateau_patience: 10
+  hierarchy_patience_ceiling: 25
+  controller_grad_threshold: 0.005  # More sensitive gradient monitoring
+  controller_grad_patience: 5
+
+# Progressive Unfreezing (disabled for extended training stability)
+progressive_unfreeze:
+  enabled: false
+
+# Loss Configuration (Balanced for grokking observation)
+loss:
+  # PRIMARY: RichHierarchyLoss
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0
+    coverage_weight: 1.0
+    richness_weight: 2.5  # Slightly higher for complexity
+    separation_weight: 3.0
+    min_richness_ratio: 0.4  # Allow more exploration
+
+  # AUXILIARY: Radial targets
+  radial:
+    enabled: true
+    inner_radius: 0.08
+    outer_radius: 0.90
+    radial_weight: 1.0
+    margin_weight: 0.5
+
+  # Phase 2: Geodesic (earlier start for extended training)
+  geodesic:
+    enabled: true
+    phase_start_epoch: 50  # Later start for extended runs
+    curvature: 1.0
+    max_target_distance: 3.0
+    n_pairs: 2000
+    use_smooth_l1: true
+    weight: 0.4  # Slightly higher for geometric refinement
+
+  # Global rank loss
+  rank:
+    enabled: true
+    weight: 0.5
+    temperature: 0.1
+    n_pairs: 2000
+
+  # Zero-structure loss
+  zero_structure:
+    enabled: true
+    valuation_weight: 0.5
+    sparsity_weight: 0.3
+
+# Riemannian Optimization
+riemannian:
+  enabled: true
+  optimizer: adam
+
+# Extended Training Configuration
+training:
+  epochs: 100  # Reduced for from-scratch training while allowing grokking observation
+  batch_size: 512
+  lr: 8.0e-4  # Slightly lower for extended training
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+
+  use_stratified: true
+  high_v_budget_ratio: 0.25
+
+  # Extended adaptive curriculum
+  use_adaptive: true
+  hierarchy_threshold: -0.75
+  patience: 50  # Much longer patience for grokking
+  min_epochs: 100  # Longer minimum training
+
+  # Multi-phase learning rate strategy
+  scheduler:
+    type: multi_phase_cosine
+    phases:
+      - name: exploration
+        epoch_range: [0, 150]
+        base_lr_scale: 1.0
+        annealing: cosine
+        T_0: 25
+        T_mult: 2
+      - name: grokking_search
+        epoch_range: [150, 350]
+        base_lr_scale: 0.3
+        annealing: constant
+      - name: fine_tuning
+        epoch_range: [350, 500]
+        base_lr_scale: 0.1
+        annealing: linear_decay
+
+  # Enhanced evaluation for grokking detection
+  eval_every: 2
+  save_every: 25
+  print_every: 2
+
+  # Grokking detection parameters
+  grokking_detection:
+    enabled: true
+    monitor_window: 20  # Window for trend analysis
+    plateau_threshold: 0.0001  # Loss change threshold for plateau
+    plateau_patience: 15  # Epochs to confirm plateau
+    accuracy_jump_threshold: 0.02  # Minimum jump to detect grokking
+    gradient_norm_track: true
+    representation_analysis: true
+
+# Data Configuration
+data:
+  use_full_dataset: true
+  n_operations: 19683
+
+# Enhanced Logging for Grokking Analysis
+logging:
+  tensorboard: true
+  log_dir: runs/v5_12_4_extended_grokking
+  print_every: 2
+
+  # Enhanced metrics for grokking
+  enhanced_metrics:
+    enabled: true
+    log_gradients: true
+    log_weights: true
+    log_activations: false  # Disabled for memory
+    gradient_flow_analysis: true
+    effective_rank: true
+    representation_similarity: true
+
+  # Save detailed logs
+  detailed_logging:
+    save_loss_history: true
+    save_gradient_norms: true
+    save_metric_trajectories: true
+    analysis_window: 50  # Window for moving averages
+
+# Checkpoints
+checkpoints:
+  save_dir: sandbox-training/checkpoints/v5_12_4_extended
+  save_best: true
+  best_metric: composite_score
+  checkpoint_name: v5_12_4_extended_grokking
+
+  # Enhanced checkpointing for grokking analysis
+  checkpoint_phases:
+    - name: exploration_complete
+      trigger_epoch: 150
+    - name: grokking_search_complete
+      trigger_epoch: 350
+    - name: training_complete
+      trigger_epoch: 500
+
+# Success Criteria (Updated for extended training)
+targets:
+  coverage: 1.0
+  hierarchy_B: -0.83  # Aim for ceiling
+  richness: 0.008  # Higher target for extended training
+  r_v9: 0.12  # Tighter target
+  distance_correlation: 0.70  # Higher target
+  Q_target: 2.2  # Higher structure target
+
+# Memory Optimization for Extended Training
+memory:
+  gradient_checkpointing: false
+  empty_cache_freq: 25  # More frequent clearing
+  cudnn_benchmark: true
+  max_memory_growth: 0.8  # Conservative memory usage
+
+# Early Stopping Override for Grokking
+early_stopping:
+  # Override normal early stopping for grokking observation
+  extended_patience: true
+  plateau_override: true  # Continue training through plateaus
+  grokking_patience: 100  # Very long patience for emergence
+
+# Analysis and Monitoring
+analysis:
+  phase_transition_detection:
+    enabled: true
+    sensitivity: 0.001  # Change detection sensitivity
+    window_size: 30
+
+  emergent_behavior_tracking:
+    enabled: true
+    track_complexity: true
+    track_generalization: true
+    track_representation_changes: true
+
+# Version tracking
+version:
+  model: "5.12.4"
+  config: "extended_grokking_1.0"
+  date: "2026-01-11"
+  changes:
+    - "Extended 500-epoch training for grokking observation"
+    - "Multi-phase learning rate strategy"
+    - "Enhanced grokking detection and monitoring"
+    - "Detailed logging for emergence analysis"
+    - "Conservative parameters for long-term stability"
+    - "Phase transition detection capabilities"

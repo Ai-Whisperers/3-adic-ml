@@ -1,0 +1,178 @@
+# V5.11.11 Homeostatic Configuration - RTX 2060 SUPER (8GB VRAM)
+#
+# Hardware Profile:
+#   - GPU: NVIDIA GeForce RTX 2060 SUPER (8GB VRAM)
+#   - CPU: AMD Ryzen (Family 23 Model 113) @ 3.6 GHz
+#   - RAM: 16GB physical, ~48GB virtual
+#   - CUDA: 13.0 (Driver 580.97)
+#
+# Architecture: V5.11.11 Homeostatic Control
+#   - Frozen encoder_A (preserves 100% coverage)
+#   - Trainable encoder_B (learns 3-adic hierarchy)
+#   - Q-gated annealing for threshold relaxation
+#   - Learnable curvature for geometry adaptation
+#   - Riemannian optimization on Poincare manifold
+#
+# Memory Budget (8GB VRAM):
+#   - Model: ~50MB
+#   - Activations (batch 512): ~500MB
+#   - Gradients: ~500MB
+#   - Optimizer states: ~200MB
+#   - Reserved/workspace: ~1GB
+#   - Safety margin: ~5.7GB free
+#
+
+# Device Configuration
+device:
+  name: "rtx2060"
+  cuda_device: 0
+  use_amp: true                        # FP16 mixed precision - saves ~50% VRAM
+  pin_memory: true                     # Faster CPU-GPU transfer
+  num_workers: 4                       # AMD Ryzen handles 4 workers well
+
+# Model Architecture (V5.11.11)
+model:
+  name: TernaryVAEV5_11_PartialFreeze
+  latent_dim: 16                       # 16D latent space
+  hidden_dim: 64                       # Projection network hidden dim
+  max_radius: 0.95                     # Poincare ball boundary
+  curvature: 1.0                       # Initial hyperbolic curvature
+
+  # V5.11.11 Features (all enabled)
+  use_controller: true                 # Differentiable homeostatic controller
+  use_dual_projection: true            # Separate projections for VAE-A/B
+  learnable_curvature: true            # Manifold-aware curvature learning
+  manifold_aware: true                 # ManifoldParameter for Riemannian gradients
+
+  # Projection Network (lightweight)
+  projection_hidden_dim: 64
+  projection_layers: 2
+  projection_dropout: 0.1
+
+# Option C: Encoder B trainable, Encoder A frozen
+option_c:
+  enabled: true
+  encoder_b_lr_scale: 0.1              # 10% of base LR for encoder_B
+  encoder_a_lr_scale: 0.05             # 5% when unfrozen (homeostatic control)
+
+# Homeostatic Control (V5.11.7 + V5.11.8 Q-gated annealing)
+homeostasis:
+  enabled: true
+  coverage_freeze_threshold: 0.995     # Freeze encoder_A when coverage drops
+  coverage_unfreeze_threshold: 1.0     # Unfreeze when back at 100%
+  coverage_floor: 0.95                 # Annealing floor (minimum coverage)
+  warmup_epochs: 5                     # Warm up before homeostasis kicks in
+  hysteresis_epochs: 3                 # Prevent oscillation
+
+  # Q-gated annealing (V5.11.8)
+  enable_annealing: true               # Relax thresholds if stuck
+  annealing_step: 0.005                # Small steps for stability
+
+  # Hierarchy monitoring
+  hierarchy_plateau_threshold: 0.001   # Detect plateau
+  hierarchy_plateau_patience: 5
+  hierarchy_patience_ceiling: 15
+
+  # Controller gradient monitoring
+  controller_grad_threshold: 0.01
+  controller_grad_patience: 3
+  controller_patience_ceiling: 10
+
+# Loss Configuration
+loss:
+  # Unified Geodesic Loss
+  geodesic:
+    enabled: true
+    curvature: 1.0
+    max_target_distance: 3.0
+    n_pairs: 2000                      # Reasonable for 8GB VRAM
+    use_smooth_l1: true
+
+  # Radial Hierarchy Loss (core objective)
+  radial:
+    enabled: true
+    inner_radius: 0.1                  # High valuation → center
+    outer_radius: 0.85                 # Low valuation → boundary
+    radial_weight: 2.0
+    margin_weight: 1.0
+
+  # Global Rank Loss
+  rank:
+    enabled: true
+    weight: 1.0
+    temperature: 0.1
+    n_pairs: 2000
+
+  # Zero-Structure Loss (V5.11.9)
+  zero_structure:
+    enabled: true
+    valuation_weight: 1.0
+    sparsity_weight: 0.5
+
+# Riemannian Optimization (V5.11.10)
+riemannian:
+  enabled: true
+  optimizer: adam                      # RiemannianAdam from geoopt
+
+# Training Configuration - Optimized for RTX 2060 SUPER
+training:
+  epochs: 150                          # Full training
+  batch_size: 512                      # Safe for 8GB VRAM with AMP
+  lr: 1.0e-3                           # Standard learning rate
+  weight_decay: 1.0e-3                 # L2 regularization
+
+  # Gradient management
+  max_grad_norm: 1.0                   # Clip to prevent explosion
+
+  # Stratified sampling
+  use_stratified: true                 # Ensure all valuation levels in batches
+
+  # Adaptive curriculum
+  use_adaptive: true
+  hierarchy_threshold: -0.70           # Target: strong negative correlation
+  patience: 20                         # Early stopping patience
+  min_epochs: 30                       # Minimum before early stopping
+
+  # Learning rate scheduler
+  scheduler:
+    type: cosine_warmup_restart
+    T_0: 20                            # Initial restart period
+    T_mult: 2                          # Double period after each restart
+
+  # Checkpointing and evaluation
+  eval_every: 5                        # Evaluate every 5 epochs
+  save_every: 20                       # Save every 20 epochs
+  print_every: 5                       # Print progress every 5 epochs
+
+# Data Configuration
+data:
+  use_full_dataset: true               # Use all 3^9 = 19683 operations
+  n_operations: 19683
+
+# Logging
+logging:
+  tensorboard: true
+  log_dir: runs/v5_11_11_homeostatic_rtx2060
+  print_every: 5
+
+# Checkpoints
+checkpoints:
+  save_dir: checkpoints/v5_11_11_homeostatic_rtx2060
+  save_best: true
+  best_metric: radial_corr_A           # Target: most negative correlation
+  best_mode: min
+  checkpoint_name: v5_11_11_homeostatic_rtx2060
+
+# Success Criteria
+targets:
+  coverage: 1.0                        # 100% perfect reconstruction
+  radial_hierarchy: -0.70              # Strong negative correlation
+  distance_correlation: 0.8            # High geodesic correlation
+  Q_target: 1.5                        # Structure capacity target
+
+# Memory Optimization for 8GB VRAM
+memory:
+  gradient_checkpointing: false        # Enable if OOM (trades time for memory)
+  empty_cache_freq: 10                 # Clear CUDA cache every 10 batches
+  cudnn_benchmark: true                # Optimize convolutions
+  cudnn_deterministic: false           # Non-deterministic for speed

@@ -1,0 +1,140 @@
+# V5.12.5 Constraint Relaxation Experiment B: Aggressive Learning Rates
+# Test: Increase learning rates significantly
+
+device:
+  name: v5_12_5_relaxed_B_aggressive_lr
+  cuda_device: 0
+  use_amp: false
+  pin_memory: true
+  num_workers: 4
+  empty_cache_freq: 25
+
+torch_compile:
+  enabled: true
+  backend: eager
+  mode: default
+  fullgraph: false
+
+mixed_precision:
+  enabled: true
+  dtype: float16
+  init_scale: 65536.0
+  growth_factor: 2.0
+  backoff_factor: 0.5
+  growth_interval: 2000
+
+model:
+  name: TernaryVAEV5_11_PartialFreeze
+  latent_dim: 16
+  hidden_dim: 64
+  max_radius: 0.95
+  curvature: 1.0
+  use_controller: true
+  use_dual_projection: true
+  learnable_curvature: true
+  manifold_aware: true
+  projection_layers: 2
+  projection_dropout: 0.1
+  encoder_type: improved
+  decoder_type: improved
+  encoder_dropout: 0.1
+  decoder_dropout: 0.1
+  logvar_min: -10.0
+  logvar_max: 2.0
+
+option_c:
+  enabled: true
+  encoder_b_lr_scale: 1.0   # AGGRESSIVE: Full LR for encoder B
+  encoder_a_lr_scale: 0.5   # AGGRESSIVE: Higher LR for encoder A
+
+frozen_checkpoint:
+  path: sandbox-training/checkpoints/v5_12_4/best_Q.pt
+  encoder_to_load: both
+  decoder_to_load: decoder_A
+
+homeostasis:
+  enabled: true
+  coverage_freeze_threshold: 0.98  # RELAXED: Lower threshold
+  coverage_unfreeze_threshold: 1.0
+  coverage_floor: 0.95
+  warmup_epochs: 10
+  hysteresis_epochs: 5
+  enable_annealing: true
+  annealing_step: 0.003
+  hierarchy_plateau_threshold: 0.001
+  hierarchy_plateau_patience: 15
+  hierarchy_patience_ceiling: 30
+
+loss:
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0
+    coverage_weight: 1.0
+    richness_weight: 2.5
+    separation_weight: 3.0
+    min_richness_ratio: 0.5
+  radial:
+    enabled: true
+    inner_radius: 0.08
+    outer_radius: 0.9
+    radial_weight: 1.0
+  geodesic:
+    enabled: true
+    phase_start_epoch: 50
+    curvature: 1.0
+    max_target_distance: 3.0
+    n_pairs: 2000
+    weight: 0.5
+  rank:
+    enabled: true
+    weight: 0.5
+    temperature: 0.1
+  zero_structure:
+    enabled: true
+    valuation_weight: 0.5
+    sparsity_weight: 0.3
+
+riemannian:
+  enabled: true
+  optimizer: adam
+
+training:
+  epochs: 15
+  batch_size: 512
+  lr: 0.002  # AGGRESSIVE: 2.5x higher base LR
+  weight_decay: 0.0001
+  max_grad_norm: 1.0
+  use_stratified: true
+  high_v_budget_ratio: 0.25
+  use_adaptive: true
+  hierarchy_threshold: -0.75
+  patience: 25
+  min_epochs: 10
+  scheduler:
+    type: cosine_annealing
+    T_max: 50
+    eta_min: 0.000001
+  eval_every: 2
+  save_every: 5
+  print_every: 2
+
+data:
+  use_full_dataset: true
+  n_operations: 19683
+
+logging:
+  tensorboard: true
+  log_dir: runs/v5_12_5_relaxed_B_aggressive_lr
+  print_every: 2
+
+checkpoints:
+  save_dir: sandbox-training/checkpoints/v5_12_5_relaxed_B
+  save_best: true
+  best_metric: composite_score
+  checkpoint_name: v5_12_5_relaxed_B
+
+targets:
+  coverage: 1.0
+  hierarchy_B: -0.83
+  richness: 0.006
+  r_v9: 0.15

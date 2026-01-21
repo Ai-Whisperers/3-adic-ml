@@ -1,0 +1,96 @@
+# Configuration for training frequency-optimal manifolds
+# Optimizes for Shannon information efficiency (positive correlation)
+
+model:
+  model_type: "TernaryVAEV5_11_PartialFreeze"
+  latent_dim: 16
+  hidden_dim: 64
+  max_radius: 0.99
+  curvature: 1.0
+  use_controller: true
+  use_dual_projection: true
+  encoder_type: "improved"
+  decoder_type: "improved"
+
+# Frequency-optimal training parameters
+training:
+  manifold_type: "frequency_optimal"
+  target_hierarchy: +0.70  # Positive hierarchy target
+
+  # Loss weights optimized for frequency-based organization
+  loss_weights:
+    reconstruction: 1.0
+    kl_divergence: 0.1
+    frequency_hierarchy: 5.0    # Push toward positive hierarchy
+    density_allocation: 3.0     # Volume allocation by frequency
+    compression: 2.0           # Optimize for compression
+    retrieval: 2.0             # Fast access to frequent items
+    coverage: 1.0              # Maintain operation coverage
+
+  # Encoder-specific learning rates
+  option_c:
+    enabled: true
+    freeze_encoder_a: false     # Allow both encoders to adapt
+    freeze_encoder_b: false
+    encoder_a_lr_scale: 0.2     # Moderate A adaptation
+    encoder_b_lr_scale: 0.3     # Faster B adaptation for frequency structure
+    decoder_lr_scale: 1.0       # Normal decoder learning
+
+  # Frequency-based homeostasis
+  homeostasis:
+    enabled: true
+    q_threshold_freeze: 2.0     # Modified Q for positive hierarchy
+    q_threshold_unfreeze: 1.8
+    plateau_patience: 15        # More patience for frequency convergence
+    target_coverage: 90.0       # Slightly relaxed coverage
+
+# Standard training settings
+epochs: 100
+batch_size: 2048
+learning_rate: 0.001
+optimizer: "Adam"
+scheduler: "ReduceLROnPlateau"
+
+# Performance optimizations
+torch_compile:
+  enabled: true
+  backend: "eager"
+  mode: "default"
+
+mixed_precision:
+  enabled: true
+  dtype: "float16"
+  init_scale: 65536.0
+
+# Monitoring and checkpoints
+checkpoint:
+  save_best: true
+  monitor_metric: "hierarchy_B"  # Monitor VAE-B hierarchy
+  mode: "max"                    # Maximize (more positive = better)
+  save_every: 10
+
+logging:
+  log_level: "INFO"
+  log_metrics_every: 1
+  manifold_analysis: true        # Enable type-aware analysis
+
+# Validation
+validation:
+  evaluate_downstream: true
+  tasks: ["compression", "retrieval", "frequency_prediction"]
+  expected_performance:
+    hierarchy_B: [0.60, 0.80]    # Expected positive range
+    compression_ratio: [1.5, 3.0] # Expected compression improvement
+    coverage: [85.0, 100.0]      # Reasonable coverage range
+
+# Frequency-specific settings
+frequency_settings:
+  volume_allocation_strategy: "density_proportional"
+  compression_target: "shannon_optimal"
+  retrieval_optimization: "frequent_first"
+
+  # Loss function parameters
+  frequency_loss_params:
+    temperature: 0.1           # Softmax temperature for frequency weighting
+    smoothing: 0.05           # Label smoothing for robustness
+    margin: 0.1               # Margin for frequency ranking loss

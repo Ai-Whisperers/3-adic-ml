@@ -1,0 +1,83 @@
+# Configuration for training valuation-optimal manifolds
+# Optimizes for p-adic semantic hierarchy (negative correlation)
+
+model:
+  model_type: "TernaryVAEV5_11_PartialFreeze"
+  latent_dim: 16
+  hidden_dim: 64
+  max_radius: 0.99
+  curvature: 1.0
+  use_controller: true
+  use_dual_projection: true
+  encoder_type: "improved"
+  decoder_type: "improved"
+
+# Valuation-optimal training parameters
+training:
+  manifold_type: "valuation_optimal"
+  target_hierarchy: -0.80  # Negative hierarchy target
+
+  # Loss weights optimized for p-adic structure
+  loss_weights:
+    reconstruction: 1.0
+    kl_divergence: 0.1
+    hierarchy: 5.0          # Strong push toward negative hierarchy
+    richness: 2.0           # Preserve within-level variance
+    separation: 3.0         # Ensure proper level ordering
+    coverage: 1.0           # Maintain operation coverage
+
+  # Encoder-specific learning rates
+  option_c:
+    enabled: true
+    freeze_encoder_a: true    # Preserve coverage
+    freeze_encoder_b: false   # Allow B to learn hierarchy
+    encoder_a_lr_scale: 0.0   # Frozen
+    encoder_b_lr_scale: 0.1   # Slower hierarchy adaptation
+    decoder_lr_scale: 1.0     # Normal decoder learning
+
+  # Homeostatic control
+  homeostasis:
+    enabled: true
+    q_threshold_freeze: 2.0   # Q = dist_corr + 1.5 * |hierarchy|
+    q_threshold_unfreeze: 1.8
+    plateau_patience: 10
+    target_coverage: 95.0
+
+# Standard training settings
+epochs: 100
+batch_size: 2048
+learning_rate: 0.001
+optimizer: "Adam"
+scheduler: "ReduceLROnPlateau"
+
+# Performance optimizations
+torch_compile:
+  enabled: true
+  backend: "eager"
+  mode: "default"
+
+mixed_precision:
+  enabled: true
+  dtype: "float16"
+  init_scale: 65536.0
+
+# Monitoring and checkpoints
+checkpoint:
+  save_best: true
+  monitor_metric: "hierarchy_B"  # Monitor VAE-B hierarchy
+  mode: "min"                    # Minimize (more negative = better)
+  save_every: 10
+
+logging:
+  log_level: "INFO"
+  log_metrics_every: 1
+  manifold_analysis: true        # Enable type-aware analysis
+
+# Validation
+validation:
+  evaluate_downstream: true
+  tasks: ["semantic_reasoning", "compositional_learning"]
+  expected_performance:
+    hierarchy_B: [-0.85, -0.70]  # Expected range
+    richness: [0.001, 0.008]     # Reasonable richness range
+    coverage: [99.0, 100.0]      # High coverage required
