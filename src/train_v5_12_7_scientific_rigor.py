@@ -52,11 +52,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Imports from codebase
 from src.config.paths import RUNS_DIR
 from src.core import TERNARY
-from src.data.generation import generate_all_ternary_operations
+from src.data import generate_all_ternary_operations
 from src.geometry import get_riemannian_optimizer, poincare_distance
 from src.losses import RadialHierarchyLoss, PAdicGeodesicLoss, RichHierarchyLoss
-from src.models import TernaryVAEV5_11_PartialFreeze
-from src.statenet import compute_Q
+from src.models import StateNet, compute_Q
 from src.utils.checkpoint import get_model_state_dict, load_checkpoint_compat
 
 # ==========================================

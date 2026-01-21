@@ -12,7 +12,7 @@
 # - Better richness measurement (hyperbolic within-level variance)
 # - Cleaner separation between valuation levels
 #
-# Baseline comparison: sandbox-training/checkpoints/homeostatic_rich/best.pt
+# Baseline comparison: sandbox-training/checkpoints/statenet_rich/best.pt
 
 # Device Configuration
 device:
@@ -50,8 +50,8 @@ frozen_checkpoint:
   encoder_to_load: both
   decoder_to_load: decoder_A
 
-# Homeostatic Control
-homeostasis:
+# StateNet Control
+statenet:
   enabled: true
   coverage_freeze_threshold: 0.995
   coverage_unfreeze_threshold: 1.0
@@ -184,4 +184,4 @@ version:
     - "Validation run for V5.12.2 hyperbolic audit fixes"
     - "All metrics use proper poincare_distance()"
     - "Short 50-epoch run for quick validation"
-    - "Comparison baseline: homeostatic_rich checkpoint"
+    - "Comparison baseline: statenet_rich checkpoint"

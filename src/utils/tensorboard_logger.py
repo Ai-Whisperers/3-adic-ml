@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 import numpy as np
 import torch
 
-from src.data.generation import generate_all_ternary_operations
+from src.data import generate_all_ternary_operations
 from src.geometry import poincare_distance
 
 # TensorBoard integration (optional)
@@ -153,7 +153,7 @@ class TensorBoardLogger:
         hyp_kl_A: float = 0.0,
         hyp_kl_B: float = 0.0,
         centroid_loss: float = 0.0,
-        homeostatic_metrics: Optional[Dict[str, float]] = None,
+        statenet_metrics: Optional[Dict[str, float]] = None,
     ) -> None:
         """Log v5.10 hyperbolic metrics at epoch level.
 
@@ -171,7 +171,7 @@ class TensorBoardLogger:
             hyp_kl_A: Hyperbolic KL for VAE-A
             hyp_kl_B: Hyperbolic KL for VAE-B
             centroid_loss: Frechet centroid loss
-            homeostatic_metrics: Dict of homeostatic adaptation metrics
+            statenet_metrics: Dict of statenet adaptation metrics
         """
         if self.writer is None:
             return
@@ -217,23 +217,23 @@ class TensorBoardLogger:
         )
         self.writer.add_scalar("v5.10/CentroidLoss", centroid_loss, epoch)
 
-        # Homeostatic metrics
-        if homeostatic_metrics:
-            if "prior_sigma_A" in homeostatic_metrics:
+        # StateNet metrics
+        if statenet_metrics:
+            if "prior_sigma_A" in statenet_metrics:
                 self.writer.add_scalars(
-                    "v5.10/HomeostaticSigma",
+                    "v5.10/StateNetSigma",
                     {
-                        "VAE_A": homeostatic_metrics.get("prior_sigma_A", 1.0),
-                        "VAE_B": homeostatic_metrics.get("prior_sigma_B", 1.0),
+                        "VAE_A": statenet_metrics.get("prior_sigma_A", 1.0),
+                        "VAE_B": statenet_metrics.get("prior_sigma_B", 1.0),
                     },
                     epoch,
                 )
-            if "prior_curvature_A" in homeostatic_metrics:
+            if "prior_curvature_A" in statenet_metrics:
                 self.writer.add_scalars(
-                    "v5.10/HomeostaticCurvature",
+                    "v5.10/StateNetCurvature",
                     {
-                        "VAE_A": homeostatic_metrics.get("prior_curvature_A", 2.0),
-                        "VAE_B": homeostatic_metrics.get("prior_curvature_B", 2.0),
+                        "VAE_A": statenet_metrics.get("prior_curvature_A", 2.0),
+                        "VAE_B": statenet_metrics.get("prior_curvature_B", 2.0),
                     },
                     epoch,
                 )

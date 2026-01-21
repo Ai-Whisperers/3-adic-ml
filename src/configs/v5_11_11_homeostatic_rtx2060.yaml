@@ -1,4 +1,4 @@
-# V5.11.11 Homeostatic Configuration - RTX 2060 SUPER (8GB VRAM)
+# V5.11.11 StateNet Configuration - RTX 2060 SUPER (8GB VRAM)
 #
 # Hardware Profile:
 #   - GPU: NVIDIA GeForce RTX 2060 SUPER (8GB VRAM)
@@ -6,7 +6,7 @@
 #   - RAM: 16GB physical, ~48GB virtual
 #   - CUDA: 13.0 (Driver 580.97)
 #
-# Architecture: V5.11.11 Homeostatic Control
+# Architecture: V5.11.11 StateNet Control
 #   - Frozen encoder_A (preserves 100% coverage)
 #   - Trainable encoder_B (learns 3-adic hierarchy)
 #   - Q-gated annealing for threshold relaxation
@@ -39,7 +39,7 @@ model:
   curvature: 1.0                       # Initial hyperbolic curvature
 
   # V5.11.11 Features (all enabled)
-  use_controller: true                 # Differentiable homeostatic controller
+  use_controller: true                 # Differentiable statenet controller
   use_dual_projection: true            # Separate projections for VAE-A/B
   learnable_curvature: true            # Manifold-aware curvature learning
   manifold_aware: true                 # ManifoldParameter for Riemannian gradients
@@ -53,15 +53,15 @@ model:
 option_c:
   enabled: true
   encoder_b_lr_scale: 0.1              # 10% of base LR for encoder_B
-  encoder_a_lr_scale: 0.05             # 5% when unfrozen (homeostatic control)
+  encoder_a_lr_scale: 0.05             # 5% when unfrozen (statenet control)
 
-# Homeostatic Control (V5.11.7 + V5.11.8 Q-gated annealing)
-homeostasis:
+# StateNet Control (V5.11.7 + V5.11.8 Q-gated annealing)
+statenet:
   enabled: true
   coverage_freeze_threshold: 0.995     # Freeze encoder_A when coverage drops
   coverage_unfreeze_threshold: 1.0     # Unfreeze when back at 100%
   coverage_floor: 0.95                 # Annealing floor (minimum coverage)
-  warmup_epochs: 5                     # Warm up before homeostasis kicks in
+  warmup_epochs: 5                     # Warm up before statenet kicks in
   hysteresis_epochs: 3                 # Prevent oscillation
 
   # Q-gated annealing (V5.11.8)
@@ -152,16 +152,16 @@ data:
 # Logging
 logging:
   tensorboard: true
-  log_dir: runs/v5_11_11_homeostatic_rtx2060
+  log_dir: runs/v5_11_11_statenet_rtx2060
   print_every: 5
 
 # Checkpoints
 checkpoints:
-  save_dir: checkpoints/v5_11_11_homeostatic_rtx2060
+  save_dir: checkpoints/v5_11_11_statenet_rtx2060
   save_best: true
   best_metric: radial_corr_A           # Target: most negative correlation
   best_mode: min
-  checkpoint_name: v5_11_11_homeostatic_rtx2060
+  checkpoint_name: v5_11_11_statenet_rtx2060
 
 # Success Criteria
 targets:

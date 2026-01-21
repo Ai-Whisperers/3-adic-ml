@@ -35,8 +35,8 @@ training:
     encoder_b_lr_scale: 0.1   # Slower hierarchy adaptation
     decoder_lr_scale: 1.0     # Normal decoder learning
 
-  # Homeostatic control
-  homeostasis:
+  # StateNet control
+  statenet:
     enabled: true
     q_threshold_freeze: 2.0   # Q = dist_corr + 1.5 * |hierarchy|
     q_threshold_unfreeze: 1.8

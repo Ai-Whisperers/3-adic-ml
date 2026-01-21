@@ -39,10 +39,10 @@ from src.utils.checkpoint_validator import (
     validate_training_config,
     CheckpointCompatibilityError
 )
-from src.models import TernaryVAEV5_11, TernaryVAEV5_11_PartialFreeze
-from src.core import TERNARY
-from src.utils.metrics import evaluate_coverage
-from src.geometry import poincare_distance
+from src.core import TERNARY, to_ternary
+from src.data import generate_all_ternary_operations
+from src.geometry import poincare_distance, get_manifold
+from src.models import StateNet, compute_Q
 
 
 class ValidatedTrainer:

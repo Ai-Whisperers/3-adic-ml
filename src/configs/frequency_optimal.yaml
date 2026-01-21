@@ -36,8 +36,8 @@ training:
     encoder_b_lr_scale: 0.3     # Faster B adaptation for frequency structure
     decoder_lr_scale: 1.0       # Normal decoder learning
 
-  # Frequency-based homeostasis
-  homeostasis:
+  # Frequency-based statenet
+  statenet:
     enabled: true
     q_threshold_freeze: 2.0     # Modified Q for positive hierarchy
     q_threshold_unfreeze: 1.8

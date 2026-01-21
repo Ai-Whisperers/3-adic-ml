@@ -52,7 +52,7 @@ frozen_checkpoint:
   encoder_to_load: both
   decoder_to_load: decoder_A
 
-homeostasis:
+statenet:
   enabled: false  # DISABLE: Let model explore freely without coverage constraints
 
 loss:

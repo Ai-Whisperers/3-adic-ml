@@ -4,10 +4,10 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0
 # See LICENSE file in the repository root for full license text.
 
-"""Launch V5.11.11 Homeostatic Training - RTX 2060 SUPER Optimized.
+"""Launch V5.11.11 StateNet Training - RTX 2060 SUPER Optimized.
 
 This script provides a simple entry point for training the V5.11.11
-homeostatic model with optimal settings for RTX 2060 SUPER (8GB VRAM).
+statenet model with optimal settings for RTX 2060 SUPER (8GB VRAM).
 
 Features:
 - Automatic v5.5 base model training if needed
@@ -22,16 +22,16 @@ Hardware Requirements:
 
 Usage:
     # Full training (recommended)
-    python scripts/training/launch_homeostatic_training.py
+    python scripts/training/launch_statenet_training.py
 
     # Quick test (5 epochs)
-    python scripts/training/launch_homeostatic_training.py --quick
+    python scripts/training/launch_statenet_training.py --quick
 
     # Resume from checkpoint
-    python scripts/training/launch_homeostatic_training.py --resume
+    python scripts/training/launch_statenet_training.py --resume
 
     # Custom epochs
-    python scripts/training/launch_homeostatic_training.py --epochs 200
+    python scripts/training/launch_statenet_training.py --epochs 200
 """
 
 from __future__ import annotations
@@ -126,8 +126,8 @@ def check_directories(project_root: Path) -> dict:
     print("\n[3/4] Setting up Directories...")
 
     dirs = {
-        "checkpoints": project_root / "sandbox-training" / "checkpoints" / "v5_11_11_homeostatic_rtx2060s",
-        "runs": project_root / "runs" / "v5_11_11_homeostatic_rtx2060s",
+        "checkpoints": project_root / "sandbox-training" / "checkpoints" / "v5_11_11_statenet_rtx2060s",
+        "runs": project_root / "runs" / "v5_11_11_statenet_rtx2060s",
         "v5_5_checkpoints": project_root / "sandbox-training" / "checkpoints" / "v5_5",
     }
 
@@ -154,7 +154,7 @@ def print_training_config(args):
     print(f"  - StateNet: Enabled")
     print(f"  - Riemannian optimization: Enabled")
     print(f"  - Q-gated annealing: Enabled")
-    print(f"  - TensorBoard: runs/v5_11_11_homeostatic_rtx2060s")
+    print(f"  - TensorBoard: runs/v5_11_11_statenet_rtx2060s")
 
 
 def run_training(args, project_root: Path, dirs: dict):
@@ -184,9 +184,9 @@ def run_training(args, project_root: Path, dirs: dict):
         print("[OK] Using existing v5.5 base checkpoint")
 
     # Now train the v5.11.11 model
-    print("\nPhase 2: Training V5.11.11 Homeostatic Model...")
+    print("\nPhase 2: Training V5.11.11 StateNet Model...")
     print("-" * 60)
-    train_homeostatic_model(args, device, dirs, project_root)
+    train_statenet_model(args, device, dirs, project_root)
 
 
 def train_base_model(device, dirs, project_root):
@@ -342,17 +342,16 @@ def train_base_model(device, dirs, project_root):
     print(f"\nv5.5 training complete. Best coverage: {best_coverage*100:.1f}%")
 
 
-def train_homeostatic_model(args, device, dirs, project_root):
-    """Train the V5.11.11 homeostatic model."""
+def train_statenet_model(args, device, dirs, project_root):
+    """Train the V5.11.11 statenet model."""
     import numpy as np
     from scipy.stats import spearmanr
     from torch.utils.data import DataLoader, TensorDataset
     from torch.utils.tensorboard import SummaryWriter
 
     from src.core import TERNARY
-    from src.data.generation import generate_all_ternary_operations
-    from src.models import TernaryVAEV5_11_PartialFreeze
-    from src.statenet import StateNet, compute_Q
+    from src.data import generate_all_ternary_operations
+    from src.models import StateNet, compute_Q
 
     # Load model
     print("Loading model architecture...")
@@ -580,7 +579,7 @@ def train_homeostatic_model(args, device, dirs, project_root):
                 hierarchy_B=hierarchy,
                 dist_corr_A=0.0,
             )
-            model.apply_homeostasis_state(statenet_state)
+            model.apply_statenet_state(statenet_state)
 
             writer.add_scalar("Train/loss", epoch_losses["total"], epoch)
             writer.add_scalar("Eval/coverage", coverage, epoch)
@@ -621,13 +620,13 @@ def train_homeostatic_model(args, device, dirs, project_root):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Launch V5.11.11 Homeostatic Training",
+        description="Launch V5.11.11 StateNet Training",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python scripts/training/launch_homeostatic_training.py           # Full training
-    python scripts/training/launch_homeostatic_training.py --quick   # Quick test (5 epochs)
-    python scripts/training/launch_homeostatic_training.py --epochs 200  # Custom epochs
+    python scripts/training/launch_statenet_training.py           # Full training
+    python scripts/training/launch_statenet_training.py --quick   # Quick test (5 epochs)
+    python scripts/training/launch_statenet_training.py --epochs 200  # Custom epochs
         """
     )
     parser.add_argument("--epochs", type=int, default=150, help="Number of training epochs")

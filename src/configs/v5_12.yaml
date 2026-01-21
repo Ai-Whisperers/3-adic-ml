@@ -4,7 +4,7 @@
 # 1. RichHierarchyLoss as primary (preserves richness while maximizing hierarchy)
 # 2. Tighter inner_radius (0.08) for better v=9 separation
 # 3. Two-phase loss strategy (structure → geometry refinement)
-# 4. Enhanced homeostatic control with Q-tracking
+# 4. Enhanced statenet control with Q-tracking
 # 5. ComprehensiveMetrics integration for checkpoint storage
 #
 # Target metrics:
@@ -52,8 +52,8 @@ frozen_checkpoint:
   encoder_to_load: both
   decoder_to_load: decoder_A
 
-# Homeostatic Control (V5.11.7 + V5.11.8 + V5.12 enhancements)
-homeostasis:
+# StateNet Control (V5.11.7 + V5.11.8 + V5.12 enhancements)
+statenet:
   enabled: true
   coverage_freeze_threshold: 0.995
   coverage_unfreeze_threshold: 1.0
@@ -74,7 +74,7 @@ homeostasis:
   controller_grad_threshold: 0.01
   controller_grad_patience: 5
 
-# Progressive Unfreezing (disabled - using homeostasis instead)
+# Progressive Unfreezing (disabled - using statenet instead)
 progressive_unfreeze:
   enabled: false
 

@@ -52,7 +52,7 @@ frozen_checkpoint:
   encoder_to_load: null
   decoder_to_load: null
 
-homeostasis:
+statenet:
   enabled: true
   coverage_freeze_threshold: 0.90  # More permissive during early training
   coverage_unfreeze_threshold: 0.95

@@ -5,7 +5,7 @@
 #
 # For commercial licensing inquiries: support@aiwhisperers.com
 
-"""Hierarchical Homeostatic Controller for V5.11.8.
+"""Hierarchical StateNet Controller for V5.11.8.
 
 Implements complementary learning systems theory with Q-gated annealing:
 - Slow components (encoders): consolidate, freeze when objective met
@@ -26,19 +26,19 @@ from collections import deque
 from typing import Any, Dict, Optional
 
 from src.config.constants import (
-    HOMEOSTATIC_ANNEALING_STEP,
-    HOMEOSTATIC_CONTROLLER_GRAD_PATIENCE,
-    HOMEOSTATIC_CONTROLLER_GRAD_THRESHOLD,
-    HOMEOSTATIC_CONTROLLER_PATIENCE_CEILING,
-    HOMEOSTATIC_COVERAGE_FLOOR,
-    HOMEOSTATIC_COVERAGE_FREEZE_THRESHOLD,
-    HOMEOSTATIC_COVERAGE_UNFREEZE_THRESHOLD,
-    HOMEOSTATIC_HIERARCHY_PATIENCE_CEILING,
-    HOMEOSTATIC_HIERARCHY_PLATEAU_PATIENCE,
-    HOMEOSTATIC_HIERARCHY_PLATEAU_THRESHOLD,
-    HOMEOSTATIC_HYSTERESIS_EPOCHS,
-    HOMEOSTATIC_WARMUP_EPOCHS,
-    HOMEOSTATIC_WINDOW_SIZE,
+    STATENET_ANNEALING_STEP,
+    STATENET_CONTROLLER_GRAD_PATIENCE,
+    STATENET_CONTROLLER_GRAD_THRESHOLD,
+    STATENET_CONTROLLER_PATIENCE_CEILING,
+    STATENET_COVERAGE_FLOOR,
+    STATENET_COVERAGE_FREEZE_THRESHOLD,
+    STATENET_COVERAGE_UNFREEZE_THRESHOLD,
+    STATENET_HIERARCHY_PATIENCE_CEILING,
+    STATENET_HIERARCHY_PLATEAU_PATIENCE,
+    STATENET_HIERARCHY_PLATEAU_THRESHOLD,
+    STATENET_HYSTERESIS_EPOCHS,
+    STATENET_WARMUP_EPOCHS,
+    STATENET_WINDOW_SIZE,
 )
 
 
@@ -53,7 +53,7 @@ def compute_Q(dist_corr: float, hierarchy: float) -> float:
 
 
 class StateNet:
-    """Hierarchical homeostatic freeze/unfreeze controller with Q-gated annealing.
+    """Hierarchical statenet freeze/unfreeze controller with Q-gated annealing.
 
     Monitors training metrics and dynamically adjusts component freeze states
     to balance coverage preservation with geometric structure learning.
@@ -65,24 +65,24 @@ class StateNet:
     def __init__(
         self,
         # Coverage thresholds for encoder_A (from constants.py)
-        coverage_freeze_threshold: float = HOMEOSTATIC_COVERAGE_FREEZE_THRESHOLD,
-        coverage_unfreeze_threshold: float = HOMEOSTATIC_COVERAGE_UNFREEZE_THRESHOLD,
+        coverage_freeze_threshold: float = STATENET_COVERAGE_FREEZE_THRESHOLD,
+        coverage_unfreeze_threshold: float = STATENET_COVERAGE_UNFREEZE_THRESHOLD,
         # Hierarchy thresholds for encoder_B (from constants.py)
-        hierarchy_plateau_threshold: float = HOMEOSTATIC_HIERARCHY_PLATEAU_THRESHOLD,
-        hierarchy_plateau_patience: int = HOMEOSTATIC_HIERARCHY_PLATEAU_PATIENCE,
+        hierarchy_plateau_threshold: float = STATENET_HIERARCHY_PLATEAU_THRESHOLD,
+        hierarchy_plateau_patience: int = STATENET_HIERARCHY_PLATEAU_PATIENCE,
         # Controller gradient thresholds (from constants.py)
-        controller_grad_threshold: float = HOMEOSTATIC_CONTROLLER_GRAD_THRESHOLD,
-        controller_grad_patience: int = HOMEOSTATIC_CONTROLLER_GRAD_PATIENCE,
+        controller_grad_threshold: float = STATENET_CONTROLLER_GRAD_THRESHOLD,
+        controller_grad_patience: int = STATENET_CONTROLLER_GRAD_PATIENCE,
         # General settings (from constants.py)
-        window_size: int = HOMEOSTATIC_WINDOW_SIZE,
-        hysteresis_epochs: int = HOMEOSTATIC_HYSTERESIS_EPOCHS,
-        warmup_epochs: int = HOMEOSTATIC_WARMUP_EPOCHS,
+        window_size: int = STATENET_WINDOW_SIZE,
+        hysteresis_epochs: int = STATENET_HYSTERESIS_EPOCHS,
+        warmup_epochs: int = STATENET_WARMUP_EPOCHS,
         # Q-gated annealing settings (V5.11.8, from constants.py)
         enable_annealing: bool = True,
-        annealing_step: float = HOMEOSTATIC_ANNEALING_STEP,
-        coverage_floor: float = HOMEOSTATIC_COVERAGE_FLOOR,
-        hierarchy_patience_ceiling: int = HOMEOSTATIC_HIERARCHY_PATIENCE_CEILING,
-        controller_patience_ceiling: int = HOMEOSTATIC_CONTROLLER_PATIENCE_CEILING,
+        annealing_step: float = STATENET_ANNEALING_STEP,
+        coverage_floor: float = STATENET_COVERAGE_FLOOR,
+        hierarchy_patience_ceiling: int = STATENET_HIERARCHY_PATIENCE_CEILING,
+        controller_patience_ceiling: int = STATENET_CONTROLLER_PATIENCE_CEILING,
     ):
         # Initial thresholds (can be annealed)
         self.coverage_freeze_threshold = coverage_freeze_threshold
@@ -153,7 +153,7 @@ class StateNet:
         dist_corr_A: float = 0.0,
         controller_grad_norm: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Update homeostasis state based on current metrics.
+        """Update statenet state based on current metrics.
 
         Args:
             epoch: Current training epoch
@@ -183,7 +183,7 @@ class StateNet:
 
         events = []
 
-        # Skip homeostasis during warmup
+        # Skip statenet during warmup
         if epoch < self.warmup_epochs:
             return {
                 "encoder_a_frozen": self.encoder_a_frozen,

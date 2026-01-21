@@ -59,8 +59,8 @@ frozen_checkpoint:
   encoder_to_load: both
   decoder_to_load: decoder_A
 
-# Homeostatic Control
-homeostasis:
+# StateNet Control
+statenet:
   enabled: true
   coverage_freeze_threshold: 0.995
   coverage_unfreeze_threshold: 1.0

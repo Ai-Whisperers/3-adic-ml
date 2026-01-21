@@ -1,8 +1,8 @@
-# V5.12.5 Differential Homeostasis Optimization
-# Tune homeostasis learning mechanics instead of bypassing them
+# V5.12.5 Differential StateNet Optimization
+# Tune statenet learning mechanics instead of bypassing them
 
 device:
-  name: v5_12_5_homeostatic_differential
+  name: v5_12_5_statenet_differential
   cuda_device: 0
   use_amp: false
   pin_memory: true
@@ -53,7 +53,7 @@ frozen_checkpoint:
   decoder_to_load: decoder_A
 
 # DIFFERENTIAL HOMEOSTASIS TUNING - The key optimization!
-homeostasis:
+statenet:
   enabled: true
   # THRESHOLD GRADIENTS - Make unfreezing possible
   coverage_freeze_threshold: 0.992      # Relaxed: 0.995 → 0.992
@@ -105,7 +105,7 @@ riemannian:
   optimizer: adam
 
 training:
-  epochs: 30  # Longer to see homeostatic adaptation
+  epochs: 30  # Longer to see statenet adaptation
   batch_size: 512
   lr: 0.001   # Moderate increase: 0.0008 → 0.001
   weight_decay: 0.00008  # Slightly less regularization
@@ -130,14 +130,14 @@ data:
 
 logging:
   tensorboard: true
-  log_dir: runs/v5_12_5_homeostatic_differential
+  log_dir: runs/v5_12_5_statenet_differential
   print_every: 2
 
 checkpoints:
-  save_dir: sandbox-training/checkpoints/v5_12_5_homeostatic_diff
+  save_dir: sandbox-training/checkpoints/v5_12_5_statenet_diff
   save_best: true
   best_metric: composite_score
-  checkpoint_name: v5_12_5_homeostatic_diff
+  checkpoint_name: v5_12_5_statenet_diff
 
 targets:
   coverage: 1.0

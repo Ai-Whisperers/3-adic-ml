@@ -70,8 +70,8 @@ frozen_checkpoint:
   encoder_to_load: both  # Load both encoders for coverage
   decoder_to_load: decoder_A
 
-# Homeostatic Control
-homeostasis:
+# StateNet Control
+statenet:
   enabled: true
   coverage_freeze_threshold: 0.995
   coverage_unfreeze_threshold: 1.0
@@ -200,6 +200,6 @@ version:
   config: "fixed_checkpoint_1.0"
   date: "2026-01-12"
   changes:
-    - "FIXED: checkpoint path from null to v5_11_homeostasis/best.pt"
+    - "FIXED: checkpoint path from null to v5_11_statenet/best.pt"
     - "Should now achieve 100% coverage with proper frozen components"
     - "Reduced epochs to 50 for quick validation of fix"

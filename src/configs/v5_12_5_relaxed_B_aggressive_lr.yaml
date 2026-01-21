@@ -52,7 +52,7 @@ frozen_checkpoint:
   encoder_to_load: both
   decoder_to_load: decoder_A
 
-homeostasis:
+statenet:
   enabled: true
   coverage_freeze_threshold: 0.98  # RELAXED: Lower threshold
   coverage_unfreeze_threshold: 1.0
