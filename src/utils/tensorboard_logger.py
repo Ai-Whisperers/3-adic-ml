@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 import numpy as np
 import torch
 
-from src.data import generate_all_ternary_operations
+from src.core import TERNARY
 from src.geometry import poincare_distance
 
 # TensorBoard integration (optional)
@@ -441,8 +441,8 @@ class TensorBoardLogger:
 
         model.eval()
 
-        # Generate operations
-        all_operations = generate_all_ternary_operations()
+        # Generate operations (uses cached LUT from TERNARY singleton)
+        all_operations = TERNARY.all_ternary()
         total_ops = len(all_operations)
 
         # Sample or use all
@@ -451,8 +451,7 @@ class TensorBoardLogger:
         else:
             indices = sorted(random.sample(range(total_ops), n_samples))
 
-        operations = all_operations[np.array(indices)]
-        x = torch.from_numpy(operations).float().to(device)
+        x = all_operations[indices].to(device)
 
         with torch.no_grad():
             outputs = model(x, 1.0, 1.0, 0.5, 0.5)

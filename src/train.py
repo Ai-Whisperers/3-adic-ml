@@ -65,7 +65,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Internal imports
 from src.config.paths import RUNS_DIR, CHECKPOINTS_DIR
 from src.core import TERNARY
-from src.data import generate_all_ternary_operations
 from src.geometry import poincare_distance, get_riemannian_optimizer
 from src.losses import CombinedLoss
 from src.models import StateNet, compute_Q, TernaryVAEV5_11_PartialFreeze
@@ -137,9 +136,8 @@ class DataAuditor:
         """
         print("\n[AUDIT] Data Integrity Check...")
 
-        # Generate all operations
-        all_ops_np = generate_all_ternary_operations()
-        all_ops = torch.tensor(all_ops_np, dtype=torch.float32)
+        # Generate all operations (uses cached LUT from TERNARY singleton)
+        all_ops = TERNARY.all_ternary()
         n = len(all_ops)
         all_indices = torch.arange(n, dtype=torch.long)
 
@@ -398,6 +396,7 @@ def compute_hierarchy_metrics(
     z_hyp: torch.Tensor,
     indices: torch.Tensor,
     curvature: float = 1.0,
+    seed: int = 42,
 ) -> Dict[str, float]:
     """Compute hierarchy and Q metrics.
 
@@ -405,6 +404,7 @@ def compute_hierarchy_metrics(
         z_hyp: Hyperbolic embeddings (B, latent_dim)
         indices: Operation indices (B,)
         curvature: Poincaré ball curvature
+        seed: Random seed for reproducible sampling
 
     Returns:
         Dict with hierarchy, dist_corr, Q metrics
@@ -426,7 +426,9 @@ def compute_hierarchy_metrics(
         if n < 2:
             return {'hierarchy': hierarchy, 'dist_corr': 0.0, 'Q': 0.0}
 
-        idx = np.random.choice(len(z_hyp), n, replace=False)
+        # Use explicit RNG for reproducibility
+        rng = np.random.default_rng(seed)
+        idx = rng.choice(len(z_hyp), n, replace=False)
         r_sample = radii[idx]
         v_sample = valuations[idx]
 
