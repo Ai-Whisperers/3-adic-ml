@@ -100,7 +100,7 @@ After the statenet updates we must review the imports and paths, update them to 
 
 3. The final and meaningful goal for all of this analysis is creating the most rigorous, production-quality, empirically validated (no smoke tests) and reproducible training pipelines and codebase for:
 
-# Gimel AI model:
+# P-Adic VAEs
 
 * **Core idea**: Ternary System of VAEs+Controller(s) where latent variables live in an **ultrametric p-adic space (p=3)** (embeddings are in floating point real numbers of course, but the dynamics are completely non-euclidean and non-arquimedian) inducing hierarchy by construction.
 * **Geometry**: Discrete → continuous bridge via **p-adic / ultrametric → hyperbolic projections** (Poincare/Lorentz).

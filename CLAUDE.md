@@ -77,7 +77,7 @@ Input (9 values, {-1,0,1})
    - Q-Metric optimization, Stratified Sampling
    - v5.5 anchor uses Euclidean embeddings (standard architecture)
 
-## Gimel AI Model
+## P-Adic VAEs
 
 - **Core idea**: Dual VAE + Controller where latents live in **ultrametric p-adic space (p=3)**, inducing hierarchy by construction
 - **Geometry**: Discrete → continuous bridge via **p-adic → hyperbolic projections** (Poincare ball)
