@@ -597,19 +597,28 @@ def train(
     save_every = train_cfg.get('save_every', 25)
     print_every = train_cfg.get('print_every', 5)
 
-    # Create data loaders
+    # Worker init function for reproducible multi-worker data loading
+    def worker_init_fn(worker_id: int) -> None:
+        """Seed each DataLoader worker deterministically."""
+        worker_seed = seed + worker_id
+        np.random.seed(worker_seed)
+        torch.manual_seed(worker_seed)
+
+    # Create data loaders with reproducible seeding
+    num_workers = train_cfg.get('num_workers', 4)
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
         shuffle=True,
-        pin_memory=True,
-        num_workers=train_cfg.get('num_workers', 4),
+        pin_memory=torch.cuda.is_available(),
+        num_workers=num_workers,
+        worker_init_fn=worker_init_fn if num_workers > 0 else None,
     )
     val_loader = DataLoader(
         val_ds,
         batch_size=batch_size,
         shuffle=False,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),
     )
 
     # Loss function
@@ -755,10 +764,10 @@ def train(
             avg_val_acc = val_acc_sum / val_batches
             avg_val_coverage = val_coverage_sum / val_batches
 
-            # Hierarchy metrics
+            # Hierarchy metrics (seed varies per epoch for different samples, but reproducible)
             z_cat = torch.cat(z_all)
             idx_cat = torch.cat(idx_all)
-            hier_metrics = compute_hierarchy_metrics(z_cat, idx_cat, curvature)
+            hier_metrics = compute_hierarchy_metrics(z_cat, idx_cat, curvature, seed=seed + epoch)
 
             # StateNet update
             if statenet is not None:

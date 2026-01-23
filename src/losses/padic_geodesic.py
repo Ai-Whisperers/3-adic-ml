@@ -59,6 +59,7 @@ class PAdicGeodesicLoss(nn.Module):
         valuation_scale: float = 3.0,
         n_pairs: int = 2000,
         use_smooth_l1: bool = True,
+        seed: int = 42,
     ):
         """Initialize PAdicGeodesicLoss.
 
@@ -68,6 +69,7 @@ class PAdicGeodesicLoss(nn.Module):
             valuation_scale: Scale factor for valuation→distance mapping
             n_pairs: Number of pairs to sample per batch
             use_smooth_l1: Use SmoothL1 (Huber) loss instead of MSE
+            seed: Random seed for reproducible pair sampling
         """
         super().__init__()
         self.curvature = curvature
@@ -75,6 +77,8 @@ class PAdicGeodesicLoss(nn.Module):
         self.valuation_scale = valuation_scale
         self.n_pairs = n_pairs
         self.use_smooth_l1 = use_smooth_l1
+        self.generator = torch.Generator()
+        self.generator.manual_seed(seed)
 
     def target_distance(self, valuation: torch.Tensor) -> torch.Tensor:
         """Map 3-adic valuation to target hyperbolic distance.
@@ -104,10 +108,11 @@ class PAdicGeodesicLoss(nn.Module):
         if batch_size < 2:
             return torch.tensor(0.0, device=device), {"n_pairs": 0}
 
-        # Sample random pairs
+        # Sample random pairs (reproducible via generator)
         n_pairs = min(self.n_pairs, batch_size * (batch_size - 1) // 2)
-        i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
-        j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
+        # Generate on CPU with seeded generator, then move to device
+        i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
+        j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
 
         # Avoid self-pairs
         same_mask = i_idx == j_idx
@@ -171,6 +176,7 @@ class RadialHierarchyLoss(nn.Module):
         margin_weight: float = 1.0,
         use_margin_loss: bool = True,
         curvature: float = 1.0,
+        seed: int = 42,
     ):
         """Initialize RadialHierarchyLoss.
 
@@ -182,6 +188,7 @@ class RadialHierarchyLoss(nn.Module):
             margin_weight: Weight for margin-based separation loss
             use_margin_loss: Enable pairwise margin loss for radial separation
             curvature: Hyperbolic curvature for poincare_distance (V5.12.2)
+            seed: Random seed for reproducible pair sampling
         """
         super().__init__()
         self.inner_radius = inner_radius
@@ -191,6 +198,8 @@ class RadialHierarchyLoss(nn.Module):
         self.margin_weight = margin_weight
         self.use_margin_loss = use_margin_loss
         self.curvature = curvature
+        self.generator = torch.Generator()
+        self.generator.manual_seed(seed)
 
         # Compute radius step per valuation level
         self.radius_step = (outer_radius - inner_radius) / max_valuation
@@ -235,10 +244,10 @@ class RadialHierarchyLoss(nn.Module):
         # Margin loss: enforce separation between different valuation levels
         margin_loss = torch.tensor(0.0, device=device)
         if self.use_margin_loss and batch_size >= 2:
-            # Sample pairs
+            # Sample pairs (reproducible via generator)
             n_pairs = min(1000, batch_size * (batch_size - 1) // 2)
-            i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
-            j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
+            i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
+            j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
 
             # Avoid same index
             same = i_idx == j_idx
@@ -372,6 +381,7 @@ class GlobalRankLoss(nn.Module):
         n_pairs: int = 2000,
         use_all_pairs: bool = False,
         curvature: float = 1.0,
+        seed: int = 42,
     ):
         """Initialize GlobalRankLoss.
 
@@ -380,12 +390,15 @@ class GlobalRankLoss(nn.Module):
             n_pairs: Number of pairs to sample (if not using all pairs)
             use_all_pairs: If True, use all O(n²) pairs (expensive but exact)
             curvature: Hyperbolic curvature for poincare_distance (V5.12.2)
+            seed: Random seed for reproducible pair sampling
         """
         super().__init__()
         self.temperature = temperature
         self.n_pairs = n_pairs
         self.use_all_pairs = use_all_pairs
         self.curvature = curvature
+        self.generator = torch.Generator()
+        self.generator.manual_seed(seed)
 
     def forward(self, z_hyp: torch.Tensor, batch_indices: torch.Tensor) -> Tuple[torch.Tensor, dict]:
         """Compute global rank loss.
@@ -414,10 +427,10 @@ class GlobalRankLoss(nn.Module):
             i_idx = torch.arange(batch_size, device=device).unsqueeze(1).expand(-1, batch_size).reshape(-1)
             j_idx = torch.arange(batch_size, device=device).unsqueeze(0).expand(batch_size, -1).reshape(-1)
         else:
-            # Sample pairs
+            # Sample pairs (reproducible via generator)
             n_pairs = min(self.n_pairs, batch_size * (batch_size - 1))
-            i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
-            j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
+            i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
+            j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
 
             # Avoid self-pairs
             same = i_idx == j_idx
@@ -728,7 +741,9 @@ class RichHierarchyLoss(nn.Module):
             violation = F.relu(mean_radii[i + 1] - mean_radii[i] + 0.01)
             separation_loss = separation_loss + violation
 
-        total = 5.0 * hierarchy_loss + 1.0 * coverage_loss + 3.0 * separation_loss
+        # Return raw components - CombinedLoss applies weights from config
+        # Note: 'total' is sum of raw components for backward compatibility
+        total = hierarchy_loss + coverage_loss + separation_loss
 
         return {"total": total, "hierarchy": hierarchy_loss, "coverage": coverage_loss, "separation": separation_loss}
 
