@@ -6,3 +6,4 @@ from .padic_geodesic import (
     MonotonicRadialLoss,
     RichHierarchyLoss,
 )
+from .combined import CombinedLoss
