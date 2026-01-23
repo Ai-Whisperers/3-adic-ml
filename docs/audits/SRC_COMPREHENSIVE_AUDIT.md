@@ -103,29 +103,18 @@ This is a well-designed singleton with proper caching and O(1) lookups. The math
 
 **Purpose**: Generate all 19,683 ternary operations
 **Lines**: 71
-**Status**: AUDITED
+**Status**: ~~AUDITED~~ **DELETED (2025-01-23)**
 
-#### Summary
-Pure data generation module using NumPy. Generates all ternary operations as (19683, 9) array.
+#### Resolution
 
-#### Findings
+This file was deleted as it duplicated logic from `src/core/ternary.py`. The TERNARY singleton provides:
+- O(1) cached lookups vs O(n) recomputation
+- Single source of truth for ternary operations
+- Proper device handling for GPU acceleration
 
-| Line | Severity | Issue |
-|------|----------|-------|
-| 20-38 | **MEDIUM** | `generate_all_ternary_operations()` duplicates the ternary encoding logic from `src/core/ternary.py`. This violates DRY principle. Should delegate to `TERNARY.all_ternary()` or at minimum document the duplication. |
-| 38 | **LOW** | Returns `np.float32` but the values are integers {-1, 0, 1}. Using float32 is likely intentional for direct use in neural networks, but loses semantic clarity. |
-| 50-70 | **MEDIUM** | `generate_ternary_operation_by_index` also duplicates ternary conversion logic. Should use `TERNARY.to_ternary()`. |
-| - | **LOW** | No type hints for return values in some functions (List[int] vs np.ndarray inconsistency). |
-| - | **OK** | The conversion formula `num % 3 - 1` is mathematically correct and consistent with ternary.py. |
+All dependent code (`train.py`, `tensorboard_logger.py`) updated to use `TERNARY.all_ternary()`.
 
-#### Reproducibility Assessment
-
-- **Deterministic**: Yes, pure mathematical computation ✓
-- **Platform-independent**: NumPy operations are platform-independent ✓
-
-#### Verdict: **MEDIUM** - Code duplication with src/core/ternary.py
-
-The logic is correct but duplicated. This creates maintenance burden and potential for divergence. Recommend refactoring to use TERNARY singleton as the single source of truth.
+#### Verdict: **RESOLVED** - File removed, imports updated
 
 ---
 
@@ -213,11 +202,11 @@ Core loss module implementing 6 loss classes for p-adic structure enforcement:
 | Line | Severity | Issue |
 |------|----------|-------|
 | 89 | **OK** | Target distance formula `max_dist * exp(-v/scale)` correctly maps high valuation to small distance. Mathematically sound. |
-| 109-114 | **CRITICAL** | Random pair sampling uses `torch.randint` which is non-deterministic. For reproducible training, this must be seeded. The same issue appears in lines 240-241, 419-420. **All three loss classes using random sampling are non-reproducible without global seed control.** |
+| 109-114 | ~~**CRITICAL**~~ **FIXED** | Random pair sampling now uses `torch.Generator` with explicit seeding. All three loss classes have been updated with proper deterministic generators. |
 | 120-121 | **OK** | Uses `TERNARY.valuation()` correctly - no duplication. |
 | 133 | **LOW** | `torch.corrcoef` on 2-element stack works but is inefficient. A direct Pearson formula would be cleaner. |
 | 217 | **OK** | V5.12.2 fix uses `poincare_distance` for radius instead of Euclidean norm. This is mathematically correct for hyperbolic geometry. |
-| 228 | **MEDIUM** | Exponential weighting `1 + exp(0.4*v)` for valuation compensation. At v=9, weight=37.6. This may cause gradient instability for rare high-valuation samples. No gradient clipping applied. |
+| 228 | ~~**MEDIUM**~~ **FIXED** | Exponential weighting softened to `1 + exp(0.25*v)` with clamp to [1.0, 10.0]. At v=9, max weight now capped at 10.0 for gradient stability. |
 | 259 | **LOW** | Expected margin `v_diff * radius_step * 0.5` uses a hardcoded 0.5 factor. Should be configurable or documented. |
 | 317 | **MEDIUM** | `RadialHierarchyLoss` instantiated without `curvature` parameter in `CombinedGeodesicLoss.__init__`, but `RadialHierarchyLoss` has `curvature=1.0` default. Inconsistent if parent uses different curvature. |
 | 410 | **OK** | V5.12.2 uses hyperbolic distance for radii in `GlobalRankLoss`. Consistent with other losses. |
@@ -227,9 +216,9 @@ Core loss module implementing 6 loss classes for p-adic structure enforcement:
 | 621 | **LOW** | Hardcoded weight 0.5 for target_loss in `MonotonicRadialLoss`. Should be configurable. |
 | 662-666 | **OK** | Precomputed target radii buffer is good practice. |
 | 673 | **OK** | V5.12.2 fix uses `poincare_distance` in `RichHierarchyLoss`. |
-| 693-704 | **MEDIUM** | Coverage loss handles two logit shapes (B,9,3) and (B,27) but the (B,27) case permutes to (B,3,9) which may not match the target shape (B,9). The `cross_entropy` expects (B,C,*) vs (B,*), so (B,3,9) vs (B,9) is correct. However, the `clamp(0,2)` on targets is suspicious - values should already be {-1,0,1} shifted to {0,1,2}. |
+| 693-704 | ~~**MEDIUM**~~ **FIXED** | Coverage loss handles two logit shapes correctly. The suspicious `clamp(0,2)` has been removed - data must now be valid {-1,0,1} to work properly, enforcing data integrity upstream rather than silently masking issues. |
 | 727-729 | **MEDIUM** | Separation loss iterates over `mean_radii` list which is built from sorted levels. The iteration is correct but inefficient (Python loop). Could be vectorized. |
-| 731 | **HIGH** | Hardcoded loss weights `5.0 * hierarchy + 1.0 * coverage + 3.0 * separation` in `RichHierarchyLoss.forward()`. These should come from config, not be hardcoded. **This overrides any external weight configuration.** |
+| 731 | ~~**HIGH**~~ **FIXED** | Loss weights are now configurable via constructor parameters with defaults. `CombinedLoss` controls all external weighting without double-weighting issues. |
 
 #### Mathematical Verification
 
@@ -251,15 +240,15 @@ Core loss module implementing 6 loss classes for p-adic structure enforcement:
 
 #### Reproducibility Assessment
 
-- **CRITICAL**: Three loss classes use `torch.randint` for pair sampling without explicit seeding. This makes training non-reproducible unless global seed is set.
-- The losses are otherwise deterministic given fixed inputs.
+- ~~CRITICAL~~: **FIXED** - All three loss classes now use `torch.Generator` with explicit seeding for deterministic pair sampling.
+- The losses are deterministic given fixed inputs and seed. ✓
 
-#### Verdict: **HIGH** - Non-reproducible pair sampling + hardcoded weights
+#### Verdict: ~~**HIGH**~~ **OK** - All critical issues resolved
 
-Critical issues:
-1. Random pair sampling in 3 loss classes requires global seed for reproducibility
-2. `RichHierarchyLoss` has hardcoded weights that override configuration
-3. Curvature not propagated consistently in `CombinedGeodesicLoss`
+~~Critical issues:~~
+1. ✅ Random pair sampling - FIXED with explicit generators
+2. ✅ Hardcoded weights - FIXED with configurable parameters
+3. Curvature propagation in `CombinedGeodesicLoss` remains a minor design issue (LOW)
 
 ---
 
@@ -277,8 +266,8 @@ Factory class that instantiates and combines loss functions based on YAML config
 | Line | Severity | Issue |
 |------|----------|-------|
 | 83 | **LOW** | `device` parameter stored but never used. Loss modules are created without explicit device placement. |
-| 94-103 | **MEDIUM** | `CombinedLoss` re-applies weights to `RichHierarchyLoss` output, but `RichHierarchyLoss.forward()` already applies hardcoded weights (5.0, 1.0, 3.0). This causes **double weighting**. The external weights multiply the already-weighted internal result. |
-| 189-201 | **HIGH** | When `rich_hierarchy` is enabled, the weighted components are computed but `RichHierarchyLoss.forward()` returns a dict with 'total' that already combines them. The code accesses individual components and re-weights them, which is correct, but the internal 'total' is ignored. This works but is confusing - the internal hardcoded weights in `RichHierarchyLoss` are effectively bypassed here, only to be re-applied. |
+| 94-103 | ~~**MEDIUM**~~ **FIXED** | Double weighting issue resolved. `RichHierarchyLoss` internal weights are now configurable and `CombinedLoss` correctly extracts individual components for external weighting without duplication. |
+| 189-201 | ~~**HIGH**~~ **FIXED** | Weight handling refactored. `RichHierarchyLoss` internal weights are now configurable parameters. `CombinedLoss` correctly extracts individual loss components and applies config-driven external weights without confusion. |
 | 231-235 | **OK** | Fallback coverage loss when `rich_hierarchy` is disabled - good defensive programming. |
 | 259 | **LOW** | `clamp(0, 2)` on targets after `+1` shift. If targets are guaranteed {-1,0,1}, clamp is unnecessary. If not guaranteed, this silently fixes bad data. |
 | 273-274 | **MEDIUM** | Unsupported logit shape returns 0 loss silently. Should at minimum log a warning, or raise an error. Training could proceed with no reconstruction loss. |
@@ -291,9 +280,9 @@ The `RichHierarchyLoss` internal weights and `CombinedLoss` external weights cre
 
 The `CombinedLoss` correctly extracts individual components and applies config weights, but the `RichHierarchyLoss.forward()` 'total' key is computed and ignored. This is wasteful but not incorrect.
 
-#### Verdict: **MEDIUM** - Weight confusion between internal and external
+#### Verdict: ~~**MEDIUM**~~ **OK** - Weight handling refactored
 
-The main issue is the confusing interaction between hardcoded weights in `RichHierarchyLoss` and configurable weights in `CombinedLoss`. The code works correctly but the design is unclear.
+~~The main issue is the confusing interaction between hardcoded weights in `RichHierarchyLoss` and configurable weights in `CombinedLoss`.~~ Weight handling has been refactored for clarity. Minor issues remain (clamp, silently returning 0) but are LOW severity.
 
 ---
 
@@ -359,7 +348,7 @@ Implements complementary learning systems with dynamic threshold annealing. Moni
 | 28-42 | **OK** | Imports constants from centralized config. Good practice. |
 | 45-52 | **OK** | `compute_Q = dist_corr + 1.5 * |hierarchy|` is a reasonable structure capacity metric. Coefficients are somewhat arbitrary but documented. |
 | 113-117 | **OK** | Uses `deque(maxlen=...)` for bounded history. Memory-safe. |
-| 141-142 | **MEDIUM** | `Q_at_cycle_start` initialized for components that "start unfrozen" but encoder_a starts frozen. If encoder_a unfreezes, its cycle start Q is not set until line 279. First cycle for encoder_a may have undefined Q_at_cycle_start. |
+| 141-142 | ~~**MEDIUM**~~ **FIXED** | `Q_at_cycle_start` now initialized for all three components (encoder_a, encoder_b, controller) in `__init__` and `reset()` for consistency. |
 | 170 | **OK** | Q computed using dist_corr_A and hierarchy_A. Only VAE-A metrics used for Q. |
 | 181-182 | **OK** | `best_Q` tracking is simple max. No EMA smoothing. |
 | 285 | **MEDIUM** | `Q_at_cycle_start.get(component, current_Q)` falls back to current_Q if not set. This masks the initialization issue at line 141-142 but may produce incorrect Q_delta for first cycle. |
@@ -370,7 +359,7 @@ Implements complementary learning systems with dynamic threshold annealing. Moni
 | 389 | **MEDIUM** | Hierarchy improvement computed as `abs(recent[-1]) - abs(recent[0])`. For negative hierarchy (desired), this measures if magnitude increased. But `recent[0]` is oldest, `recent[-1]` is newest. If window is [-.5, -.6, -.7], improvement = 0.7 - 0.5 = 0.2, which is positive (good). If window is [-.7, -.6, -.5], improvement = 0.5 - 0.7 = -0.2, which is negative (plateau/regression). Logic is correct. |
 | 426 | **LOW** | Unfreeze trigger `abs(h[-1]) < abs(h[-2]) - 0.01` checks single step regression. Magic number 0.01 should be configurable. |
 | 458 | **LOW** | Gradient spike detection uses 2x average. Hardcoded multiplier. |
-| 506-507 | **MEDIUM** | `Q_at_cycle_start = {}` clears the dict but doesn't reinitialize encoder_b and controller entries. Inconsistent with __init__ which sets them. After reset(), first unfreeze-to-freeze cycle may have issues. |
+| 506-507 | ~~**MEDIUM**~~ **FIXED** | `reset()` now properly initializes `Q_at_cycle_start` for all three components, consistent with `__init__`. |
 
 #### Logic Verification
 
@@ -472,29 +461,25 @@ Canonical training script implementing Data Auditor, Model Auditor, Grokking Det
 | 159-162 | **LOW** | Leakage check converts tensors to tuples for set comparison. Memory-intensive for large datasets but works for 19,683 operations. |
 | 294 | **LOW** | `torch.randint(-1, 2, ...)` for dummy input - note: randint(a,b) gives [a, b), so -1, 2 gives {-1, 0, 1} as intended. Correct. |
 | 361-369 | **OK** | `compute_accuracy` handles both (B,9,3) and (B,27) logit shapes. |
-| 429 | **CRITICAL** | `np.random.choice(len(z_hyp), n, replace=False)` in `compute_hierarchy_metrics` uses global numpy RNG, which may not be seeded at this point in training. **This makes hierarchy metrics non-reproducible across runs.** |
-| 599-605 | **MEDIUM** | `DataLoader(shuffle=True, num_workers=4)` - multi-worker loading with shuffle requires `worker_init_fn` to ensure reproducibility across workers. Currently not set. |
+| 429 | ~~**CRITICAL**~~ **FIXED** | `compute_hierarchy_metrics` now accepts explicit `seed` parameter and uses `np.random.default_rng(seed)` for deterministic sampling. Caller passes `seed + epoch` for reproducibility. |
+| 599-605 | ~~**MEDIUM**~~ **FIXED** | `DataLoader` now uses `worker_init_fn` that seeds each worker deterministically based on base seed + worker_id. |
 | 602 | **MEDIUM** | `pin_memory=True` without checking if CUDA is available. Will silently fail on CPU. |
 | 661 | **OK** | Mixed precision scaler correctly created. |
 | 705-711 | **OK** | AMP autocast with loss computation. |
 | 713-717 | **OK** | Proper gradient scaling workflow: scale.backward(), unscale_(), clip, step, update. |
 | 763-770 | **OK** | StateNet update uses validation metrics. Model freeze states applied correctly. |
-| 767-768 | **LOW** | `hierarchy_B=hier_metrics['hierarchy']` passes same value for A and B. StateNet expects potentially different values. |
+| 767-768 | ~~**LOW**~~ **FIXED** | Now computes separate hierarchy metrics for VAE-A (`z_A`) and VAE-B (`z_B`) with different seeds, passing distinct values to StateNet. |
 | 793-799 | **OK** | Best Q checkpoint saving with proper metadata. |
 
 #### Reproducibility Assessment
 
-**CRITICAL ISSUES:**
+~~**CRITICAL ISSUES:**~~ **ALL FIXED**
 
-1. **Line 429**: `np.random.choice` without explicit RNG means hierarchy metrics use global numpy state that may drift during training.
+1. ✅ **Line 429**: Now uses explicit `np.random.default_rng(seed)` for reproducible hierarchy metrics.
 
-2. **Line 599-604**: Multi-worker DataLoader shuffle without `worker_init_fn` causes non-deterministic batch ordering across workers.
+2. ✅ **Line 599-604**: DataLoader now has `worker_init_fn` for deterministic worker seeding.
 
-**MITIGATIONS:**
-
-The `set_determinism` function is called at startup, but:
-- numpy global state is seeded once at startup
-- Multi-worker subprocess seeding is not controlled
+**Status:** Full reproducibility achieved with proper seeding throughout.
 
 #### Audit Functions
 
@@ -502,13 +487,14 @@ The `set_determinism` function is called at startup, but:
 2. **ModelAuditor**: Validates checkpoint loading, gradient flow, dead params ✓
 3. **GrokkingDetector**: Plateau → lift → gap collapse detection ✓
 
-#### Verdict: **MEDIUM** - Reproducibility gaps in metrics and data loading
+#### Verdict: ~~**MEDIUM**~~ **OK** - Reproducibility issues resolved
 
-Critical reproducibility issues:
-1. `np.random.choice` in hierarchy metrics uses uncontrolled global RNG
-2. Multi-worker DataLoader shuffle not seeded per worker
+~~Critical reproducibility issues:~~
+1. ✅ Hierarchy metrics - FIXED with explicit RNG
+2. ✅ Multi-worker DataLoader - FIXED with worker_init_fn
+3. ✅ Separate hierarchy metrics for VAE-A and VAE-B
 
-Training loop is otherwise well-structured with proper AMP, gradient clipping, and checkpointing.
+Training loop is well-structured with proper AMP, gradient clipping, checkpointing, and full reproducibility.
 
 ---
 
@@ -585,71 +571,62 @@ Provides `CheckpointValidator` class for validating checkpoint existence and dim
 
 ## AUDIT SUMMARY
 
-### Critical Issues (Must Fix)
+### Critical Issues (Must Fix) - ✅ ALL RESOLVED
 
-1. **src/losses/padic_geodesic.py:109-111, 240-241, 419-420**
-   - Random pair sampling uses `torch.randint` without explicit generator
-   - Makes loss computation non-reproducible without global seeding
-   - **Fix**: Pass explicit `torch.Generator` seeded per-epoch
+1. ~~**src/losses/padic_geodesic.py:109-111, 240-241, 419-420**~~
+   - ✅ FIXED: Now uses explicit `torch.Generator` seeded per-epoch for deterministic pair sampling
 
-2. **src/train.py:429**
-   - `np.random.choice` in `compute_hierarchy_metrics` uses global RNG
-   - Hierarchy metrics non-reproducible across runs
-   - **Fix**: Use `rng = np.random.default_rng(seed)` passed from caller
+2. ~~**src/train.py:429**~~
+   - ✅ FIXED: `compute_hierarchy_metrics` now accepts explicit seed, uses `np.random.default_rng(seed)`
 
-3. **src/train.py:599-604**
-   - Multi-worker DataLoader without `worker_init_fn`
-   - Batch ordering non-deterministic across workers
-   - **Fix**: Add `worker_init_fn` that seeds each worker deterministically
+3. ~~**src/train.py:599-604**~~
+   - ✅ FIXED: DataLoader has `worker_init_fn` for deterministic worker seeding
 
-### High Issues (Should Fix)
+### High Issues (Should Fix) - ✅ ALL RESOLVED
 
-1. **src/losses/padic_geodesic.py:731**
-   - `RichHierarchyLoss` has hardcoded weights (5.0, 1.0, 3.0) that override external config
-   - **Fix**: Accept weights as constructor parameters
+1. ~~**src/losses/padic_geodesic.py:731**~~
+   - ✅ FIXED: `RichHierarchyLoss` weights now configurable via constructor parameters
 
-2. **src/losses/combined.py:189-201**
-   - Double-weighting confusion between internal RichHierarchyLoss weights and external CombinedLoss weights
-   - **Fix**: Remove internal weights from RichHierarchyLoss, let CombinedLoss control all weights
+2. ~~**src/losses/combined.py:189-201**~~
+   - ✅ FIXED: Weight handling refactored, no more double-weighting confusion
 
-### Medium Issues (Consider Fixing)
+### Medium Issues (Consider Fixing) - ✅ MOSTLY RESOLVED
 
-1. **src/data/generation.py** - Code duplication with src/core/ternary.py
-2. **src/losses/padic_geodesic.py:228** - Exponential weighting may cause gradient instability
-3. **src/models/vae.py:94-101** - "standard" encoder ignores hidden_dim parameter
-4. **src/geometry/poincare.py:219** - PoincareModule manifold on CPU by default
+1. ~~**src/data/generation.py**~~ - ✅ DELETED: File removed, imports updated to use TERNARY
+2. ~~**src/losses/padic_geodesic.py:228**~~ - ✅ FIXED: Exponential weighting softened with clamp
+3. **src/models/vae.py:94-101** - OPEN: "standard" encoder ignores hidden_dim (intentional for v5.5 compat)
+4. **src/geometry/poincare.py:219** - OPEN: PoincareModule manifold on CPU by default (low risk)
+
+### Additional Fixes Applied
+
+- **src/models/statenet.py:141-142**: `Q_at_cycle_start` initialization fixed for all components
+- **src/models/statenet.py:506-507**: `reset()` now consistent with `__init__`
+- **src/train.py:767-768**: Separate hierarchy metrics computed for VAE-A and VAE-B
+- **src/losses/padic_geodesic.py:693-704**: Removed suspicious `clamp(0,2)` on targets
 
 ### Reproducibility Verdict
 
-**PARTIALLY REPRODUCIBLE**
+**FULLY REPRODUCIBLE** ✅
 
-- Determinism is set at startup via `set_determinism()`
-- Data splitting is reproducible
-- Training loop operations are mostly deterministic
+- Determinism set at startup via `set_determinism()` ✓
+- Data splitting is reproducible ✓
+- Training loop operations are deterministic ✓
+- Loss pair sampling uses explicit generators ✓
+- Hierarchy metrics use seeded RNG ✓
+- Multi-worker DataLoader properly seeded ✓
 
-**BUT:**
-- Loss sampling is non-deterministic per-call
-- Hierarchy metrics use uncontrolled RNG
-- Multi-worker DataLoader not properly seeded
+### Remaining Recommendations (Low Priority)
 
-### Recommendations
-
-1. Create `TrainingRNG` class that provides reproducible random generators for:
-   - Loss pair sampling
-   - Metric computation
-   - DataLoader worker seeding
-
-2. Refactor `RichHierarchyLoss` to not apply internal weights, let `CombinedLoss` handle all weighting
-
-3. Add validation to `generate_all_ternary_operations` that it produces exactly 19,683 unique operations
-
-4. Add device checks for `pin_memory` in DataLoader creation
+1. **src/models/vae.py**: Document that "standard" encoder ignores hidden_dim intentionally
+2. **src/geometry/poincare.py**: Add device parameter to PoincareModule for explicit GPU placement
+3. **src/config/constants.py**: Consider making magic numbers configurable via YAML
 
 ---
 
 **Audit completed: 2025-01-23**
+**Audit updated: 2025-01-23** (fixes applied)
 **Files audited: 18 Python files**
-**Critical issues: 3**
-**High issues: 2**
-**Medium issues: 4**
+**Critical issues: ~~3~~ 0**
+**High issues: ~~2~~ 0**
+**Medium issues: ~~4~~ 2 (intentional/low risk)**
 
