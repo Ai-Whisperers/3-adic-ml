@@ -1,23 +1,26 @@
-# production_rich_hierarchy.yaml (previously: v5_12.yaml)
-# V5.12 Configuration: Highest Quality Ternary VAE
+# production_hyperbolic_full.yaml (previously: v5_12_1.yaml)
+# V5.12.1 Configuration: Full Hyperbolic Integration
 #
-# Key improvements over V5.11:
-# 1. RichHierarchyLoss as primary (preserves richness while maximizing hierarchy)
-# 2. Tighter inner_radius (0.08) for better v=9 separation
-# 3. Two-phase loss strategy (structure → geometry refinement)
-# 4. Enhanced statenet control with Q-tracking
-# 5. ComprehensiveMetrics integration for checkpoint storage
+# Key changes from V5.12:
+# 1. Decoder input uses log_map_zero(z_A_hyp) instead of mu_A (Euclidean)
+# 2. Metrics computed using hyperbolic distance instead of Euclidean norm
+# 3. Gradient flow through hyperbolic projection for richness preservation
+#
+# This creates a coherent system where:
+# - Reconstruction uses hyperbolic representation
+# - Hierarchy losses use hyperbolic representation
+# - Metrics measure true hyperbolic distances
 #
 # Target metrics:
-# - Coverage: 100%
-# - Hierarchy_B: -0.8321 (ceiling)
-# - Richness: >0.008
-# - r_v9: 0.12-0.15 (improved from 0.19)
+# - Coverage: 100% (may need adaptation period)
+# - Hierarchy_B: -0.80 to -0.8321
+# - Richness: >0.005 (improved from V5.12's 0.001)
+# - r_v9: 0.10-0.15
 # - dist_corr: >0.7
 
 # Device Configuration
 device:
-  name: "v5_12_production"
+  name: "v5_12_1_hyperbolic"
   cuda_device: 0
   use_amp: false                       # Disable AMP for stability
   pin_memory: true
@@ -31,13 +34,17 @@ model:
   max_radius: 0.95
   curvature: 1.0
 
-  # V5.11+ features (all enabled for V5.12)
+  # Architecture type (standard = v5.5 compatible dimensions)
+  encoder_type: standard
+  decoder_type: standard
+
+  # V5.11+ features (all enabled)
   use_controller: true
   use_dual_projection: true
   learnable_curvature: true
-  manifold_aware: true                    # Note: Passed via **kwargs, implementation pending
+  manifold_aware: true
 
-  # Projection network capacity (uses hidden_dim for projection layers)
+  # Projection network capacity
   projection_layers: 2
   projection_dropout: 0.1
 
@@ -45,15 +52,16 @@ model:
 option_c:
   enabled: true
   encoder_b_lr_scale: 0.1
-  encoder_a_lr_scale: 0.05             # For progressive unfreeze
+  encoder_a_lr_scale: 0.05
 
 # Frozen Checkpoint (from v5.5 with 100% coverage)
+# NOTE: Decoder was trained on mu (Euclidean), will adapt to log_map(z_hyp)
 frozen_checkpoint:
   path: models/checkpoints/v5_5/latest.pt
   encoder_to_load: both
   decoder_to_load: decoder_A
 
-# StateNet Control (V5.11.7 + V5.11.8 + V5.12 enhancements)
+# StateNet Control
 statenet:
   enabled: true
   coverage_freeze_threshold: 0.995
@@ -62,24 +70,24 @@ statenet:
   warmup_epochs: 5
   hysteresis_epochs: 3
 
-  # Q-gated annealing (slower for stability)
+  # Q-gated annealing
   enable_annealing: true
-  annealing_step: 0.003                # Slower than V5.11 (0.005)
+  annealing_step: 0.003
 
   # Hierarchy monitoring
   hierarchy_plateau_threshold: 0.001
-  hierarchy_plateau_patience: 7        # More patience
+  hierarchy_plateau_patience: 7
   hierarchy_patience_ceiling: 20
 
   # Controller monitoring
   controller_grad_threshold: 0.01
   controller_grad_patience: 5
 
-# Progressive Unfreezing (disabled - using statenet instead)
+# Progressive Unfreezing (disabled - using statenet)
 progressive_unfreeze:
   enabled: false
 
-# Loss Configuration - V5.12 Two-Phase Strategy
+# Loss Configuration - Same as V5.12
 loss:
   # PRIMARY: RichHierarchyLoss (preserves richness)
   rich_hierarchy:
@@ -90,12 +98,12 @@ loss:
     separation_weight: 3.0
     min_richness_ratio: 0.5
 
-  # AUXILIARY: Radial targets (tighter for V5.12)
+  # AUXILIARY: Radial targets
   radial:
     enabled: true
-    inner_radius: 0.08                 # Tighter than V5.11 (0.1)
-    outer_radius: 0.90                 # Slightly expanded
-    radial_weight: 1.0                 # Lower weight (RichHierarchy is primary)
+    inner_radius: 0.08
+    outer_radius: 0.90
+    radial_weight: 1.0
     margin_weight: 0.5
 
   # Phase 2: Geodesic refinement (activates after epoch 50)
@@ -106,16 +114,16 @@ loss:
     max_target_distance: 3.0
     n_pairs: 2000
     use_smooth_l1: true
-    weight: 0.3                        # Low weight (auxiliary)
+    weight: 0.3
 
   # Structural constraint: Global rank loss
   rank:
     enabled: true
-    weight: 0.5                        # Lower than V5.11 (1.0)
+    weight: 0.5
     temperature: 0.1
     n_pairs: 2000
 
-  # Zero-structure loss (V5.11.9)
+  # Zero-structure loss
   zero_structure:
     enabled: true
     valuation_weight: 0.5
@@ -138,18 +146,18 @@ training:
 
   # Stratified sampling (enhanced high-v budget)
   use_stratified: true
-  high_v_budget_ratio: 0.25            # 25% for v>=4 (up from 20%)
+  high_v_budget_ratio: 0.25
 
   # Adaptive curriculum
   use_adaptive: true
-  hierarchy_threshold: -0.75           # Freeze tau when reached
-  patience: 25                         # More patience for V5.12
+  hierarchy_threshold: -0.75
+  patience: 25
   min_epochs: 40
 
   # LR Scheduler
   scheduler:
     type: cosine_warmup_restart
-    T_0: 25                            # Longer cycles
+    T_0: 25
     T_mult: 2
 
   # Evaluation and checkpointing
@@ -165,21 +173,21 @@ data:
 # Logging
 logging:
   tensorboard: true
-  log_dir: runs/v5_12_production
+  log_dir: runs/v5_12_1_hyperbolic
   print_every: 5
 
 # Checkpoints
 checkpoints:
-  save_dir: runs/checkpoints/v5_12
+  save_dir: runs/checkpoints/v5_12_1
   save_best: true
-  best_metric: composite_score         # Custom: hierarchy + richness + dist_corr
-  checkpoint_name: v5_12_production
+  best_metric: composite_score
+  checkpoint_name: v5_12_1_hyperbolic
 
-# Success Criteria (V5.12 targets)
+# Success Criteria (V5.12.1 targets)
 targets:
   coverage: 1.0                        # 100%
   hierarchy_B: -0.80                   # Target (ceiling is -0.8321)
-  richness: 0.007                      # Minimum acceptable
+  richness: 0.005                      # Improved from V5.12's 0.001
   r_v9: 0.15                           # Maximum acceptable
   distance_correlation: 0.65           # Minimum acceptable
   Q_target: 1.8                        # Structure capacity
@@ -192,6 +200,10 @@ memory:
 
 # Version tracking
 version:
-  model: "5.12"
+  model: "5.12.1"
   config: "1.0"
   date: "2025-12-29"
+  changes:
+    - "Decoder input: log_map_zero(z_A_hyp) instead of mu_A"
+    - "Metrics: hyperbolic distance instead of Euclidean norm"
+    - "Gradient flow through hyperbolic projection"

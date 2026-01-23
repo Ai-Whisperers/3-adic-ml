@@ -7,8 +7,10 @@
 # 3. Dropout regularization (prevents overfitting)
 # 4. Logvar clamping (numerical stability)
 #
-# The improved components can load v5.5 weights for Linear layers,
-# with fresh LayerNorm initialization.
+# NOTE: Improved architecture has different dimensions than v5.5 standard:
+#   - Standard (v5.5): 9→256→128→64
+#   - Improved: 9→128→128→64
+# Cannot load v5.5 weights - trains from scratch with fresh initialization.
 #
 # Expected improvements:
 # - Smoother training curves (SiLU + LayerNorm)
@@ -54,11 +56,8 @@ option_c:
   encoder_b_lr_scale: 0.1
   encoder_a_lr_scale: 0.05
 
-# Frozen Checkpoint (for initializing Linear weights)
-frozen_checkpoint:
-  path: models/checkpoints/v5_5/latest.pt
-  encoder_to_load: both
-  decoder_to_load: decoder_A
+# No frozen checkpoint - improved architecture trains from scratch
+# (v5.5 weights incompatible with improved encoder dimensions)
 
 # StateNet Control
 statenet:
@@ -194,5 +193,5 @@ version:
     - "Improved encoder with SiLU, LayerNorm, Dropout"
     - "Improved decoder with SiLU, LayerNorm, Dropout"
     - "Logvar clamping [-10, 2] for numerical stability"
-    - "Backwards compatible with v5.5 checkpoint weights"
+    - "Trains from scratch (v5.5 weights incompatible with improved dimensions)"
     - "100-epoch training run"

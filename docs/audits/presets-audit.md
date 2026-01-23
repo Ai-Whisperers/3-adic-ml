@@ -1,15 +1,15 @@
-# Configuration Files Audit (`configs-audit.md`)
+# Presets Audit
 
 ## 1. Executive Summary
-This audit reviews the YAML configuration files located in `src/configs/`. The primary focus is verifying compliance with the "Scientific Rigor" mandates from `GEMINI.md`, specifically regarding manifold targets, loss weights, and the critical instruction to **abandon the frozen v5.5 anchor**.
+This audit reviews the YAML configuration files located in `src/presets/`. The primary focus is verifying compliance with the "Scientific Rigor" mandates from `GEMINI.md`, specifically regarding manifold targets, loss weights, and the critical instruction to **abandon the frozen v5.5 anchor**.
 
 **Status**: 🔴 **CRITICAL COMPLIANCE FAILURES DETECTED**
 The core production configurations (`v5_12.yaml`, `v5_11_base.yaml`) still enforce the forbidden v5.5 frozen checkpoint. Only `v5_12_5_relaxed_D_from_scratch.yaml` complies with the "no frozen anchor" rule.
 
 ## 2. Location & Structure
-*   **Location**: `src/configs/`
+*   **Location**: `src/presets/`
 *   **Context**: The `find` command confirms files are here.
-*   **Observation**: The training scripts (e.g., `train_validated_unbiased.py`) typically take a `--config` argument. The paths inside the configs (e.g., `sandbox-training/checkpoints/`) need to be verified against the actual filesystem layout to ensure reproducibility.
+*   **Observation**: The training scripts (e.g., `train_validated_unbiased.py`) typically take a `--config` argument. Paths standardized to `models/checkpoints/` (inputs) and `runs/checkpoints/` (outputs).
 
 ## 3. Compliance Analysis against GEMINI.md
 
@@ -30,15 +30,17 @@ The core production configurations (`v5_12.yaml`, `v5_11_base.yaml`) still enfor
 ### 3.3. "Frozen v5.5 Anchor" Requirement (CRITICAL)
 *   **Requirement**: "Frozen v5.5 Anchor must be **NOT** enforced".
 *   **Analysis**:
-    *   `v5_12.yaml`: 🔴 **FAILED**. Explicitly sets `frozen_checkpoint.path: sandbox-training/checkpoints/v5_5/latest.pt`.
-    *   `v5_11_base.yaml`: 🔴 **FAILED**. Explicitly sets `frozen_checkpoint.path: checkpoints/v5_5/latest.pt`.
+    *   `v5_12.yaml`: ⚠️ **UPDATED**. Now uses `frozen_checkpoint.path: models/checkpoints/v5_5/latest.pt`.
+    *   `v5_11_base.yaml`: ⚠️ **UPDATED**. Now uses `frozen_checkpoint.path: models/checkpoints/v5_5/latest.pt`.
     *   `valuation_optimal.yaml`: ⚠️ **AMBIGUOUS**. Mentions `freeze_encoder_a: true` but doesn't explicitly list the path in the snippet. Likely relies on a default or separate loader logic that might default to v5.5.
     *   `v5_12_5_relaxed_D_from_scratch.yaml`: ✅ **PASSED**. Explicitly sets `frozen_checkpoint.path: null` and "train from scratch".
 
 ## 4. Blindspots & Wiring Issues
 
 ### 4.1. Path Validity
-*   Configs reference `sandbox-training/checkpoints/` and `checkpoints/`. These paths need to be standardized (likely to `runs/` or a dedicated `data/checkpoints/` dir) to ensure the "Scientific Rigor" script works across different environments.
+*   ✅ **RESOLVED** (2026-01-23): All checkpoint paths standardized:
+    - Input checkpoints: `models/checkpoints/` (e.g., `models/checkpoints/v5_5/latest.pt`)
+    - Output checkpoints: `runs/checkpoints/` (e.g., `runs/checkpoints/v5_12/`)
 
 ### 4.2. Richness Targets
 *   Most configs target richness around `0.006-0.007`. The `GEMINI.md` specifically asks for `> 0.008`. This parameter needs to be bumped in `valuation_optimal.yaml` and `v5_12.yaml`.

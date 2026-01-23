@@ -1,10 +1,10 @@
-# Configuration Index
+# Presets Index
 
-This directory contains YAML configuration files for p-adic VAE training experiments.
+This directory contains YAML preset files for p-adic VAE training experiments.
 
 ## Naming Convention
 
-Configs are prefixed by category:
+Presets are prefixed by category:
 - `arch_` - Architecture changes/improvements
 - `base_` - Foundation configurations
 - `experiment_` - Ablation/exploration experiments

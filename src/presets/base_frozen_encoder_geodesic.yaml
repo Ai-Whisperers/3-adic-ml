@@ -19,6 +19,11 @@ model:
   hidden_dim: 64                    # Projection network hidden dim
   max_radius: 0.95                  # Poincare ball radius
   curvature: 1.0                    # Hyperbolic curvature
+
+  # Architecture type (standard = v5.5 compatible dimensions)
+  encoder_type: standard
+  decoder_type: standard
+
   use_controller: false             # Start without controller
   use_dual_projection: false        # Single projection for both VAEs
 

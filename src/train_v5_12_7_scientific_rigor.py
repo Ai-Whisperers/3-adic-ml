@@ -21,7 +21,7 @@ Workflow:
    - Mixed Precision & Riemannian Optimization support.
 
 Usage:
-    python scripts/train_unified_v5_12_7.py --config configs/v5_12_extended.yaml
+    python src/train_v5_12_7_scientific_rigor.py --config src/presets/v5_12_extended.yaml
 """
 
 import argparse

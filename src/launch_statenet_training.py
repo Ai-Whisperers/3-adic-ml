@@ -22,16 +22,16 @@ Hardware Requirements:
 
 Usage:
     # Full training (recommended)
-    python scripts/training/launch_statenet_training.py
+    python src/launch_statenet_training.py
 
     # Quick test (5 epochs)
-    python scripts/training/launch_statenet_training.py --quick
+    python src/launch_statenet_training.py --quick
 
     # Resume from checkpoint
-    python scripts/training/launch_statenet_training.py --resume
+    python src/launch_statenet_training.py --resume
 
     # Custom epochs
-    python scripts/training/launch_statenet_training.py --epochs 200
+    python src/launch_statenet_training.py --epochs 200
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ import torch
 def print_banner():
     """Print training banner."""
     print("\n" + "=" * 70)
-    print("  V5.11.11 HOMEOSTATIC TRAINING - RTX 2060 SUPER OPTIMIZED")
+    print("  V5.11.11 STATENET TRAINING - RTX 2060 SUPER OPTIMIZED")
     print("=" * 70)
     print(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70 + "\n")
@@ -126,9 +126,9 @@ def check_directories(project_root: Path) -> dict:
     print("\n[3/4] Setting up Directories...")
 
     dirs = {
-        "checkpoints": project_root / "sandbox-training" / "checkpoints" / "v5_11_11_statenet_rtx2060s",
+        "checkpoints": project_root / "runs" / "checkpoints" / "v5_11_11_statenet_rtx2060s",
         "runs": project_root / "runs" / "v5_11_11_statenet_rtx2060s",
-        "v5_5_checkpoints": project_root / "sandbox-training" / "checkpoints" / "v5_5",
+        "v5_5_checkpoints": project_root / "models" / "checkpoints" / "v5_5",
     }
 
     for name, path in dirs.items():
@@ -577,9 +577,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python scripts/training/launch_statenet_training.py           # Full training
-    python scripts/training/launch_statenet_training.py --quick   # Quick test (5 epochs)
-    python scripts/training/launch_statenet_training.py --epochs 200  # Custom epochs
+    python src/launch_statenet_training.py           # Full training
+    python src/launch_statenet_training.py --quick   # Quick test (5 epochs)
+    python src/launch_statenet_training.py --epochs 200  # Custom epochs
         """
     )
     parser.add_argument("--epochs", type=int, default=150, help="Number of training epochs")

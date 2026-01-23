@@ -8,10 +8,10 @@
 
 This is the canonical training entry point for all p-adic VAE experiments.
 It combines scientific rigor (audit, reproducibility) with config-driven
-flexibility (any config from src/configs/).
+flexibility (any config from src/presets/).
 
 Features:
-    - Config-driven: Loads any YAML config from src/configs/
+    - Config-driven: Loads any YAML config from src/presets/
     - Reproducible: Deterministic seeding for all random sources
     - Audited: Data integrity and model health checks before training
     - StateNet: Adaptive freeze/unfreeze controller
@@ -20,16 +20,16 @@ Features:
 
 Usage:
     # Production training
-    python src/train.py --config src/configs/production_rich_hierarchy.yaml
+    python src/train.py --config src/presets/production_rich_hierarchy.yaml
 
     # Quick test
-    python src/train.py --config src/configs/minimal_smoke_test.yaml
+    python src/train.py --config src/presets/minimal_smoke_test.yaml
 
     # Validate config only (no training)
-    python src/train.py --config src/configs/production_rich_hierarchy.yaml --validate-only
+    python src/train.py --config src/presets/production_rich_hierarchy.yaml --validate-only
 
     # Force training even if audit fails
-    python src/train.py --config src/configs/production_rich_hierarchy.yaml --force
+    python src/train.py --config src/presets/production_rich_hierarchy.yaml --force
 """
 
 import argparse
@@ -208,20 +208,23 @@ class ModelAuditor:
 
         model_cfg = self.config.get('model', {})
         model_name = model_cfg.get('name', 'TernaryVAEV5_11_PartialFreeze')
-
-        # Check if we have a v5.5 checkpoint - if so, use standard architecture
-        frozen_cfg = self.config.get('frozen_checkpoint', {})
-        ckpt_path_str = frozen_cfg.get('path')
         encoder_type = model_cfg.get('encoder_type', 'improved')
         decoder_type = model_cfg.get('decoder_type', 'improved')
 
+        # Validate: v5.5 checkpoints require standard architecture (no silent override)
+        frozen_cfg = self.config.get('frozen_checkpoint', {})
+        ckpt_path_str = frozen_cfg.get('path')
+
         if ckpt_path_str and ckpt_path_str != 'null':
             ckpt_path = PROJECT_ROOT / ckpt_path_str
-            if ckpt_path.exists() and 'v5_5' in str(ckpt_path):
-                # v5.5 checkpoint requires standard architecture
-                encoder_type = 'standard'
-                decoder_type = 'standard'
-                print(f"  [INFO] v5.5 checkpoint detected, using standard encoder/decoder")
+            is_v5_5_checkpoint = ckpt_path.exists() and 'v5_5' in str(ckpt_path)
+
+            if is_v5_5_checkpoint and encoder_type != 'standard':
+                raise ValueError(
+                    f"Config mismatch: v5.5 checkpoint requires encoder_type='standard', "
+                    f"but config specifies '{encoder_type}'. "
+                    f"Update your preset to set encoder_type: standard and decoder_type: standard"
+                )
 
         # Instantiate model
         model = TernaryVAEV5_11_PartialFreeze(

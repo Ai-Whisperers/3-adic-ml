@@ -31,6 +31,10 @@ model:
   max_radius: 0.95
   curvature: 1.0
 
+  # Architecture type (standard = v5.5 compatible dimensions)
+  encoder_type: standard
+  decoder_type: standard
+
   use_controller: true
   use_dual_projection: true
   learnable_curvature: true

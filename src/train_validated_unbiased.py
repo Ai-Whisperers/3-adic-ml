@@ -14,9 +14,9 @@ Key improvements:
 5. Real-time monitoring for coverage collapse
 
 Usage:
-    python scripts/train_validated.py --config configs/v5_12_4.yaml
-    python scripts/train_validated.py --config configs/v5_12_4.yaml --validate-only
-    python scripts/train_validated.py --config configs/v5_12_4.yaml --auto-fix
+    python src/train_validated_unbiased.py --config src/presets/v5_12_4.yaml
+    python src/train_validated_unbiased.py --config src/presets/v5_12_4.yaml --validate-only
+    python src/train_validated_unbiased.py --config src/presets/v5_12_4.yaml --auto-fix
 
 Created: 2026-01-12
 Root Cause Fix: Prevents null checkpoint issues causing 0% coverage
@@ -252,21 +252,22 @@ class ValidatedTrainer:
                 return
 
         # Import and run the actual training logic
-        # For now, we'll import and delegate to existing training script
+        # Delegate to existing training script in src/
         try:
-            from scripts.training.train_v5_12 import main as train_main
+            from src.train_v5_12_7_scientific_rigor import main as train_main
 
             # Temporarily modify sys.argv to pass config
             original_argv = sys.argv.copy()
-            sys.argv = ['train_v5_12.py', '--config', str(self.config_path)]
+            sys.argv = ['train_v5_12_7_scientific_rigor.py', '--config', str(self.config_path)]
 
             train_main()
 
             # Restore original argv
             sys.argv = original_argv
 
-        except ImportError:
-            print("❌ Could not import training script. Please ensure scripts/training/train_v5_12.py exists.")
+        except ImportError as e:
+            print(f"❌ Could not import training script: {e}")
+            print("   Please ensure src/train_v5_12_7_scientific_rigor.py exists.")
             raise
         except Exception as e:
             print(f"❌ Training failed: {e}")
@@ -303,7 +304,7 @@ def main():
         print("\n💡 Suggestions:")
         print("   1. Use --auto-fix to automatically correct configuration")
         print("   2. Manually update frozen_checkpoint.path to a valid checkpoint")
-        print("   3. Use configs/v5_12_4_fixed_checkpoint.yaml as reference")
+        print("   3. Use src/presets/fix_checkpoint_loading.yaml as reference")
         sys.exit(1)
 
     except Exception as e:
