@@ -69,6 +69,7 @@ from src.data import generate_all_ternary_operations
 from src.geometry import poincare_distance, get_riemannian_optimizer
 from src.losses import CombinedLoss
 from src.models import StateNet, compute_Q, TernaryVAEV5_11_PartialFreeze
+from src.models.vae import map_v5_5_keys
 from src.utils.checkpoint import load_checkpoint_compat, get_model_state_dict
 
 
@@ -208,6 +209,20 @@ class ModelAuditor:
         model_cfg = self.config.get('model', {})
         model_name = model_cfg.get('name', 'TernaryVAEV5_11_PartialFreeze')
 
+        # Check if we have a v5.5 checkpoint - if so, use standard architecture
+        frozen_cfg = self.config.get('frozen_checkpoint', {})
+        ckpt_path_str = frozen_cfg.get('path')
+        encoder_type = model_cfg.get('encoder_type', 'improved')
+        decoder_type = model_cfg.get('decoder_type', 'improved')
+
+        if ckpt_path_str and ckpt_path_str != 'null':
+            ckpt_path = PROJECT_ROOT / ckpt_path_str
+            if ckpt_path.exists() and 'v5_5' in str(ckpt_path):
+                # v5.5 checkpoint requires standard architecture
+                encoder_type = 'standard'
+                decoder_type = 'standard'
+                print(f"  [INFO] v5.5 checkpoint detected, using standard encoder/decoder")
+
         # Instantiate model
         model = TernaryVAEV5_11_PartialFreeze(
             latent_dim=model_cfg.get('latent_dim', 16),
@@ -220,8 +235,8 @@ class ModelAuditor:
             projection_dropout=model_cfg.get('projection_dropout', 0.1),
             learnable_curvature=model_cfg.get('learnable_curvature', False),
             freeze_encoder_b=False,
-            encoder_type=model_cfg.get('encoder_type', 'improved'),
-            decoder_type=model_cfg.get('decoder_type', 'improved'),
+            encoder_type=encoder_type,
+            decoder_type=decoder_type,
         ).to(self.device)
 
         n_params = sum(p.numel() for p in model.parameters())
@@ -240,13 +255,22 @@ class ModelAuditor:
                     ckpt = load_checkpoint_compat(ckpt_path, map_location=self.device)
                     state_dict = get_model_state_dict(ckpt)
 
-                    # Try direct load first
+                    # Detect v5.5 checkpoint (has encoder_A.encoder.X keys)
+                    is_v5_5 = any(k.startswith('encoder_A.encoder.') for k in state_dict.keys())
+
+                    if is_v5_5:
+                        # Map v5.5 keys to V5.11 format
+                        state_dict = map_v5_5_keys(state_dict)
+                        print(f"  [OK] Detected v5.5 checkpoint, applied key mapping")
+
+                    # Load with strict=False (projections may not match)
                     missing, unexpected = model.load_state_dict(state_dict, strict=False)
                     print(f"  [OK] Loaded checkpoint: {ckpt_path.name}")
                     print(f"       Missing keys: {len(missing)}, Unexpected: {len(unexpected)}")
 
                     self.audit_log['checkpoint_loaded'] = True
                     self.audit_log['checkpoint_path'] = str(ckpt_path)
+                    self.audit_log['checkpoint_is_v5_5'] = is_v5_5
 
                 except Exception as e:
                     print(f"  [WARN] Checkpoint load failed: {e}")
