@@ -742,7 +742,8 @@ def train(
             val_acc_sum = 0.0
             val_coverage_sum = 0.0
             val_batches = 0
-            z_all = []
+            z_A_all = []
+            z_B_all = []
             idx_all = []
 
             with torch.no_grad():
@@ -751,32 +752,35 @@ def train(
                     batch_idx = batch_idx.to(device)
 
                     out = model(batch_ops, compute_control=False)
-                    z_hyp = out.get('z_A_hyp', out.get('z_B_hyp'))
                     logits = out.get('logits_A', out.get('logits'))
 
                     val_acc_sum += compute_accuracy(logits, batch_ops)
                     val_coverage_sum += compute_coverage(logits, batch_ops)
                     val_batches += 1
 
-                    z_all.append(z_hyp)
+                    # Collect both VAE embeddings for separate hierarchy computation
+                    z_A_all.append(out['z_A_hyp'])
+                    z_B_all.append(out['z_B_hyp'])
                     idx_all.append(batch_idx)
 
             avg_val_acc = val_acc_sum / val_batches
             avg_val_coverage = val_coverage_sum / val_batches
 
-            # Hierarchy metrics (seed varies per epoch for different samples, but reproducible)
-            z_cat = torch.cat(z_all)
+            # Hierarchy metrics for both VAEs (seed varies per epoch, but reproducible)
+            z_A_cat = torch.cat(z_A_all)
+            z_B_cat = torch.cat(z_B_all)
             idx_cat = torch.cat(idx_all)
-            hier_metrics = compute_hierarchy_metrics(z_cat, idx_cat, curvature, seed=seed + epoch)
+            hier_metrics_A = compute_hierarchy_metrics(z_A_cat, idx_cat, curvature, seed=seed + epoch)
+            hier_metrics_B = compute_hierarchy_metrics(z_B_cat, idx_cat, curvature, seed=seed + epoch + 1000)
 
-            # StateNet update
+            # StateNet update with separate metrics for each VAE
             if statenet is not None:
                 statenet_state = statenet.update(
                     epoch=epoch,
                     coverage=avg_val_coverage,
-                    hierarchy_A=hier_metrics['hierarchy'],
-                    hierarchy_B=hier_metrics['hierarchy'],
-                    dist_corr_A=hier_metrics['dist_corr'],
+                    hierarchy_A=hier_metrics_A['hierarchy'],
+                    hierarchy_B=hier_metrics_B['hierarchy'],
+                    dist_corr_A=hier_metrics_A['dist_corr'],
                 )
                 model.apply_statenet_state(statenet_state)
                 freeze_summary = model.get_freeze_state_summary()
@@ -789,31 +793,38 @@ def train(
                 print(f"  [GROKKING] Event detected at epoch {epoch}!")
                 results['grokking_events'].append(grokking_detector.events[-1].__dict__)
 
-            # TensorBoard logging
+            # TensorBoard logging (log both VAE metrics)
             if writer is not None:
                 writer.add_scalars('Accuracy', {'train': avg_train_acc, 'val': avg_val_acc}, epoch)
                 writer.add_scalar('Loss/train', avg_train_loss, epoch)
                 writer.add_scalar('Coverage', avg_val_coverage, epoch)
-                writer.add_scalar('Hierarchy/corr', hier_metrics['hierarchy'], epoch)
-                writer.add_scalar('Hierarchy/Q', hier_metrics['Q'], epoch)
-                writer.add_scalar('Hierarchy/dist_corr', hier_metrics['dist_corr'], epoch)
+                writer.add_scalars('Hierarchy/corr', {
+                    'VAE_A': hier_metrics_A['hierarchy'],
+                    'VAE_B': hier_metrics_B['hierarchy'],
+                }, epoch)
+                writer.add_scalars('Hierarchy/Q', {
+                    'VAE_A': hier_metrics_A['Q'],
+                    'VAE_B': hier_metrics_B['Q'],
+                }, epoch)
+                writer.add_scalar('Hierarchy/dist_corr', hier_metrics_A['dist_corr'], epoch)
 
-            # Track best metrics
-            if hier_metrics['Q'] > best_Q:
-                best_Q = hier_metrics['Q']
+            # Track best metrics (use VAE-A as primary)
+            if hier_metrics_A['Q'] > best_Q:
+                best_Q = hier_metrics_A['Q']
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'Q': best_Q,
-                    'hierarchy': hier_metrics['hierarchy'],
+                    'hierarchy_A': hier_metrics_A['hierarchy'],
+                    'hierarchy_B': hier_metrics_B['hierarchy'],
                     'coverage': avg_val_coverage,
                 }, ckpt_dir / 'best_Q.pt')
 
             if avg_val_coverage > best_coverage:
                 best_coverage = avg_val_coverage
 
-            if hier_metrics['hierarchy'] < best_hierarchy:  # More negative is better
-                best_hierarchy = hier_metrics['hierarchy']
+            if hier_metrics_A['hierarchy'] < best_hierarchy:  # More negative is better
+                best_hierarchy = hier_metrics_A['hierarchy']
 
             # Print progress
             if epoch % print_every == 0 or epoch == epochs - 1:
@@ -823,8 +834,8 @@ def train(
                     f"Loss {avg_train_loss:.4f} | "
                     f"Acc T/V {avg_train_acc:.3f}/{avg_val_acc:.3f} | "
                     f"Cov {avg_val_coverage:.3f} | "
-                    f"Hier {hier_metrics['hierarchy']:.4f} | "
-                    f"Q {hier_metrics['Q']:.3f} | "
+                    f"Hier A/B {hier_metrics_A['hierarchy']:.3f}/{hier_metrics_B['hierarchy']:.3f} | "
+                    f"Q {hier_metrics_A['Q']:.3f} | "
                     f"Freeze {freeze_summary} | "
                     f"{dt:.1f}s"
                 )

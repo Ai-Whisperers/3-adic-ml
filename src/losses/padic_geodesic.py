@@ -231,10 +231,11 @@ class RadialHierarchyLoss(nn.Module):
 
         # Weighted loss (high-valuation points are rarer, more important)
         if self.valuation_weighting:
-            # V5.11.2: Exponential weighting to compensate for rarity
-            # v=0: weight=1, v=4: weight~5, v=7: weight~20, v=9: weight~50
-            # This compensates for the fact that v=9 is ~20000x rarer than v=0
-            weights = 1.0 + torch.exp(valuations * 0.4)  # exp(0.4*v)
+            # V5.12.3: Clamped exponential weighting for gradient stability
+            # v=0: weight=1, v=4: weight~3, v=9: weight=10 (clamped)
+            # Softer than v5.11.2 to prevent gradient instability on rare samples
+            raw_weights = 1.0 + torch.exp(valuations * 0.25)  # Reduced from 0.4
+            weights = torch.clamp(raw_weights, min=1.0, max=10.0)
         else:
             weights = torch.ones_like(normalized_v)
 
@@ -703,18 +704,21 @@ class RichHierarchyLoss(nn.Module):
 
         # 2. Coverage loss (Reconstruction)
         # logits shape: (B, 9, 3) or (B, 27) depending on decoder
-        if logits.shape[-1] == 3: # (B, 9, 3)
-             coverage_loss = F.cross_entropy(
+        # targets are in {-1, 0, 1}, shift to {0, 1, 2} for cross_entropy
+        targets_shifted = (targets + 1).long()
+
+        if logits.shape[-1] == 3:  # (B, 9, 3)
+            coverage_loss = F.cross_entropy(
                 logits.view(-1, 3),
-                (targets + 1).long().view(-1),
+                targets_shifted.view(-1),
             )
-        elif logits.shape[-1] == 27: # (B, 27) flattened
-             coverage_loss = F.cross_entropy(
-                logits.view(-1, 9, 3).permute(0, 2, 1), # (B, 3, 9)
-                (targets + 1).long().clamp(0, 2)       # (B, 9)
-             )
+        elif logits.shape[-1] == 27:  # (B, 27) flattened
+            coverage_loss = F.cross_entropy(
+                logits.view(-1, 9, 3).permute(0, 2, 1),  # (B, 3, 9)
+                targets_shifted,  # (B, 9) - no clamp, data must be valid
+            )
         else:
-             coverage_loss = torch.tensor(0.0, device=device)
+            coverage_loss = torch.tensor(0.0, device=device)
 
         # 3. Separation loss (Margin between levels)
         separation_loss = torch.tensor(0.0, device=device)

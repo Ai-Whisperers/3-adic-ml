@@ -136,10 +136,14 @@ class StateNet:
         self.hierarchy_stall_patience = 5
 
         # Q-gated annealing state
-        # Initialize cycle start Q for components that start unfrozen
+        # Initialize cycle start Q for ALL components
+        # - encoder_a: starts frozen, will be set when it unfreezes
+        # - encoder_b: starts unfrozen, needs initial Q=0 for first cycle
+        # - controller: starts unfrozen, needs initial Q=0 for first cycle
         self.Q_at_cycle_start = {
-            "encoder_b": 0.0,  # Starts unfrozen in Option C
-            "controller": 0.0,  # Starts unfrozen
+            "encoder_a": 0.0,
+            "encoder_b": 0.0,
+            "controller": 0.0,
         }
         self.cycle_count = {"encoder_a": 0, "encoder_b": 0, "controller": 0}
         self.best_Q = 0.0  # Best Q achieved so far
@@ -502,8 +506,12 @@ class StateNet:
         self.controller_low_grad_count = 0
         self.hierarchy_a_stall_count = 0
 
-        # Reset annealing state
-        self.Q_at_cycle_start = {}
+        # Reset annealing state (must match __init__)
+        self.Q_at_cycle_start = {
+            "encoder_a": 0.0,
+            "encoder_b": 0.0,
+            "controller": 0.0,
+        }
         self.cycle_count = {"encoder_a": 0, "encoder_b": 0, "controller": 0}
         self.best_Q = 0.0
 
