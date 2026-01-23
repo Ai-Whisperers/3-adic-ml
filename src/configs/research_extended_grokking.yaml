@@ -1,3 +1,4 @@
+# research_extended_grokking.yaml (previously: v5_12_4_extended_grokking.yaml)
 # V5.12.4 Extended Configuration: Grokking Detection and Extended Training
 #
 # This config is optimized for:
@@ -50,7 +51,7 @@ option_c:
 
 # Frozen Checkpoint (REQUIRED for V5.11+ architecture to achieve 100% coverage)
 frozen_checkpoint:
-  path: sandbox-training/checkpoints/v5_12_4/best_Q.pt  # Use compatible V5.12.4 checkpoint
+  path: models/checkpoints/v5_12/v5_12_4/best_Q.pt  # Use compatible V5.12.4 checkpoint
   encoder_to_load: both  # Load both encoders for coverage preservation
   decoder_to_load: decoder_A  # Load decoder for reconstruction
 
@@ -202,7 +203,7 @@ logging:
 
 # Checkpoints
 checkpoints:
-  save_dir: sandbox-training/checkpoints/v5_12_4_extended
+  save_dir: runs/checkpoints/v5_12_4_extended
   save_best: true
   best_metric: composite_score
   checkpoint_name: v5_12_4_extended_grokking

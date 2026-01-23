@@ -1,3 +1,4 @@
+# hardware_rtx2060_8gb.yaml (previously: v5_11_11_homeostatic_rtx2060.yaml)
 # V5.11.11 StateNet Configuration - RTX 2060 SUPER (8GB VRAM)
 #
 # Hardware Profile:
@@ -157,7 +158,7 @@ logging:
 
 # Checkpoints
 checkpoints:
-  save_dir: checkpoints/v5_11_11_statenet_rtx2060
+  save_dir: runs/checkpoints/v5_11_11_statenet_rtx2060
   save_best: true
   best_metric: radial_corr_A           # Target: most negative correlation
   best_mode: min

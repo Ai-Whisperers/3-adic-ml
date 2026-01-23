@@ -1,3 +1,4 @@
+# test_adaptive_lr.yaml (previously: v5_12_5_adaptive_lr_test.yaml)
 # V5.12.5 Adaptive LR Scheduler Test
 # Test Phase 2.3 optimization: Validation-based learning rate scheduling
 
@@ -58,7 +59,7 @@ option_c:
   encoder_a_lr_scale: 0.05
 
 frozen_checkpoint:
-  path: sandbox-training/checkpoints/v5_12_4/best_Q.pt
+  path: models/checkpoints/v5_12/v5_12_4/best_Q.pt
   encoder_to_load: both
   decoder_to_load: decoder_A
 
@@ -181,7 +182,7 @@ logging:
   print_every: 2
 
 checkpoints:
-  save_dir: sandbox-training/checkpoints/v5_12_5_adaptive_lr
+  save_dir: runs/checkpoints/v5_12_5_adaptive_lr
   save_best: true
   best_metric: composite_score
   checkpoint_name: v5_12_5_adaptive_lr

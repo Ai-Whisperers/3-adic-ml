@@ -1,0 +1,14 @@
+# minimal_smoke_test.yaml (previously: v5_12_extended.yaml)
+# Minimal 1-epoch config for quick smoke tests
+training:
+  epochs: 1
+  batch_size: 32
+  lr: 0.001
+model:
+  name: TernaryVAEV5_11_PartialFreeze
+  latent_dim: 16
+  hidden_dim: 64
+  max_radius: 0.95
+  curvature: 1.0
+frozen_checkpoint:
+  path: null

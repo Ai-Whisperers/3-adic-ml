@@ -1,3 +1,4 @@
+# experiment_d_from_scratch.yaml (previously: v5_12_5_relaxed_D_from_scratch.yaml)
 # V5.12.5 Constraint Relaxation Experiment D: From Scratch Training
 # Test: Remove initialization constraint, train from random weights
 
@@ -128,7 +129,7 @@ logging:
   print_every: 5
 
 checkpoints:
-  save_dir: sandbox-training/checkpoints/v5_12_5_relaxed_D
+  save_dir: runs/checkpoints/v5_12_5_relaxed_D
   save_best: true
   best_metric: composite_score
   checkpoint_name: v5_12_5_relaxed_D

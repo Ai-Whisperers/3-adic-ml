@@ -1,3 +1,4 @@
+# base_frozen_encoder_geodesic.yaml (previously: v5_11_base.yaml)
 # V5.11 Configuration: Frozen Coverage + Hyperbolic Structure = Unified Geodesic Loss
 #
 # Key architecture changes from v5.10:
@@ -23,7 +24,7 @@ model:
 
 # Frozen Checkpoint
 frozen_checkpoint:
-  path: checkpoints/v5_5/latest.pt
+  path: models/checkpoints/v5_5/latest.pt
   encoder_to_load: both             # Load both encoder_A and encoder_B
   decoder_to_load: decoder_A        # Load decoder_A for verification
 
@@ -86,7 +87,7 @@ logging:
 
 # Checkpoints
 checkpoints:
-  save_dir: checkpoints/v5_11
+  save_dir: runs/checkpoints/v5_11
   save_best: true
   best_metric: radial_corr_A        # Lower (more negative) is better
   best_mode: min

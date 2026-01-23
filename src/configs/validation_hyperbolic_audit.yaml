@@ -1,3 +1,4 @@
+# validation_hyperbolic_audit.yaml (previously: v5_12_3.yaml)
 # V5.12.3 Configuration: Validation of Hyperbolic Audit Fixes
 #
 # This config validates the V5.12.2 hyperbolic audit fixes:
@@ -12,7 +13,7 @@
 # - Better richness measurement (hyperbolic within-level variance)
 # - Cleaner separation between valuation levels
 #
-# Baseline comparison: sandbox-training/checkpoints/statenet_rich/best.pt
+# Baseline comparison: models/checkpoints/v5_11/v5_11_11_production/best.pt
 
 # Device Configuration
 device:
@@ -46,7 +47,7 @@ option_c:
 
 # Frozen Checkpoint
 frozen_checkpoint:
-  path: sandbox-training/checkpoints/v5_5/latest.pt
+  path: models/checkpoints/v5_5/latest.pt
   encoder_to_load: both
   decoder_to_load: decoder_A
 
@@ -155,7 +156,7 @@ logging:
 
 # Checkpoints
 checkpoints:
-  save_dir: sandbox-training/checkpoints/v5_12_3
+  save_dir: runs/checkpoints/v5_12_3
   save_best: true
   best_metric: composite_score
   checkpoint_name: v5_12_3_audit_validation

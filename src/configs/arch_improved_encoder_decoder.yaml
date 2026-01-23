@@ -1,3 +1,4 @@
+# arch_improved_encoder_decoder.yaml (previously: v5_12_4_improved_but_non_fixed.yaml)
 # V5.12.4 Configuration: Improved Encoder/Decoder Architecture
 #
 # This config introduces improved encoder/decoder components:
@@ -55,7 +56,7 @@ option_c:
 
 # Frozen Checkpoint (for initializing Linear weights)
 frozen_checkpoint:
-  path: sandbox-training/checkpoints/v5_5/latest.pt
+  path: models/checkpoints/v5_5/latest.pt
   encoder_to_load: both
   decoder_to_load: decoder_A
 
@@ -164,7 +165,7 @@ logging:
 
 # Checkpoints
 checkpoints:
-  save_dir: sandbox-training/checkpoints/v5_12_4
+  save_dir: runs/checkpoints/v5_12_4
   save_best: true
   best_metric: composite_score
   checkpoint_name: v5_12_4_improved_arch

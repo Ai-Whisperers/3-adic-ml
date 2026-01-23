@@ -1,3 +1,4 @@
+# fix_checkpoint_loading.yaml (previously: v5_12_4_hotfix.yaml)
 # V5.12.4 FIXED Configuration: Proper Checkpoint Loading for Coverage
 #
 # This config is optimized for:
@@ -66,7 +67,7 @@ option_c:
 
 # FIXED: Proper Checkpoint Loading (was null, causing 0% coverage)
 frozen_checkpoint:
-  path: sandbox-training/checkpoints/v5_12_4/best_Q.pt  # Compatible V5.12.4 checkpoint
+  path: models/checkpoints/v5_12/v5_12_4/best_Q.pt  # Compatible V5.12.4 checkpoint
   encoder_to_load: both  # Load both encoders for coverage
   decoder_to_load: decoder_A
 
@@ -182,7 +183,7 @@ grokking_detection:
 
 # Checkpoints
 checkpoints:
-  save_dir: sandbox-training/checkpoints/v5_12_4_fixed
+  save_dir: runs/checkpoints/v5_12_4_fixed
   save_best: true
   best_metric: composite_score
   checkpoint_name: v5_12_4_fixed

@@ -1,3 +1,4 @@
+# experiment_c_loss_rebalance.yaml (previously: v5_12_5_relaxed_C_loss_rebalance.yaml)
 # V5.12.5 Constraint Relaxation Experiment C: Loss Rebalancing
 # Test: Reduce hierarchy dominance, increase richness focus
 
@@ -48,7 +49,7 @@ option_c:
   encoder_a_lr_scale: 0.1   # Moderate unfreeze
 
 frozen_checkpoint:
-  path: sandbox-training/checkpoints/v5_12_4/best_Q.pt
+  path: models/checkpoints/v5_12/v5_12_4/best_Q.pt
   encoder_to_load: both
   decoder_to_load: decoder_A
 
@@ -116,7 +117,7 @@ logging:
   print_every: 2
 
 checkpoints:
-  save_dir: sandbox-training/checkpoints/v5_12_5_relaxed_C
+  save_dir: runs/checkpoints/v5_12_5_relaxed_C
   save_best: true
   best_metric: composite_score
   checkpoint_name: v5_12_5_relaxed_C

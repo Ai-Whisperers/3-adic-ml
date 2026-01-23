@@ -1,3 +1,4 @@
+# manifold_frequency_optimal.yaml (previously: frequency_optimal.yaml)
 # Configuration for training frequency-optimal manifolds
 # Optimizes for Shannon information efficiency (positive correlation)
 

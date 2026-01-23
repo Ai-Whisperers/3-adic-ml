@@ -1,8 +1,9 @@
-# V5.12.5 Constraint Relaxation Experiment A: Unfreeze Encoder A
-# Test: Allow joint optimization of both encoders
+# test_adaptive_loss.yaml (previously: v5_12_5_adaptive_loss_test.yaml)
+# V5.12.5 Adaptive Loss Test
+# Test Phase 2.2 optimization: Adaptive RichHierarchyLoss with curriculum learning
 
 device:
-  name: v5_12_5_relaxed_A_unfreeze
+  name: v5_12_5_adaptive_loss_test
   cuda_device: 0
   use_amp: false
   pin_memory: true
@@ -14,6 +15,16 @@ torch_compile:
   backend: eager
   mode: default
   fullgraph: false
+
+gradient_checkpoint:
+  enabled: true
+  preserve_rng_state: true
+  segments: 2
+  use_reentrant: true
+  encoder_checkpoint: true
+  decoder_checkpoint: true
+  projection_checkpoint: false
+  controller_checkpoint: false
 
 mixed_precision:
   enabled: true
@@ -44,17 +55,17 @@ model:
 
 option_c:
   enabled: true
-  encoder_b_lr_scale: 0.1  # Keep conservative for now
-  encoder_a_lr_scale: 0.05  # UNFREEZE: Allow encoder A to train at 5% LR
+  encoder_b_lr_scale: 0.1   # Conservative
+  encoder_a_lr_scale: 0.05  # UNFROZEN: Allow encoder A to train
 
 frozen_checkpoint:
-  path: sandbox-training/checkpoints/v5_12_4/best_Q.pt
+  path: models/checkpoints/v5_12/v5_12_4/best_Q.pt
   encoder_to_load: both
   decoder_to_load: decoder_A
 
 statenet:
   enabled: true
-  coverage_freeze_threshold: 0.995  # Keep strict for safety
+  coverage_freeze_threshold: 0.995
   coverage_unfreeze_threshold: 1.0
   coverage_floor: 0.95
   warmup_epochs: 10
@@ -65,11 +76,33 @@ statenet:
   hierarchy_plateau_patience: 15
   hierarchy_patience_ceiling: 30
 
-# Same loss config as baseline
 loss:
+  # NEW: Adaptive Loss Configuration (Phase 2.2)
+  adaptive_loss:
+    enabled: true                           # Enable adaptive RichHierarchyLoss
+    enable_curriculum: true                 # Curriculum learning: Coverage → Hierarchy → Richness
+    enable_difficulty_adaptive: true       # Adaptive per-valuation weighting
+    enable_performance_rebalancing: true   # Performance-based weight adjustments
+
+    # Curriculum learning parameters
+    curriculum_warmup_epochs: 8            # Coverage-focused phase
+    curriculum_transition_epochs: 12       # Transition to hierarchy
+    coverage_priority_early: 2.0           # 2x coverage weight early
+    hierarchy_priority_late: 1.5           # 1.5x hierarchy weight later
+
+    # Difficulty-adaptive parameters
+    difficulty_adaptation_rate: 0.1        # How much difficulty affects weights
+    difficulty_smoothing: 0.9              # EMA smoothing for stability
+
+    # Performance rebalancing parameters
+    rebalancing_interval: 3                 # Rebalance every 3 epochs
+    rebalancing_sensitivity: 0.2            # Adjustment magnitude
+    target_hierarchy_correlation: 0.83     # Target hierarchy (absolute)
+    target_richness_ratio: 0.5             # Target richness preservation
+
   rich_hierarchy:
     enabled: true
-    hierarchy_weight: 5.0
+    hierarchy_weight: 5.0       # Base weights (will be adapted)
     coverage_weight: 1.0
     richness_weight: 2.5
     separation_weight: 3.0
@@ -100,7 +133,7 @@ riemannian:
   optimizer: adam
 
 training:
-  epochs: 15  # Shorter run to see immediate effects
+  epochs: 15  # Test run to validate adaptive mechanisms
   batch_size: 512
   lr: 0.0008
   weight_decay: 0.0001
@@ -110,7 +143,7 @@ training:
   use_adaptive: true
   hierarchy_threshold: -0.75
   patience: 25
-  min_epochs: 10
+  min_epochs: 8
   scheduler:
     type: cosine_annealing
     T_max: 50
@@ -125,14 +158,14 @@ data:
 
 logging:
   tensorboard: true
-  log_dir: runs/v5_12_5_relaxed_A_unfreeze
+  log_dir: runs/v5_12_5_adaptive_loss_test
   print_every: 2
 
 checkpoints:
-  save_dir: sandbox-training/checkpoints/v5_12_5_relaxed_A
+  save_dir: runs/checkpoints/v5_12_5_adaptive_loss
   save_best: true
   best_metric: composite_score
-  checkpoint_name: v5_12_5_relaxed_A
+  checkpoint_name: v5_12_5_adaptive_loss
 
 targets:
   coverage: 1.0
