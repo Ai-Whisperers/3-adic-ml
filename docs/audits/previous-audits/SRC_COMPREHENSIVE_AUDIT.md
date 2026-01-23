@@ -630,3 +630,565 @@ Provides `CheckpointValidator` class for validating checkpoint existence and dim
 **High issues: ~~2~~ 0**
 **Medium issues: ~~4~~ 2 (intentional/low risk)**
 
+---
+
+# APPENDIX: Geoopt Full Integration for True 3-Adic Learning
+
+**Date**: 2025-01-23
+**Objective**: Transform Euclidean VAE with hyperbolic loss supervision into true hyperbolic VAE with proper manifold operations
+
+## Executive Summary
+
+The current codebase is a **Euclidean VAE with p-adic-inspired loss supervision**—not a hyperbolic or p-adic system. To achieve true 3-adic geometry, we must use geoopt's manifold operations (expmap0/logmap0) as the bridge between tangent space (Euclidean MLPs) and the hyperbolic manifold.
+
+**Key Insight**: Tangent space at origin T₀M IS Euclidean ℝⁿ. The bridge is:
+- `expmap0`: Tangent space → Manifold (for sampling)
+- `logmap0`: Manifold → Tangent space (for decoder input / Euclidean output)
+
+---
+
+## Core Architecture Changes (Items 1-8)
+
+### 1. VAE Sampling (vae.py:220-224)
+
+**Current:** Euclidean reparameterization
+```python
+def reparameterize(self, mu, logvar):
+    std = torch.exp(0.5 * logvar)
+    eps = torch.randn_like(std)
+    return mu + eps * std  # Euclidean
+```
+
+**Required for fully-hyperbolic:**
+```python
+def reparameterize(self, mu, logvar, manifold=None):
+    std = torch.exp(0.5 * logvar)
+    eps = torch.randn_like(std)
+    z_tangent = mu + eps * std  # Sample in tangent space T₀M
+
+    if manifold is not None:  # Fully hyperbolic mode
+        return manifold.expmap0(z_tangent)  # Wrapped normal → manifold
+    return z_tangent  # Euclidean mode
+```
+
+---
+
+### 2. Decoder Input (vae.py:245-247)
+
+**Current:** Decodes from Euclidean z (WRONG for hyperbolic)
+```python
+logits_A = self.decoder_A(z_A_euc)  # Ignores z_hyp entirely!
+```
+
+**Required:**
+```python
+if self.geometry_mode == FULLY_HYPERBOLIC:
+    z_A_tangent = self.manifold.logmap0(z_A_hyp)  # Back to tangent space
+    logits_A = self.decoder_A(z_A_tangent)
+else:
+    logits_A = self.decoder_A(z_A_euc)
+```
+
+---
+
+### 3. Projection Layer (hyperbolic_projection.py:182-188)
+
+**Current:** Euclidean direction × radius
+```python
+direction = F.normalize(z_euclidean + direction_residual, dim=-1)
+radius = self.radius_net(z_euclidean) * self.max_radius
+z_hyp = direction * radius  # NOT using expmap!
+```
+
+**Required for fully-hyperbolic:**
+```python
+if self.geometry_mode == FULLY_HYPERBOLIC:
+    # z_euclidean IS tangent vector, use expmap directly
+    z_hyp = self.manifold.expmap0(z_euclidean)
+else:
+    # Current projection approach
+    z_hyp = direction * radius
+```
+
+---
+
+### 4. ManifoldParameter for Riemannian Gradients
+
+**Current:** z_hyp is a regular Tensor
+**Required:** Wrap as ManifoldParameter for RiemannianAdam to work:
+
+```python
+from geoopt import ManifoldParameter
+
+# In forward pass, when returning z_hyp:
+z_hyp = ManifoldParameter(z_hyp, manifold=self.manifold)
+```
+
+Without this, `RiemannianAdam` sees regular tensors and falls back to Euclidean updates.
+
+---
+
+### 5. KL Divergence (NEW - doesn't exist yet)
+
+**Current:** No KL term (or implicit Euclidean KL)
+**Required for hyperbolic:** Hyperbolic KL divergence
+
+```python
+def hyperbolic_kl_divergence(mu, logvar, manifold):
+    """KL divergence for wrapped normal on Poincaré ball.
+
+    See Mathieu et al. 2019 "Continuous Hierarchical Representations"
+    KL(q(z|x) || p(z)) where p(z) is wrapped normal at origin
+    """
+    var = torch.exp(logvar)
+    # Closed form for wrapped normal KL:
+    lambda_mu = manifold.lambda_x(mu)  # Conformal factor
+    kl = 0.5 * (var * lambda_mu.pow(2) + mu.pow(2).sum(-1) - logvar.sum(-1) - mu.size(-1))
+    return kl.mean()
+```
+
+---
+
+### 6. Geodesic Interpolation (for generation/visualization)
+
+**Current:** Linear interpolation (WRONG)
+```python
+z_interp = z1 + t * (z2 - z1)  # Euclidean
+```
+
+**Required:**
+```python
+z_interp = manifold.geodesic(t, z1, z2)  # True geodesic path
+```
+
+---
+
+### 7. Parallel Transport (for sequential operations)
+
+If moving vectors between tangent spaces:
+```python
+# Transport vector v from T_x M to T_y M
+v_transported = manifold.transp(x, y, v)
+```
+
+---
+
+### 8. Config Schema Update
+
+```yaml
+geometry:
+  mode: "fully_hyperbolic"  # or "euclidean_projected"
+  curvature: 1.0
+  learnable_curvature: false
+
+riemannian:
+  enabled: true  # MUST be true for fully_hyperbolic
+```
+
+---
+
+## Additional Integration Requirements (Items 9-20)
+
+### 9. RiemannianAdam Configuration (train.py)
+
+**Current:**
+```python
+optimizer = get_riemannian_optimizer(param_groups, lr=base_lr)
+```
+
+**Required:** Full configuration with stabilize parameter
+```python
+from geoopt.optim import RiemannianAdam
+
+optimizer = RiemannianAdam(
+    param_groups,
+    lr=base_lr,
+    betas=(0.9, 0.999),
+    eps=1e-8,
+    weight_decay=weight_decay,
+    stabilize=10,  # Project back to manifold every 10 steps
+)
+```
+
+The `stabilize` parameter is critical—it corrects numerical drift off the manifold during training.
+
+---
+
+### 10. Explicit egrad2rgrad Integration
+
+For custom operations where automatic Riemannian gradients don't apply:
+
+```python
+def manual_riemannian_step(manifold, point, euclidean_grad, lr):
+    """Manual Riemannian gradient descent step."""
+    # Convert Euclidean gradient to Riemannian
+    riemannian_grad = manifold.egrad2rgrad(point, euclidean_grad)
+    # Retraction (approximation to exponential map)
+    new_point = manifold.retr(point, -lr * riemannian_grad)
+    return new_point
+```
+
+---
+
+### 11. Numerical Precision (CRITICAL)
+
+**Geoopt recommendation:** Use float64 for hyperbolic operations near boundary.
+
+```python
+# In model __init__ or forward:
+if self.geometry_mode == FULLY_HYPERBOLIC:
+    # Cast to double for numerical stability
+    z_tangent = z_tangent.double()
+    z_hyp = manifold.expmap0(z_tangent)
+    # Cast back for downstream if needed
+    z_hyp = z_hyp.float()
+```
+
+Or globally:
+```python
+torch.set_default_dtype(torch.float64)
+```
+
+---
+
+### 12. ManifoldTensor vs ManifoldParameter
+
+| Type | Use Case |
+|------|----------|
+| `ManifoldParameter` | Learnable manifold points (e.g., embeddings) |
+| `ManifoldTensor` | Non-learnable manifold points (e.g., batch samples) |
+
+```python
+# For latent samples (not directly learned):
+z_hyp = geoopt.ManifoldTensor(z_hyp, manifold=manifold)
+
+# For learnable centroids/prototypes:
+centroids = geoopt.ManifoldParameter(init_centroids, manifold=manifold)
+```
+
+---
+
+### 13. Möbius Operations for Hyperbolic Arithmetic
+
+For operations IN hyperbolic space (not just through it):
+
+```python
+# Hyperbolic addition (not Euclidean!)
+z_sum = manifold.mobius_add(z1, z2)
+
+# Hyperbolic matrix-vector multiplication
+z_transformed = manifold.mobius_matvec(weight_matrix, z)
+
+# Hyperbolic scalar multiplication
+z_scaled = manifold.mobius_scalar_mul(scalar, z)
+```
+
+**Use case:** If you want a hyperbolic MLP (Ganea et al. 2018), replace Linear layers with Möbius linear.
+
+---
+
+### 14. Fréchet Mean for Batch Statistics
+
+Euclidean mean is WRONG in hyperbolic space:
+
+**Current (WRONG):**
+```python
+z_mean = z_batch.mean(dim=0)  # Euclidean centroid
+```
+
+**Required:**
+```python
+# Fréchet mean (hyperbolic centroid)
+z_mean = manifold.frechet_mean(z_batch)
+```
+
+This affects any batch normalization or prototype computation.
+
+---
+
+### 15. Curvature Scaling and Learnable Curvature
+
+Curvature c controls the "tightness" of the hyperbolic space:
+- c → 0: Approaches Euclidean
+- c → ∞: Approaches tree-like (stronger hierarchy)
+
+```python
+# Learnable curvature
+manifold = geoopt.PoincareBall(c=1.0, learnable=True)
+
+# Access current curvature
+current_c = manifold.c.item()
+
+# Curvature affects ball radius: r_max = 1/√c
+max_radius = 1.0 / math.sqrt(manifold.c.item()) - eps
+```
+
+---
+
+### 16. Inference Mode: Continuum-Discrete Bridge
+
+For downstream Euclidean ML or interpretability:
+
+```python
+def inference(self, x, output_mode="manifold"):
+    """
+    Args:
+        output_mode: "manifold" | "tangent" | "euclidean"
+    """
+    z_hyp = self.encode_to_manifold(x)
+
+    if output_mode == "manifold":
+        return z_hyp  # For hyperbolic operations
+    elif output_mode == "tangent":
+        return self.manifold.logmap0(z_hyp)  # For Euclidean MLP heads
+    elif output_mode == "euclidean":
+        # Project to tangent, then optionally normalize
+        z_tangent = self.manifold.logmap0(z_hyp)
+        return F.normalize(z_tangent, dim=-1)  # Unit sphere
+```
+
+---
+
+### 17. Checkpoint Handling for Manifold State
+
+ManifoldParameters have manifold metadata that must be preserved:
+
+```python
+# Saving
+torch.save({
+    'model_state_dict': model.state_dict(),
+    'manifold_curvature': model.manifold.c.item(),
+    'geometry_mode': model.geometry_mode,
+}, path)
+
+# Loading
+checkpoint = torch.load(path)
+model.manifold = geoopt.PoincareBall(c=checkpoint['manifold_curvature'])
+model.load_state_dict(checkpoint['model_state_dict'])
+```
+
+---
+
+### 18. Loss Function Compatibility
+
+All losses must handle ManifoldTensor/ManifoldParameter:
+
+```python
+def padic_geodesic_loss(z_hyp, indices, manifold):
+    # z_hyp may be ManifoldTensor - extract data if needed
+    if hasattr(z_hyp, 'tensor'):
+        z_data = z_hyp.tensor()
+    else:
+        z_data = z_hyp
+
+    # Use manifold.dist() not poincare_distance()
+    distances = manifold.dist(z_data[i_idx], z_data[j_idx])
+    ...
+```
+
+---
+
+### 19. Batched Manifold Operations
+
+Geoopt supports batched operations, but shapes must be correct:
+
+```python
+# Batched expmap: (B, D) tangent vectors → (B, D) manifold points
+z_hyp = manifold.expmap0(z_tangent)  # Works for (B, D)
+
+# Batched distance: (B, D) × (B, D) → (B,)
+dists = manifold.dist(z1, z2)  # Pairwise in batch
+
+# Pairwise distance matrix: (B, D) × (B, D) → (B, B)
+dists_matrix = manifold.dist(z[:, None, :], z[None, :, :])
+```
+
+---
+
+### 20. Validation Metrics: Hyperbolic-Aware
+
+Replace Euclidean metrics with hyperbolic equivalents:
+
+| Metric | Euclidean | Hyperbolic |
+|--------|-----------|------------|
+| Centroid | `mean()` | `frechet_mean()` |
+| Variance | `var()` | `manifold.dist(z, centroid).pow(2).mean()` |
+| Interpolation | `lerp()` | `geodesic()` |
+| Nearest neighbor | L2 distance | `manifold.dist()` |
+
+---
+
+## Files to Modify: Complete Summary
+
+| File | Changes |
+|------|---------|
+| `src/models/vae.py` | Add geometry_mode, wrapped normal via expmap0, decoder uses logmap0, ManifoldTensor for z_hyp |
+| `src/models/hyperbolic_projection.py` | Use expmap0 in fully_hyperbolic mode, remove direction×radius path |
+| `src/losses/combined.py` | Add hyperbolic KL divergence, ensure losses handle ManifoldTensor |
+| `src/losses/padic_geodesic.py` | Use manifold.dist() directly, handle ManifoldTensor inputs |
+| `src/geometry/poincare.py` | Export expmap0, logmap0, geodesic, transp, frechet_mean, mobius_add wrappers |
+| `src/train.py` | Enforce RiemannianAdam with stabilize, add float64 option, validate geometry config |
+| `src/utils/checkpoint.py` | Save/load manifold curvature and geometry_mode |
+| `src/presets/*.yaml` | Add geometry.mode, geometry.curvature, geometry.learnable_curvature fields |
+| `src/config/constants.py` | Add GEOMETRY_MODES enum, default curvature |
+
+---
+
+## New Files to Create
+
+### `src/geometry/manifold_bridge.py`
+
+```python
+"""Geometry-agnostic bridge between tangent space and manifold."""
+
+from enum import Enum
+import torch
+import geoopt
+
+class GeometryMode(Enum):
+    EUCLIDEAN_PROJECTED = "euclidean_projected"
+    FULLY_HYPERBOLIC = "fully_hyperbolic"
+
+class ManifoldBridge(nn.Module):
+    """Bridges tangent space ↔ manifold. Identity for Euclidean."""
+
+    def __init__(self, mode: GeometryMode, curvature: float = 1.0, learnable: bool = False):
+        super().__init__()
+        self.mode = mode
+        if mode == GeometryMode.FULLY_HYPERBOLIC:
+            self.manifold = geoopt.PoincareBall(c=curvature, learnable=learnable)
+        else:
+            self.manifold = None
+
+    def to_manifold(self, z_tangent: torch.Tensor) -> torch.Tensor:
+        """Tangent space → Manifold."""
+        if self.mode == GeometryMode.EUCLIDEAN_PROJECTED:
+            return self._project_euclidean(z_tangent)
+        return self.manifold.expmap0(z_tangent)
+
+    def to_tangent(self, z_manifold: torch.Tensor) -> torch.Tensor:
+        """Manifold → Tangent space (Euclidean-compatible)."""
+        if self.mode == GeometryMode.EUCLIDEAN_PROJECTED:
+            return z_manifold  # Already Euclidean
+        return self.manifold.logmap0(z_manifold)
+
+    def sample_wrapped_normal(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        """Reparameterized sampling in appropriate geometry."""
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        z_tangent = mu + eps * std
+        return self.to_manifold(z_tangent)
+
+    def distance(self, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
+        """Geometry-aware distance."""
+        if self.mode == GeometryMode.EUCLIDEAN_PROJECTED:
+            return torch.norm(z1 - z2, dim=-1)
+        return self.manifold.dist(z1, z2)
+
+    def geodesic(self, t: float, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
+        """Interpolation along geodesic."""
+        if self.mode == GeometryMode.EUCLIDEAN_PROJECTED:
+            return z1 + t * (z2 - z1)
+        return self.manifold.geodesic(t, z1, z2)
+
+    def _project_euclidean(self, z: torch.Tensor, max_radius: float = 0.95) -> torch.Tensor:
+        """Legacy Euclidean projection (direction × radius)."""
+        norm = torch.norm(z, dim=-1, keepdim=True).clamp(min=1e-8)
+        direction = z / norm
+        radius = torch.sigmoid(norm) * max_radius
+        return direction * radius
+```
+
+---
+
+### `src/losses/hyperbolic_kl.py`
+
+```python
+"""Hyperbolic KL divergence for wrapped normal distributions."""
+
+import torch
+import torch.nn as nn
+
+class HyperbolicKLDivergence(nn.Module):
+    """KL divergence between wrapped normal and prior at origin.
+
+    Based on Mathieu et al. 2019 "Continuous Hierarchical Representations
+    with Poincaré Variational Auto-Encoders"
+    """
+
+    def __init__(self, manifold, beta: float = 1.0):
+        super().__init__()
+        self.manifold = manifold
+        self.beta = beta
+
+    def forward(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            mu: Mean in tangent space T₀M, shape (B, D)
+            logvar: Log variance, shape (B, D)
+
+        Returns:
+            KL divergence, scalar
+        """
+        var = torch.exp(logvar)
+
+        # Conformal factor λ(μ) = 2 / (1 - c||μ||²)
+        lambda_mu = self.manifold.lambda_x(mu)
+
+        # KL for wrapped normal (closed form approximation)
+        # KL = 0.5 * (σ² * λ(μ)² + ||μ||² - log(σ²) - D)
+        kl = 0.5 * (
+            (var * lambda_mu.unsqueeze(-1).pow(2)).sum(-1) +
+            mu.pow(2).sum(-1) -
+            logvar.sum(-1) -
+            mu.size(-1)
+        )
+
+        return self.beta * kl.mean()
+```
+
+---
+
+## Validation: How to Verify True Hyperbolic Learning
+
+After implementation, verify with these checks:
+
+1. **Geodesic interpolation test:**
+   ```python
+   # Interpolate between two points
+   z_interp = [manifold.geodesic(t, z1, z2) for t in torch.linspace(0, 1, 10)]
+   # All points should have ||z|| < 1/√c (inside ball)
+   assert all(manifold.check_point_on_manifold(z) for z in z_interp)
+   ```
+
+2. **Distance symmetry:**
+   ```python
+   d12 = manifold.dist(z1, z2)
+   d21 = manifold.dist(z2, z1)
+   assert torch.allclose(d12, d21)
+   ```
+
+3. **Triangle inequality (ultrametric approximation):**
+   ```python
+   d12 = manifold.dist(z1, z2)
+   d23 = manifold.dist(z2, z3)
+   d13 = manifold.dist(z1, z3)
+   # Hyperbolic satisfies triangle inequality (weaker than ultrametric)
+   assert d13 <= d12 + d23 + eps
+   ```
+
+4. **Hierarchy preservation:**
+   ```python
+   # High valuation pairs should have smaller geodesic distance
+   high_v_dist = manifold.dist(z[high_v_pairs])
+   low_v_dist = manifold.dist(z[low_v_pairs])
+   assert high_v_dist.mean() < low_v_dist.mean()
+   ```
+
+---
+
+**Appendix completed: 2025-01-23**
+**Items added: 12 (items 9-20)**
+**New files proposed: 2 (manifold_bridge.py, hyperbolic_kl.py)**
+**Total architectural changes: 20**
+
