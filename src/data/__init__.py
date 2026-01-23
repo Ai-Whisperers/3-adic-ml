@@ -1,1 +1,0 @@
-from .generation import generate_all_ternary_operations
