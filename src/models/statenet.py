@@ -5,7 +5,7 @@
 #
 # For commercial licensing inquiries: support@aiwhisperers.com
 
-"""Hierarchical StateNet Controller for V5.11.8.
+"""Hierarchical StateNet Controller for V6.0.
 
 Implements complementary learning systems theory with Q-gated annealing:
 - Slow components (encoders): consolidate, fix when objective met
@@ -18,8 +18,14 @@ Each component has its own trainability trigger:
 - controller: gradient-gated (fix when weights stabilize)
 - projections: always trainable (fast adaptation layer)
 
-V5.11.8: Q-gated annealing progressively relaxes thresholds when Q improves,
-enabling exploration of higher Q values while maintaining coverage floors.
+V6.0 Extensions:
+- Extended Q-metric with rich ternary feedback (compute_Q_extended)
+- Level-stratified hierarchy detection
+- Tree coherence monitoring (parent-child structure)
+- Cohort angular spread tracking
+
+The extended Q-metric integrates feedback from src/metrics/ternary_metrics.py
+to provide StateNet with multi-dimensional signals about embedding quality.
 """
 
 from collections import deque
@@ -43,13 +49,69 @@ from src.config.constants import (
 
 
 def compute_Q(dist_corr: float, hierarchy: float) -> float:
-    """Compute conserved structure capacity Q.
+    """Compute conserved structure capacity Q (classic formula).
 
     Q = dist_corr + 1.5 × |hierarchy|
 
     Higher Q indicates better structure learning.
     """
     return dist_corr + 1.5 * abs(hierarchy)
+
+
+def compute_Q_extended(
+    dist_corr: float,
+    hierarchy: float,
+    ternary_feedback: Optional[Dict[str, Any]] = None,
+    weights: Optional[Dict[str, float]] = None,
+) -> float:
+    """Compute extended Q-metric with rich ternary feedback.
+
+    Q_extended = w_dist * dist_corr
+               + w_hier * |hierarchy|
+               + w_level * |mean_level_hierarchy|
+               + w_tree * (1 / (1 + tree_coherence))
+               + w_spread * mean_cohort_spread
+
+    The extended Q incorporates multi-dimensional feedback from TernaryMetrics:
+    - Level-stratified hierarchy: Detects underperforming valuation levels
+    - Tree coherence: Parent-child structure preservation
+    - Cohort spread: Angular diversity within levels
+
+    Args:
+        dist_corr: Distance correlation (0-1)
+        hierarchy: Global hierarchy correlation (negative is good)
+        ternary_feedback: Optional dict from TernaryMetrics.compute_all()
+        weights: Optional weight dict, defaults to balanced weights
+
+    Returns:
+        Extended Q metric (higher = better)
+    """
+    if weights is None:
+        weights = {
+            "dist_corr": 1.0,
+            "hierarchy": 1.5,
+            "level_hierarchy": 0.5,
+            "tree_coherence": 0.3,
+            "cohort_spread": 0.2,
+        }
+
+    # Start with classic Q
+    Q = weights.get("dist_corr", 1.0) * dist_corr
+    Q += weights.get("hierarchy", 1.5) * abs(hierarchy)
+
+    # Add extended metrics if available
+    if ternary_feedback:
+        if "mean_level_hierarchy" in ternary_feedback:
+            Q += weights.get("level_hierarchy", 0) * abs(ternary_feedback["mean_level_hierarchy"])
+
+        if "tree_coherence" in ternary_feedback:
+            tc = ternary_feedback["tree_coherence"]
+            Q += weights.get("tree_coherence", 0) * (1.0 / (1.0 + tc))
+
+        if "mean_cohort_spread" in ternary_feedback:
+            Q += weights.get("cohort_spread", 0) * ternary_feedback["mean_cohort_spread"]
+
+    return Q
 
 
 class StateNet:
@@ -156,6 +218,7 @@ class StateNet:
         hierarchy_B: float,
         dist_corr_A: float = 0.0,
         controller_grad_norm: Optional[float] = None,
+        ternary_feedback: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Update statenet state based on current metrics.
 
@@ -166,12 +229,17 @@ class StateNet:
             hierarchy_B: VAE-B radial hierarchy correlation (negative is good)
             dist_corr_A: VAE-A distance correlation (for Q computation)
             controller_grad_norm: Optional gradient norm of controller params
+            ternary_feedback: Optional dict from TernaryMetrics.compute_all()
+                Contains: level_hierarchy, tree_coherence, cohort_spread, etc.
 
         Returns:
             Dict with trainability states and any triggered events
         """
-        # Compute current Q
-        current_Q = compute_Q(dist_corr_A, hierarchy_A)
+        # Compute current Q (extended if feedback available)
+        if ternary_feedback:
+            current_Q = compute_Q_extended(dist_corr_A, hierarchy_A, ternary_feedback)
+        else:
+            current_Q = compute_Q(dist_corr_A, hierarchy_A)
 
         # Update histories
         self.coverage_history.append(coverage)
@@ -189,7 +257,7 @@ class StateNet:
 
         # Skip statenet during warmup
         if epoch < self.warmup_epochs:
-            return {
+            result = {
                 "encoder_a_trainable": self.encoder_a_trainable,
                 "encoder_b_trainable": self.encoder_b_trainable,
                 "controller_trainable": self.controller_trainable,
@@ -197,6 +265,12 @@ class StateNet:
                 "best_Q": self.best_Q,
                 "events": ["warmup"],
             }
+            # Include extended metrics if available
+            if ternary_feedback:
+                result["ternary_feedback"] = ternary_feedback
+                if "worst_level_idx" in ternary_feedback:
+                    result["worst_level"] = ternary_feedback["worst_level_idx"]
+            return result
 
         # === Encoder A: Coverage-gated ===
         if self._can_change_state(epoch, self.encoder_a_last_change):
@@ -249,7 +323,7 @@ class StateNet:
                         if anneal_event:
                             events.append(anneal_event)
 
-        return {
+        result = {
             "encoder_a_trainable": self.encoder_a_trainable,
             "encoder_b_trainable": self.encoder_b_trainable,
             "controller_trainable": self.controller_trainable,
@@ -257,6 +331,14 @@ class StateNet:
             "best_Q": self.best_Q,
             "events": events,
         }
+        # Include extended metrics if available
+        if ternary_feedback:
+            result["ternary_feedback"] = ternary_feedback
+            if "worst_level_idx" in ternary_feedback:
+                result["worst_level"] = ternary_feedback["worst_level_idx"]
+            if "tree_coherence" in ternary_feedback:
+                result["tree_coherence"] = ternary_feedback["tree_coherence"]
+        return result
 
     def _handle_cycle(
         self,
@@ -522,4 +604,4 @@ class StateNet:
         self.controller_grad_patience = self._initial_controller_patience
 
 
-__all__ = ["StateNet", "compute_Q"]
+__all__ = ["StateNet", "compute_Q", "compute_Q_extended"]
