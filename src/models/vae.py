@@ -99,10 +99,10 @@ def build_decoder(latent_dim: int, hidden_dim: int, decoder_type: str = "improve
 
 
 # =============================================================================
-# TernaryVAEV5_11
+# TernaryVAEV6
 # =============================================================================
 
-class TernaryVAEV5_11(nn.Module):
+class TernaryVAEV6(nn.Module):
     """Dual Ternary VAE with true hyperbolic geometry.
 
     Architecture:
@@ -241,10 +241,10 @@ class TernaryVAEV5_11(nn.Module):
 
 
 # =============================================================================
-# TernaryVAEV5_11_PartialFreeze
+# TernaryVAEV6Controllable
 # =============================================================================
 
-class TernaryVAEV5_11_PartialFreeze(TernaryVAEV5_11):
+class TernaryVAEV6Controllable(TernaryVAEV6):
     """V5.11 VAE with dynamic trainability control for StateNet.
 
     Supports:
@@ -358,6 +358,6 @@ class TernaryVAEV5_11_PartialFreeze(TernaryVAEV5_11):
 
 
 __all__ = [
-    "TernaryVAEV5_11",
-    "TernaryVAEV5_11_PartialFreeze",
+    "TernaryVAEV6",
+    "TernaryVAEV6Controllable",
 ]

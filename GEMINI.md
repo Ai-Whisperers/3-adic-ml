@@ -74,7 +74,7 @@ The StateNet manages component **trainability** (not "freeze" - we use positive 
 
 | File | Purpose |
 |------|---------|
-| `src/models/vae.py` | TernaryVAEV5_11_PartialFreeze - main model |
+| `src/models/vae.py` | TernaryVAEV6Controllable - main model |
 | `src/models/statenet.py` | Q-gated trainability controller |
 | `src/models/hyperbolic_projection.py` | expmap0/logmap0 projections |
 | `src/geometry/poincare.py` | Riemannian backend (geoopt) |

@@ -67,7 +67,7 @@ from src.config.paths import RUNS_DIR, CHECKPOINTS_DIR
 from src.core import TERNARY
 from src.geometry import poincare_distance, get_riemannian_optimizer
 from src.losses import CombinedLoss
-from src.models import StateNet, compute_Q, TernaryVAEV5_11_PartialFreeze
+from src.models import StateNet, compute_Q, TernaryVAEV6Controllable
 from src.utils.checkpoint import load_checkpoint_compat, get_model_state_dict
 
 
@@ -204,12 +204,12 @@ class ModelAuditor:
         print("\n[AUDIT] Model Health Check...")
 
         model_cfg = self.config.get('model', {})
-        model_name = model_cfg.get('name', 'TernaryVAEV5_11_PartialFreeze')
+        model_name = model_cfg.get('name', 'TernaryVAEV6Controllable')
         encoder_type = model_cfg.get('encoder_type', 'improved')
         decoder_type = model_cfg.get('decoder_type', 'improved')
 
         # Instantiate model
-        model = TernaryVAEV5_11_PartialFreeze(
+        model = TernaryVAEV6Controllable(
             latent_dim=model_cfg.get('latent_dim', 16),
             hidden_dim=model_cfg.get('hidden_dim', 64),
             max_radius=model_cfg.get('max_radius', 0.95),
