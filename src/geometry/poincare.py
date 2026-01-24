@@ -10,18 +10,24 @@
 This module provides numerically stable hyperbolic geometry operations
 using geoopt's C++ backend for optimal performance.
 
-Benefits of geoopt backend:
-- 15-20% faster training (C++ backend)
-- Automatic gradient clipping at ball boundary
-- Built-in RiemannianAdam optimizer support
-- Tested numerical stability at edge cases
+IMPORTANT: All functions automatically use the device of input tensors.
+The manifold cache is keyed by (curvature, device) to prevent device mismatches.
 
-Usage:
-    from src.geometry import get_manifold, poincare_distance
+Actively Used Functions (by losses, models, train.py):
+    - poincare_distance: Hyperbolic distance between points
+    - hyperbolic_radius: Distance from origin (used by all losses for radii)
+    - exp_map_zero: Tangent space → manifold (used by HyperbolicProjection)
+    - log_map_zero: Manifold → tangent space (used by VAE decoder)
+    - lambda_x: Conformal factor (used by HyperbolicKLDivergence)
+    - get_riemannian_optimizer: RiemannianAdam/SGD factory
+    - ManifoldParameter: Learnable hyperbolic embeddings
 
-    manifold = get_manifold(c=1.0)
-    dist = poincare_distance(x, y, c=1.0)
-    z_proj = project_to_poincare(z, max_norm=0.95)
+Available Utilities (not currently used but available):
+    - project_to_poincare: Clamp points to ball
+    - mobius_add: Hyperbolic translation
+    - parallel_transport: Move tangent vectors
+    - geodesic, geodesic_interpolation: Interpolation along geodesics
+    - poincare_distance_matrix: All pairwise distances
 
 Reference:
     Nickel & Kiela (2017) "Poincare Embeddings for Learning Hierarchical Representations"
@@ -43,9 +49,14 @@ _manifold_cache = {}
 def get_manifold(c: float = 1.0, device: torch.device | str | None = None) -> GeooptPoincareBall:
     """Get a PoincareBall manifold with specified curvature and device.
 
+    IMPORTANT: Always pass device explicitly via `device=x.device` to ensure
+    the manifold's internal tensors are on the correct device. Using device=None
+    defaults to CPU which may cause device mismatch errors.
+
     Args:
         c: Curvature parameter (c > 0 for hyperbolic space)
-        device: Device for manifold tensors (default: CPU)
+        device: Device for manifold tensors. Pass tensor.device to match tensor.
+                Defaults to CPU if None (not recommended for GPU training).
 
     Returns:
         geoopt.PoincareBall manifold with internal tensors on the specified device
@@ -86,6 +97,31 @@ def poincare_distance(x: torch.Tensor, y: torch.Tensor, c: float = 1.0, keepdim:
     """
     manifold = get_manifold(c, device=x.device)
     return manifold.dist(x, y, keepdim=keepdim)
+
+
+def hyperbolic_radius(z: torch.Tensor, c: float = 1.0, keepdim: bool = False) -> torch.Tensor:
+    """Compute hyperbolic distance from origin (radius in Poincaré ball).
+
+    This is the canonical way to compute radii for hierarchy losses.
+    Avoids creating temporary zero tensors and ensures correct device handling.
+
+    The hyperbolic radius is NOT the same as Euclidean norm. Near the boundary,
+    hyperbolic radius grows faster than Euclidean norm due to the metric.
+
+    Args:
+        z: Points on Poincaré ball, shape (..., dim)
+        c: Curvature parameter
+        keepdim: Whether to keep the last dimension
+
+    Returns:
+        Hyperbolic radii (distances from origin), shape (...) or (..., 1)
+
+    Example:
+        >>> z = model.encode(x)  # Get hyperbolic embeddings
+        >>> radii = hyperbolic_radius(z, c=1.0)  # Compute radii for loss
+    """
+    origin = torch.zeros_like(z)
+    return poincare_distance(z, origin, c=c, keepdim=keepdim)
 
 
 def project_to_poincare(z: torch.Tensor, max_norm: float = 0.95, c: float = 1.0) -> torch.Tensor:
@@ -241,6 +277,12 @@ class PoincareModule(nn.Module):
     Provides convenient access to manifold operations with consistent
     curvature handling across the network.
 
+    NOTE: This class is not currently used by the p-adic VAE architecture.
+    It's available for custom hyperbolic layers if needed.
+
+    IMPORTANT: The manifold property returns a device-specific manifold
+    based on the module's current device. Use module.to(device) to move.
+
     Usage:
         class MyHyperbolicLayer(PoincareModule):
             def __init__(self, c=1.0):
@@ -254,12 +296,17 @@ class PoincareModule(nn.Module):
         super().__init__()
         self.c = c
         self.max_norm = max_norm
-        self._manifold = get_manifold(c)
+        # Register a dummy parameter to track device
+        self.register_buffer('_device_tracker', torch.zeros(1))
 
     @property
     def manifold(self):
-        """Get the geoopt manifold."""
-        return self._manifold
+        """Get the geoopt manifold on the correct device."""
+        return get_manifold(self.c, device=self._device_tracker.device)
+
+    def radius(self, z: torch.Tensor) -> torch.Tensor:
+        """Compute hyperbolic radius (distance from origin)."""
+        return hyperbolic_radius(z, self.c)
 
     def dist(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Compute Poincare distance."""
@@ -382,22 +429,25 @@ def poincare_distance_matrix(z: torch.Tensor, c: float = 1.0) -> torch.Tensor:
 
 
 __all__ = [
+    # Core functions (actively used)
     "get_manifold",
     "poincare_distance",
-    "poincare_distance_matrix",
-    "project_to_poincare",
+    "hyperbolic_radius",
     "exp_map_zero",
     "log_map_zero",
-    "mobius_add",
     "lambda_x",
+    "get_riemannian_optimizer",
+    "ManifoldParameter",
+    # Utility functions (available but not currently used)
+    "poincare_distance_matrix",
+    "project_to_poincare",
+    "mobius_add",
     "parallel_transport",
     "geodesic",
     "geodesic_interpolation",
     "PoincareModule",
     "create_manifold_parameter",
     "create_manifold_tensor",
-    "get_riemannian_optimizer",
-    "ManifoldParameter",
     "ManifoldTensor",
     "RiemannianAdam",
     "RiemannianSGD",
