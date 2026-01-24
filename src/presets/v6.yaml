@@ -106,32 +106,38 @@ statenet:
   enabled: true
 
   # Initial trainability states (before StateNet takes over)
-  encoder_a_trainable: false      # Start fixed (coverage anchor)
-  encoder_b_trainable: true       # Start trainable (hierarchy learner)
-  projections_trainable: true     # Start trainable (fast adapter)
+  initial:
+    encoder_a_trainable: false    # Start fixed (coverage anchor)
+    encoder_b_trainable: true     # Start trainable (hierarchy learner)
+    projections_trainable: true   # Start trainable (fast adapter)
 
   # Coverage thresholds (encoder_a control)
-  coverage_fix_threshold: 0.995    # Fix encoder when coverage drops below
-  coverage_train_threshold: 1.0    # Allow training when coverage above
-  coverage_floor: 0.95
-
-  # Warmup and hysteresis
-  warmup_epochs: 10
-  hysteresis_epochs: 5
-
-  # Threshold annealing (Q-gated)
-  enable_annealing: true
-  annealing_step: 0.002
+  coverage:
+    fix_threshold: 0.995          # Fix encoder when coverage drops below
+    train_threshold: 1.0          # Allow training when coverage above
+    floor: 0.95
 
   # Hierarchy plateau detection (encoder_b control)
-  hierarchy_plateau_threshold: 0.0005
-  hierarchy_plateau_patience: 10
-  hierarchy_patience_ceiling: 25
+  hierarchy:
+    plateau_threshold: 0.0005
+    plateau_patience: 10
+    patience_ceiling: 25
 
   # Controller/Projections gradient monitoring
-  controller_grad_threshold: 0.005
-  controller_grad_patience: 5
-  controller_patience_ceiling: 20
+  controller:
+    grad_threshold: 0.005
+    grad_patience: 5
+    patience_ceiling: 20
+
+  # Threshold annealing (Q-gated)
+  annealing:
+    enabled: true
+    step: 0.002
+
+  # Timing configuration
+  timing:
+    warmup_epochs: 10
+    hysteresis_epochs: 5
 
 # =============================================================================
 # Loss Configuration

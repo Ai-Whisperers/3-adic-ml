@@ -69,10 +69,12 @@ from src.core import TERNARY
 from src.geometry import poincare_distance, get_riemannian_optimizer
 from src.losses import CombinedLoss
 from src.models import (
-    StateNet, compute_Q, TernaryVAEV6Controllable,
-    # V6.0: LRController for unified training control
-    MetricBasedLR, ScheduleBasedLR, TrainingMetrics,
-    update_optimizer_lr_scales, get_optimizer_grad_stats,
+    TernaryVAEV6Controllable,
+    compute_Q,
+    MetricBasedLR,
+    TrainingMetrics,
+    update_optimizer_lr_scales,
+    get_optimizer_grad_stats,
 )
 from src.utils.checkpoint import load_checkpoint_compat, get_model_state_dict
 from src.utils import TensorBoardLogger, TENSORBOARD_AVAILABLE, HardwareMonitor
@@ -629,43 +631,20 @@ def train(
     loss_fn = CombinedLoss(loss_cfg, curvature=curvature, device=device)
     print(f"  Loss functions: {loss_fn.get_enabled_losses()}")
 
-    # Training controller (V6.0: LRController replaces StateNet)
-    # LRController uses LR=0 for frozen components instead of requires_grad toggle
+    # Training controller (LR=0 for frozen components)
     lr_controller = None
-    statenet = None  # Legacy compatibility
-    use_lr_controller = statenet_cfg.get('use_lr_controller', True)  # Default to new system
 
     if statenet_cfg.get('enabled', False):
-        if use_lr_controller:
-            # V6.0: Use centralized StateNetConfig + MetricBasedLR
-            sn_config = StateNetConfig.from_dict(statenet_cfg)
+        sn_config = StateNetConfig.from_dict(statenet_cfg)
 
-            # Also merge option_c LR scales if present
-            if option_c_cfg.get('enabled', True):
-                sn_config.lr_scales.encoder_a = option_c_cfg.get('encoder_a_lr_scale', 0.05)
-                sn_config.lr_scales.encoder_b = option_c_cfg.get('encoder_b_lr_scale', 0.1)
-                sn_config.lr_scales.projections = option_c_cfg.get('projections_lr_scale', 1.0)
+        # Merge option_c LR scales if present
+        if option_c_cfg.get('enabled', True):
+            sn_config.lr_scales.encoder_a = option_c_cfg.get('encoder_a_lr_scale', 0.05)
+            sn_config.lr_scales.encoder_b = option_c_cfg.get('encoder_b_lr_scale', 0.1)
+            sn_config.lr_scales.projections = option_c_cfg.get('projections_lr_scale', 1.0)
 
-            lr_controller = MetricBasedLR(sn_config)
-            print(f"  LRController: MetricBasedLR ({sn_config.summary()})")
-        else:
-            # Legacy StateNet (for backwards compatibility)
-            statenet = StateNet(
-                coverage_fix_threshold=statenet_cfg.get('coverage_fix_threshold', 0.995),
-                coverage_train_threshold=statenet_cfg.get('coverage_train_threshold', 0.999),
-                coverage_floor=statenet_cfg.get('coverage_floor', 0.95),
-                warmup_epochs=statenet_cfg.get('warmup_epochs', 10),
-                hysteresis_epochs=statenet_cfg.get('hysteresis_epochs', 5),
-                enable_annealing=statenet_cfg.get('enable_annealing', True),
-                annealing_step=statenet_cfg.get('annealing_step', 0.005),
-                hierarchy_plateau_threshold=statenet_cfg.get('hierarchy_plateau_threshold', 0.001),
-                hierarchy_plateau_patience=statenet_cfg.get('hierarchy_plateau_patience', 15),
-                hierarchy_patience_ceiling=statenet_cfg.get('hierarchy_patience_ceiling', 30),
-                controller_grad_threshold=statenet_cfg.get('controller_grad_threshold', 0.01),
-                controller_grad_patience=statenet_cfg.get('controller_grad_patience', 10),
-                controller_patience_ceiling=statenet_cfg.get('controller_patience_ceiling', 20),
-            )
-            print("  StateNet: Enabled (legacy mode)")
+        lr_controller = MetricBasedLR(sn_config)
+        print(f"  LRController: MetricBasedLR ({sn_config.summary()})")
     else:
         print("  Training controller: Disabled")
 
@@ -876,7 +855,7 @@ def train(
 
             # Get gradient statistics from optimizer (V6.0: avoids manual grad loop)
             controller_grad_norm = None
-            if lr_controller is not None or statenet is not None:
+            if lr_controller is not None:
                 grad_stats = get_optimizer_grad_stats(optimizer, 'projections')
                 controller_grad_norm = grad_stats.get('grad_norm_estimate', 0.0)
 
@@ -911,20 +890,6 @@ def train(
                 scales = controller_state['lr_scales']
                 train_summary = f"A:{scales.get('encoder_a', 0):.2f} B:{scales.get('encoder_b', 0):.2f} P:{scales.get('projections', 0):.2f}"
 
-            elif statenet is not None:
-                # Legacy StateNet path
-                statenet_state = statenet.update(
-                    epoch=epoch,
-                    coverage=avg_val_coverage,
-                    hierarchy_A=hier_metrics_A['hierarchy'],
-                    hierarchy_B=hier_metrics_B['hierarchy'],
-                    dist_corr_A=hier_metrics_A['dist_corr'],
-                    controller_grad_norm=controller_grad_norm,
-                )
-                model.apply_statenet_state(statenet_state)
-                train_summary = model.get_trainability_summary()
-                controller_state = statenet_state  # For TensorBoard logging
-
             # Grokking detection
             grok_state = grokking_detector.update(epoch, avg_train_loss, avg_train_acc, avg_val_acc)
             if grok_state['event']:
@@ -952,34 +917,23 @@ def train(
 
                 # Training controller metrics
                 if controller_state is not None:
-                    if lr_controller is not None:
-                        # V6.0: Log LR scales (continuous, 0.0 = frozen)
-                        scales = controller_state.get('lr_scales', {})
-                        tb_logger.writer.add_scalar('LRController/encoder_a_lr_scale',
-                                                     scales.get('encoder_a', 0), epoch)
-                        tb_logger.writer.add_scalar('LRController/encoder_b_lr_scale',
-                                                     scales.get('encoder_b', 0), epoch)
-                        tb_logger.writer.add_scalar('LRController/projections_lr_scale',
-                                                     scales.get('projections', 0), epoch)
-                        tb_logger.writer.add_scalar('LRController/best_Q',
-                                                     controller_state.get('best_q', 0), epoch)
+                    # V6.0: Log LR scales (continuous, 0.0 = frozen)
+                    scales = controller_state.get('lr_scales', {})
+                    tb_logger.writer.add_scalar('LRController/encoder_a_lr_scale',
+                                                 scales.get('encoder_a', 0), epoch)
+                    tb_logger.writer.add_scalar('LRController/encoder_b_lr_scale',
+                                                 scales.get('encoder_b', 0), epoch)
+                    tb_logger.writer.add_scalar('LRController/projections_lr_scale',
+                                                 scales.get('projections', 0), epoch)
+                    tb_logger.writer.add_scalar('LRController/best_Q',
+                                                 controller_state.get('best_q', 0), epoch)
 
-                        # Log events if any
-                        events = controller_state.get('events', [])
-                        if events and events != ['warmup']:
-                            print(f"    LRController events: {events}")
-                    else:
-                        # Legacy StateNet logging
-                        tb_logger.writer.add_scalar('StateNet/encoder_a_trainable',
-                                                     int(controller_state['encoder_a_trainable']), epoch)
-                        tb_logger.writer.add_scalar('StateNet/encoder_b_trainable',
-                                                     int(controller_state['encoder_b_trainable']), epoch)
-                        tb_logger.writer.add_scalar('StateNet/controller_trainable',
-                                                     int(controller_state['controller_trainable']), epoch)
-                        tb_logger.writer.add_scalar('StateNet/best_Q',
-                                                     controller_state.get('best_Q', 0), epoch)
+                    # Log events if any
+                    events = controller_state.get('events', [])
+                    if events and events != ['warmup']:
+                        print(f"    LRController events: {events}")
 
-                    # Grad norm (common to both)
+                    # Grad norm
                     if controller_grad_norm is not None:
                         tb_logger.writer.add_scalar('Controller/grad_norm', controller_grad_norm, epoch)
 

@@ -15,7 +15,6 @@ from .poincare import (
     parallel_transport,
     geodesic,
     geodesic_interpolation,
-    PoincareModule,
     create_manifold_parameter,
     create_manifold_tensor,
     ManifoldTensor,

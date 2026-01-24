@@ -44,6 +44,16 @@ import torch.nn as nn
 from src.config.statenet_config import StateNetConfig
 
 
+def compute_Q(dist_corr: float, hierarchy: float) -> float:
+    """Compute conserved structure capacity Q.
+
+    Q = dist_corr + 1.5 × |hierarchy|
+
+    Higher Q indicates better structure learning.
+    """
+    return dist_corr + 1.5 * abs(hierarchy)
+
+
 @dataclass
 class TrainingMetrics:
     """Snapshot of metrics for LR decisions."""

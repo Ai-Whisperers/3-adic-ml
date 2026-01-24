@@ -6,7 +6,6 @@
 """Centralized StateNet Configuration.
 
 Single source of truth for all training control parameters.
-Replaces scattered constants across config files, statenet.py, and train.py.
 
 Usage:
     from src.config import StateNetConfig
@@ -18,11 +17,11 @@ Usage:
     config = StateNetConfig()
 
     # Access via dot notation
-    print(config.coverage_fix_threshold)
+    print(config.coverage.fix_threshold)
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 @dataclass
@@ -86,19 +85,23 @@ class InitialStates:
 
 @dataclass
 class StateNetConfig:
-    """Centralized configuration for StateNet controller.
+    """Centralized configuration for LR Controller.
 
-    Consolidates all 17+ scattered thresholds into a single dataclass.
+    Consolidates all training control thresholds into a single dataclass.
     Provides type safety, defaults, and easy YAML serialization.
 
-    Example:
-        config = StateNetConfig.from_dict({
-            'enabled': True,
-            'coverage_fix_threshold': 0.99,
-            'warmup_epochs': 15,
-        })
+    YAML format (nested structure required):
+        statenet:
+          enabled: true
+          coverage:
+            fix_threshold: 0.995
+            train_threshold: 1.0
+          hierarchy:
+            plateau_patience: 10
+          timing:
+            warmup_epochs: 15
     """
-    # Enable/disable StateNet
+    # Enable/disable training controller
     enabled: bool = True
 
     # Component thresholds (grouped)
@@ -122,34 +125,23 @@ class StateNetConfig:
     def from_dict(cls, d: Dict[str, Any]) -> "StateNetConfig":
         """Create config from dictionary (e.g., from YAML).
 
-        Supports both flat keys (legacy) and nested structure.
+        Args:
+            d: Nested config dictionary
 
-        Flat keys (legacy compatibility):
-            coverage_fix_threshold, coverage_train_threshold, coverage_floor,
-            hierarchy_plateau_threshold, hierarchy_plateau_patience, etc.
-
-        Nested structure (preferred):
-            coverage:
-              fix_threshold: 0.995
-            hierarchy:
-              plateau_patience: 10
+        Returns:
+            StateNetConfig instance
         """
         config = cls()
 
         # Enable flag
         config.enabled = d.get('enabled', config.enabled)
 
-        # Coverage thresholds (flat or nested)
+        # Coverage thresholds
         if 'coverage' in d and isinstance(d['coverage'], dict):
             cov = d['coverage']
             config.coverage.fix_threshold = cov.get('fix_threshold', config.coverage.fix_threshold)
             config.coverage.train_threshold = cov.get('train_threshold', config.coverage.train_threshold)
             config.coverage.floor = cov.get('floor', config.coverage.floor)
-        else:
-            # Legacy flat keys
-            config.coverage.fix_threshold = d.get('coverage_fix_threshold', config.coverage.fix_threshold)
-            config.coverage.train_threshold = d.get('coverage_train_threshold', config.coverage.train_threshold)
-            config.coverage.floor = d.get('coverage_floor', config.coverage.floor)
 
         # Hierarchy thresholds
         if 'hierarchy' in d and isinstance(d['hierarchy'], dict):
@@ -158,10 +150,6 @@ class StateNetConfig:
             config.hierarchy.plateau_patience = hier.get('plateau_patience', config.hierarchy.plateau_patience)
             config.hierarchy.patience_ceiling = hier.get('patience_ceiling', config.hierarchy.patience_ceiling)
             config.hierarchy.stall_patience = hier.get('stall_patience', config.hierarchy.stall_patience)
-        else:
-            config.hierarchy.plateau_threshold = d.get('hierarchy_plateau_threshold', config.hierarchy.plateau_threshold)
-            config.hierarchy.plateau_patience = d.get('hierarchy_plateau_patience', config.hierarchy.plateau_patience)
-            config.hierarchy.patience_ceiling = d.get('hierarchy_patience_ceiling', config.hierarchy.patience_ceiling)
 
         # Controller thresholds
         if 'controller' in d and isinstance(d['controller'], dict):
@@ -170,10 +158,6 @@ class StateNetConfig:
             config.controller.grad_patience = ctrl.get('grad_patience', config.controller.grad_patience)
             config.controller.patience_ceiling = ctrl.get('patience_ceiling', config.controller.patience_ceiling)
             config.controller.spike_multiplier = ctrl.get('spike_multiplier', config.controller.spike_multiplier)
-        else:
-            config.controller.grad_threshold = d.get('controller_grad_threshold', config.controller.grad_threshold)
-            config.controller.grad_patience = d.get('controller_grad_patience', config.controller.grad_patience)
-            config.controller.patience_ceiling = d.get('controller_patience_ceiling', config.controller.patience_ceiling)
 
         # Annealing
         if 'annealing' in d and isinstance(d['annealing'], dict):
@@ -181,9 +165,6 @@ class StateNetConfig:
             config.annealing.enabled = ann.get('enabled', config.annealing.enabled)
             config.annealing.step = ann.get('step', config.annealing.step)
             config.annealing.q_decrease_threshold = ann.get('q_decrease_threshold', config.annealing.q_decrease_threshold)
-        else:
-            config.annealing.enabled = d.get('enable_annealing', config.annealing.enabled)
-            config.annealing.step = d.get('annealing_step', config.annealing.step)
 
         # Timing
         if 'timing' in d and isinstance(d['timing'], dict):
@@ -191,21 +172,14 @@ class StateNetConfig:
             config.timing.warmup_epochs = tim.get('warmup_epochs', config.timing.warmup_epochs)
             config.timing.hysteresis_epochs = tim.get('hysteresis_epochs', config.timing.hysteresis_epochs)
             config.timing.window_size = tim.get('window_size', config.timing.window_size)
-        else:
-            config.timing.warmup_epochs = d.get('warmup_epochs', config.timing.warmup_epochs)
-            config.timing.hysteresis_epochs = d.get('hysteresis_epochs', config.timing.hysteresis_epochs)
 
-        # LR scales (from option_c or nested)
+        # LR scales
         if 'lr_scales' in d and isinstance(d['lr_scales'], dict):
             lr = d['lr_scales']
             config.lr_scales.encoder_a = lr.get('encoder_a', config.lr_scales.encoder_a)
             config.lr_scales.encoder_b = lr.get('encoder_b', config.lr_scales.encoder_b)
             config.lr_scales.projections = lr.get('projections', config.lr_scales.projections)
             config.lr_scales.decoders = lr.get('decoders', config.lr_scales.decoders)
-        else:
-            config.lr_scales.encoder_a = d.get('encoder_a_lr_scale', config.lr_scales.encoder_a)
-            config.lr_scales.encoder_b = d.get('encoder_b_lr_scale', config.lr_scales.encoder_b)
-            config.lr_scales.projections = d.get('projections_lr_scale', config.lr_scales.projections)
 
         # Initial states
         if 'initial' in d and isinstance(d['initial'], dict):
@@ -213,10 +187,6 @@ class StateNetConfig:
             config.initial.encoder_a_trainable = init.get('encoder_a_trainable', config.initial.encoder_a_trainable)
             config.initial.encoder_b_trainable = init.get('encoder_b_trainable', config.initial.encoder_b_trainable)
             config.initial.projections_trainable = init.get('projections_trainable', config.initial.projections_trainable)
-        else:
-            config.initial.encoder_a_trainable = d.get('encoder_a_trainable', config.initial.encoder_a_trainable)
-            config.initial.encoder_b_trainable = d.get('encoder_b_trainable', config.initial.encoder_b_trainable)
-            config.initial.projections_trainable = d.get('projections_trainable', config.initial.projections_trainable)
 
         return config
 

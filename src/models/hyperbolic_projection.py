@@ -196,7 +196,6 @@ class DualHyperbolicProjection(nn.Module):
         hidden_dim: int = 64,
         max_radius: float = 0.95,
         curvature: float = 1.0,
-        share_direction: bool = False,  # Deprecated, kept for API compat
         n_layers: int = 1,
         dropout: float = 0.0,
         learnable_curvature: bool = False,
@@ -208,7 +207,6 @@ class DualHyperbolicProjection(nn.Module):
             hidden_dim: Hidden dimension for tangent networks
             max_radius: Maximum Poincaré ball radius
             curvature: Hyperbolic curvature
-            share_direction: Deprecated (was for direction*radius approach)
             n_layers: Number of hidden layers
             dropout: Dropout rate
             learnable_curvature: If True, curvature is learnable

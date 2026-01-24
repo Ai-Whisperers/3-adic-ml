@@ -767,10 +767,7 @@ class RichHierarchyLoss(nn.Module):
             separation_loss = separation_loss + violation
 
         # Return raw components - CombinedLoss applies weights from config
-        # Note: 'total' is sum of raw components for backward compatibility
-        total = hierarchy_loss + coverage_loss + separation_loss
-
-        return {"total": total, "hierarchy": hierarchy_loss, "coverage": coverage_loss, "separation": separation_loss}
+        return {"hierarchy": hierarchy_loss, "coverage": coverage_loss, "separation": separation_loss}
 
 
 __all__ = [

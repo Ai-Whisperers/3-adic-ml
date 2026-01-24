@@ -37,7 +37,6 @@ Reference:
 # geoopt is a required dependency
 import geoopt
 import torch
-import torch.nn as nn
 from geoopt import ManifoldParameter, ManifoldTensor
 from geoopt import PoincareBall as GeooptPoincareBall
 from geoopt.optim import RiemannianAdam, RiemannianSGD
@@ -271,80 +270,6 @@ def geodesic_interpolation(x: torch.Tensor, y: torch.Tensor, steps: int = 10, c:
     return torch.stack([manifold.geodesic(t.item(), x, y) for t in t_values])
 
 
-class PoincareModule(nn.Module):
-    """Base module for Poincare ball operations.
-
-    Provides convenient access to manifold operations with consistent
-    curvature handling across the network.
-
-    NOTE: This class is not currently used by the p-adic VAE architecture.
-    It's available for custom hyperbolic layers if needed.
-
-    IMPORTANT: The manifold property returns a device-specific manifold
-    based on the module's current device. Use module.to(device) to move.
-
-    Usage:
-        class MyHyperbolicLayer(PoincareModule):
-            def __init__(self, c=1.0):
-                super().__init__(c)
-
-            def forward(self, x, y):
-                return self.dist(x, y)
-    """
-
-    def __init__(self, c: float = 1.0, max_norm: float = 0.95):
-        super().__init__()
-        self.c = c
-        self.max_norm = max_norm
-        # Register a dummy parameter to track device
-        self.register_buffer('_device_tracker', torch.zeros(1))
-
-    @property
-    def manifold(self):
-        """Get the geoopt manifold on the correct device."""
-        return get_manifold(self.c, device=self._device_tracker.device)
-
-    def radius(self, z: torch.Tensor) -> torch.Tensor:
-        """Compute hyperbolic radius (distance from origin)."""
-        return hyperbolic_radius(z, self.c)
-
-    def dist(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """Compute Poincare distance."""
-        return poincare_distance(x, y, self.c)
-
-    def proj(self, z: torch.Tensor) -> torch.Tensor:
-        """Project to Poincare ball."""
-        return project_to_poincare(z, self.max_norm, self.c)
-
-    def expmap0(self, v: torch.Tensor) -> torch.Tensor:
-        """Exponential map from origin."""
-        return exp_map_zero(v, self.c)
-
-    def logmap0(self, z: torch.Tensor) -> torch.Tensor:
-        """Logarithmic map to origin."""
-        return log_map_zero(z, self.c, self.max_norm)
-
-    def add(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """Mobius addition."""
-        return mobius_add(x, y, self.c)
-
-    def conformal(self, x: torch.Tensor) -> torch.Tensor:
-        """Conformal factor at x."""
-        return lambda_x(x, self.c)
-
-    def transport(self, x: torch.Tensor, y: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        """Parallel transport v from x to y."""
-        return parallel_transport(x, y, v, self.c)
-
-    def geodesic(self, x: torch.Tensor, y: torch.Tensor, t: float) -> torch.Tensor:
-        """Interpolate along geodesic from x to y at parameter t."""
-        return geodesic(x, y, t, self.c)
-
-    def geodesic_path(self, x: torch.Tensor, y: torch.Tensor, steps: int = 10) -> torch.Tensor:
-        """Generate points along geodesic from x to y."""
-        return geodesic_interpolation(x, y, steps, self.c)
-
-
 def create_manifold_parameter(data: torch.Tensor, c: float = 1.0, requires_grad: bool = True) -> ManifoldParameter:
     """Create a learnable parameter that lives on the Poincare ball.
 
@@ -445,7 +370,6 @@ __all__ = [
     "parallel_transport",
     "geodesic",
     "geodesic_interpolation",
-    "PoincareModule",
     "create_manifold_parameter",
     "create_manifold_tensor",
     "ManifoldTensor",

@@ -44,18 +44,23 @@ anchor_checkpoint:
 # StateNet Control (Enhanced for extended training)
 statenet:
   enabled: true
-  coverage_fix_threshold: 0.995     # Fix encoder when coverage drops below this
-  coverage_train_threshold: 1.0     # Allow training when coverage is above this
-  coverage_floor: 0.95
-  warmup_epochs: 10  # Longer warmup for stability
-  hysteresis_epochs: 5  # More conservative state changes
-  enable_annealing: true
-  annealing_step: 0.002  # Slower annealing for long training
-  hierarchy_plateau_threshold: 0.0005  # More sensitive plateau detection
-  hierarchy_plateau_patience: 10
-  hierarchy_patience_ceiling: 25
-  controller_grad_threshold: 0.005  # More sensitive gradient monitoring
-  controller_grad_patience: 5
+  coverage:
+    fix_threshold: 0.995       # Fix encoder when coverage drops below
+    train_threshold: 1.0       # Allow training when coverage above
+    floor: 0.95
+  hierarchy:
+    plateau_threshold: 0.0005  # More sensitive plateau detection
+    plateau_patience: 10
+    patience_ceiling: 25
+  controller:
+    grad_threshold: 0.005      # More sensitive gradient monitoring
+    grad_patience: 5
+  annealing:
+    enabled: true
+    step: 0.002                # Slower annealing for long training
+  timing:
+    warmup_epochs: 10          # Longer warmup for stability
+    hysteresis_epochs: 5       # More conservative state changes
 
 # NOTE: Progressive unfreezing replaced by StateNet trainability control
 # StateNet dynamically controls encoder_a/encoder_b/controller trainability
