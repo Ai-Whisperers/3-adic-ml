@@ -187,7 +187,7 @@ class CombinedLoss(nn.Module):
         """
         device = z_hyp.device
         losses = {}
-        total = torch.tensor(0.0, device=device)
+        total = torch.tensor(0.0, device=device, dtype=torch.float64)
 
         # 1. RichHierarchyLoss (if enabled)
         if self.rich_hierarchy is not None:
@@ -275,7 +275,7 @@ class CombinedLoss(nn.Module):
             )
         else:
             # Unsupported shape - return zero loss with warning
-            return torch.tensor(0.0, device=device)
+            return torch.tensor(0.0, device=device, dtype=torch.float64)
 
     def get_enabled_losses(self) -> list:
         """Return list of enabled loss names."""
