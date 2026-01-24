@@ -21,21 +21,21 @@ These audits cover individual `src/` modules with detailed analysis of correctne
 
 | Module | File | Rating | Key Finding |
 |--------|------|--------|-------------|
-| **src/core/** | [CORE_MODULE_AUDIT.md](CORE_MODULE_AUDIT.md) | **10/10** | Exemplary singleton with O(1) LUT operations |
-| **src/losses/** | [LOSSES_MODULE_AUDIT.md](LOSSES_MODULE_AUDIT.md) | **9/10** | Strongest module; correct poincare_distance usage |
-| **src/utils/** | [UTILS_MODULE_AUDIT.md](UTILS_MODULE_AUDIT.md) | **8.5/10** | Solid infrastructure with graceful degradation |
+| **src/core/** | [CORE_MODULE_AUDIT.md](CORE_MODULE_AUDIT.md) | **7.5/10** | Good LUT design but dead code, silent error masking, race conditions |
+| **src/losses/** | [LOSSES_MODULE_AUDIT.md](LOSSES_MODULE_AUDIT.md) | **8/10** | Correct geometry but device mismatches, hardcoded magic numbers |
+| **src/utils/** | [UTILS_MODULE_AUDIT.md](UTILS_MODULE_AUDIT.md) | **7/10** | KeyError risks, dead imports, fragile model signatures |
 | **src/geometry/** | [GEOMETRY_MODULE_AUDIT.md](GEOMETRY_MODULE_AUDIT.md) | **8/10** | Ready for true hyperbolic; minor optimizations needed |
 | **src/config/** + **src/presets/** | [CONFIG_PRESETS_MODULE_AUDIT.md](CONFIG_PRESETS_MODULE_AUDIT.md) | **8/10** | Good separation of concerns |
 | **src/models/** | [MODELS_MODULE_AUDIT.md](MODELS_MODULE_AUDIT.md) | **6/10** | **Critical flaw**: decoder ignores z_hyp |
 
-### Module Ratings Summary
+### Module Ratings Summary (Revised 2025-01-23)
 
 ```
-src/core/       ██████████  10/10  Exemplary
-src/losses/     █████████░   9/10  Excellent
-src/utils/      ████████▌░  8.5/10  Very Good
 src/geometry/   ████████░░   8/10  Good
 src/config/     ████████░░   8/10  Good
+src/losses/     ████████░░   8/10  Good (was 9)
+src/core/       ███████▌░░  7.5/10 Good (was 10)
+src/utils/      ███████░░░   7/10  Acceptable (was 8.5)
 src/models/     ██████░░░░   6/10  Needs Work
 ```
 
@@ -88,13 +88,26 @@ Older audits retained for reference. Some findings may be outdated.
 | **Euclidean reparameterization** | 🟠 High | models | Should use wrapped normal on manifold |
 | **Euclidean projection math** | 🟠 High | models | Should use expmap0, not direction × radius |
 
+### Code Quality Issues (Found on Re-review)
+
+| Issue | Severity | Module | Description |
+|-------|----------|--------|-------------|
+| **Device mismatch in losses** | 🟠 Medium | losses | `torch.tensor(0.0)` creates CPU tensors in GPU context |
+| **Silent error masking** | 🟠 Medium | core | `torch.clamp` silently masks invalid inputs |
+| **KeyError risks** | 🟠 Medium | utils | Direct dict access without `.get()` defaults |
+| **Dead code/imports** | 🟡 Low | core, utils | `self._device` unused, `numpy` imported but never used |
+| **Race conditions** | 🟡 Low | core | Cache not thread-safe |
+| **Hardcoded magic numbers** | 🟡 Low | losses | 0.25, 0.5, 0.01 scattered throughout |
+| **Non-reproducible sampling** | 🟡 Low | utils | `random.sample` not seeded in TensorBoard logger |
+| **Fragile model signatures** | 🟡 Low | utils | `model(x, 1.0, 1.0, 0.5, 0.5)` hardcoded |
+
 ### Positive Findings
 
 | Finding | Module | Impact |
 |---------|--------|--------|
 | Correct poincare_distance usage | losses | All losses compute hyperbolic radii correctly |
-| O(1) valuation lookups | core | Efficient 3-adic computations |
-| Seeded generators | losses | Reproducible training |
+| O(1) valuation lookups | core | Efficient 3-adic computations (when inputs valid) |
+| Seeded generators | losses | Reproducible pair sampling in loss functions |
 | Config-driven composition | losses | Flexible loss function assembly |
 | Graceful degradation | utils | TensorBoard optional |
 
