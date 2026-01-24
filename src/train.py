@@ -228,11 +228,12 @@ class ModelAuditor:
         encoder_b_lr_scale = option_c_cfg.get('encoder_b_lr_scale', 0.1)
         projections_lr_scale = option_c_cfg.get('projections_lr_scale', 1.0)
 
-        # Initial trainability from statenet config
+        # Initial trainability from statenet config (nested structure)
         statenet_cfg = self.config.get('statenet', {})
-        encoder_a_trainable = statenet_cfg.get('encoder_a_trainable', False)
-        encoder_b_trainable = statenet_cfg.get('encoder_b_trainable', True)
-        projections_trainable = statenet_cfg.get('projections_trainable', True)
+        initial_cfg = statenet_cfg.get('initial', {})
+        encoder_a_trainable = initial_cfg.get('encoder_a_trainable', False)
+        encoder_b_trainable = initial_cfg.get('encoder_b_trainable', True)
+        projections_trainable = initial_cfg.get('projections_trainable', True)
 
         # Instantiate model
         model = TernaryVAEV6Controllable(
@@ -591,6 +592,7 @@ def train(
     loss_cfg = config.get('loss', {})
     riemannian_cfg = config.get('riemannian', {})
     option_c_cfg = config.get('option_c', {})
+    memory_cfg = config.get('memory', {})
 
     # Hyperparameters
     epochs = train_cfg.get('epochs', 100)
@@ -691,7 +693,12 @@ def train(
     # Config for enhanced logging
     histogram_every = logging_cfg.get('histogram_every', 10)
     embedding_every = logging_cfg.get('embedding_every', 50)
-    log_batch_metrics = logging_cfg.get('enhanced_metrics', {}).get('enabled', False)
+    enhanced_cfg = logging_cfg.get('enhanced_metrics', {})
+    log_batch_metrics = enhanced_cfg.get('enabled', False)
+    log_gradients = enhanced_cfg.get('log_gradients', False)
+
+    # Memory management
+    empty_cache_freq = memory_cfg.get('empty_cache_freq', 25)
 
     # Checkpoints directory
     ckpt_dir = log_dir / 'checkpoints'
@@ -951,6 +958,16 @@ def train(
                 if tb_logger.is_available:
                     tb_logger.log_histograms(epoch, model)
 
+                    # Gradient norms per layer (if enabled)
+                    if log_gradients:
+                        for name, param in model.named_parameters():
+                            if param.grad is not None:
+                                tb_logger.writer.add_scalar(
+                                    f'Gradients/{name}',
+                                    param.grad.norm(2).item(),
+                                    epoch
+                                )
+
             # Track best metrics (use VAE-A as primary)
             if hier_metrics_A['Q'] > best_Q:
                 best_Q = hier_metrics_A['Q']
@@ -1005,6 +1022,10 @@ def train(
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
             }, ckpt_dir / f'epoch_{epoch}.pt')
+
+        # Periodic memory cleanup
+        if device.type == 'cuda' and epoch % empty_cache_freq == 0 and epoch > 0:
+            torch.cuda.empty_cache()
 
     # Final checkpoint
     torch.save({
@@ -1090,6 +1111,12 @@ def main():
     if not args.amp and device_cfg.get('use_amp', False):
         args.amp = True
         print("  Using AMP from config")
+
+    # Memory optimization settings
+    memory_cfg = config.get('memory', {})
+    if memory_cfg.get('cudnn_benchmark', True) and device.type == 'cuda':
+        torch.backends.cudnn.benchmark = True
+        print("  cuDNN benchmark: enabled")
 
     # Create run directory
     config_name = config_path.stem
