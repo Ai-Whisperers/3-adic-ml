@@ -1,0 +1,37 @@
+# P-Adic VAE V6.0 - Requirements
+# Python 3.10+
+
+# Core Dependencies
+torch>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Hyperbolic Geometry
+geoopt>=0.5.0  # Riemannian optimization and manifold operations
+
+# Configuration
+pyyaml>=6.0
+
+# Training Visualization
+tensorboard>=2.13.0
+
+# Progress Bars (optional but recommended)
+tqdm>=4.65.0
+
+# System Monitoring (optional)
+psutil>=5.9.0  # RAM monitoring for HardwareMonitor
+
+# Metrics and Analysis
+scikit-learn>=1.2.0  # For Spearman correlation in hierarchy metrics
+
+# Testing
+pytest>=7.3.0
+pytest-cov>=4.1.0
+
+# Optional: Visualization
+# matplotlib>=3.7.0
+# seaborn>=0.12.0
+# plotly>=5.14.0
+
+# Optional: Data Analysis
+# pandas>=2.0.0

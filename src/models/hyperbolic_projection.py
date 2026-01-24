@@ -103,6 +103,9 @@ class HyperbolicProjection(nn.Module):
         if init_identity:
             self._init_identity()
 
+        # Enforce float64 precision for numerical stability
+        self.to(torch.float64)
+
     def _init_identity(self):
         """Initialize tangent_net as identity (zero residual)."""
         with torch.no_grad():
@@ -121,6 +124,9 @@ class HyperbolicProjection(nn.Module):
         Returns:
             z_hyp: Points on Poincaré ball
         """
+        # Enforce float64 precision
+        z_tangent = z_tangent.to(torch.float64)
+
         # Transform in tangent space (residual: preserves input structure)
         z_transformed = z_tangent + self.tangent_net(z_tangent)
 
@@ -128,12 +134,13 @@ class HyperbolicProjection(nn.Module):
         c = self.curvature.item() if hasattr(self.curvature, 'item') else self.curvature
         z_hyp = exp_map_zero(z_transformed, c=c)
 
-        # Apply max_radius constraint
+        # Apply max_radius constraint (explicit float64 for numerical stability)
         norm = torch.norm(z_hyp, dim=-1, keepdim=True)
+        eps = torch.tensor(1e-10, device=z_hyp.device, dtype=torch.float64)
         scale = torch.where(
             norm > self.max_radius,
-            self.max_radius / (norm + 1e-10),
-            torch.ones_like(norm)
+            self.max_radius / (norm + eps),
+            torch.ones(1, device=z_hyp.device, dtype=torch.float64)
         )
         z_hyp = z_hyp * scale
 
@@ -156,16 +163,20 @@ class HyperbolicProjection(nn.Module):
         Returns:
             Tuple of (z_hyp, z_transformed, tangent_norm)
         """
+        # Enforce float64 precision
+        z_tangent = z_tangent.to(torch.float64)
+
         z_transformed = z_tangent + self.tangent_net(z_tangent)
         c = self.curvature.item() if hasattr(self.curvature, 'item') else self.curvature
         z_hyp = exp_map_zero(z_transformed, c=c)
 
-        # Apply max_radius constraint
+        # Apply max_radius constraint (explicit float64 for numerical stability)
         norm = torch.norm(z_hyp, dim=-1, keepdim=True)
+        eps = torch.tensor(1e-10, device=z_hyp.device, dtype=torch.float64)
         scale = torch.where(
             norm > self.max_radius,
-            self.max_radius / (norm + 1e-10),
-            torch.ones_like(norm)
+            self.max_radius / (norm + eps),
+            torch.ones(1, device=z_hyp.device, dtype=torch.float64)
         )
         z_hyp = z_hyp * scale
 

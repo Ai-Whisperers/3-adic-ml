@@ -174,6 +174,9 @@ class TernaryVAEV6(nn.Module):
         self.decoder_A = build_decoder(latent_dim, hidden_dim, decoder_type)
         self.decoder_B = build_decoder(latent_dim, hidden_dim, decoder_type)
 
+        # Enforce float64 precision for numerical stability
+        self.to(torch.float64)
+
     def encode(self, x: torch.Tensor) -> tuple:
         """Encode input to latent parameters."""
         h_A = self.encoder_A(x)
@@ -205,6 +208,9 @@ class TernaryVAEV6(nn.Module):
         Returns:
             Dict with logits, latents, and hyperbolic projections
         """
+        # Enforce float64 precision
+        x = x.to(torch.float64)
+
         mu_A, logvar_A, mu_B, logvar_B = self.encode(x)
 
         # Sample in tangent space (Euclidean at origin)

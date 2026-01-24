@@ -1,6 +1,6 @@
 # src/ - P-Adic VAE Source Code
 
-**Last Updated**: 2025-01-24
+**Last Updated**: 2026-01-24
 
 ## Architecture Overview
 
@@ -63,19 +63,43 @@ The manifold operations (expmap0, logmap0) provide the non-Euclidean structure.
 
 The `TernarySpace` singleton (`TERNARY`) is the single source of truth for all 3-adic operations:
 
-| Operation | Method | Complexity | Description |
-|-----------|--------|------------|-------------|
-| Valuation | `TERNARY.valuation(indices)` | O(1) | 3-adic valuation v_3(n) via LUT |
-| Distance | `TERNARY.distance(i, j)` | O(1) | 3-adic metric d_3 = 3^(-v_3(\|i-j\|)) |
-| To ternary | `TERNARY.to_ternary(indices)` | O(1) | Index → 9-trit representation |
-| From ternary | `TERNARY.from_ternary(ternary)` | O(n) | 9-trit → index |
+#### Core Operations (O(1) lookups)
+
+| Operation | Method | Description |
+|-----------|--------|-------------|
+| Valuation | `TERNARY.valuation(indices)` | 3-adic valuation v_3(n) via LUT |
+| Distance | `TERNARY.distance(i, j)` | 3-adic metric d_3 = 3^(-v_3(\|i-j\|)) |
+| Distance matrix | `TERNARY.distance_matrix(indices)` | Pairwise 3-adic distances |
+| Target radius | `TERNARY.target_radius(indices)` | Map valuation → Poincaré radius |
+| To ternary | `TERNARY.to_ternary(indices)` | Index → 9-trit representation |
+| From ternary | `TERNARY.from_ternary(ternary)` | 9-trit → index |
+
+#### Structured Properties (Option B)
+
+Each index has precomputed algebraic properties accessible via O(1) lookup:
+
+| Method | Description |
+|--------|-------------|
+| `digit_count(indices)` | Number of non-zero digits (0-9) |
+| `digit_sum(indices)` | Sum of digits (-9 to +9) |
+| `first_nonzero(indices)` | Position of first non-zero digit |
+| `last_nonzero(indices)` | Position of last non-zero digit |
+| `parent(indices)` | Parent in 3-adic tree (n // 3) |
+| `level_rank(indices)` | Rank within same-valuation cohort |
+| `level_count(level)` | Population at valuation level |
+| `properties(indices)` | Dict of all properties |
 
 **Constants:**
 - `N_DIGITS = 9` (trits per operation)
 - `N_OPERATIONS = 19683` (3^9 total operations)
 - `MAX_VALUATION = 9`
+- `N_PROPERTIES = 7` (structured property columns)
 
-**Memory:** ~865 KB per device (precomputed LUTs)
+**Memory per device:**
+- Valuation LUT: 157 KB
+- Ternary LUT: 1.4 MB (float64)
+- Properties LUT: 1.1 MB
+- **Total: ~2.7 MB**
 
 ---
 
@@ -137,12 +161,12 @@ loss:
 
 **Key Files:** `vae.py`, `hyperbolic_projection.py`
 
-#### Model Variants
+#### Model Variants (V6.0)
 
-| Model | Description | Frozen Checkpoint |
+| Model | Description | Anchor Checkpoint |
 |-------|-------------|-------------------|
-| `TernaryVAEV5_11` | Base hyperbolic VAE | Required |
-| `TernaryVAEV5_11_PartialFreeze` | Option C: frozen encoder | Required |
+| `TernaryVAEV6` | Dual VAE with true hyperbolic geometry | Recommended |
+| `TernaryVAEV6Controllable` | Dual VAE + StateNet trainability control | Recommended |
 
 #### Architecture Components
 
@@ -162,16 +186,17 @@ loss:
 | Constant | Value | Usage |
 |----------|-------|-------|
 | `N_TERNARY_OPERATIONS` | 19683 | Coverage calculation |
-| `STATENET_COVERAGE_FREEZE_THRESHOLD` | 0.99 | StateNet controller |
+| `STATENET_COVERAGE_FIX_THRESHOLD` | 0.99 | Fix encoder when coverage drops |
+| `STATENET_COVERAGE_TRAIN_THRESHOLD` | 0.999 | Allow training when coverage above |
 | `PROJECT_ROOT` | Auto-detected | Path resolution |
 
 ---
 
 ### src/presets/ - YAML Configurations
 
-**File:** `research_extended_grokking.yaml`
+**File:** `5.12.4.yaml` (and other versioned configs)
 
-Sections: device, model, loss, training, scheduler, targets, logging, checkpoints
+Sections: device, model, loss, training, scheduler, targets, logging, checkpoints, statenet
 
 Example loss config flow:
 ```
@@ -190,7 +215,87 @@ YAML loss.radial.valuation_weight_exponent: 0.3
 | `checkpoint.py` | Safe checkpoint loading |
 | `checkpoint_validator.py` | Config/checkpoint validation |
 | `coverage_evaluator.py` | VAE coverage evaluation |
-| `tensorboard_logger.py` | Training visualization |
+| `tensorboard_logger.py` | TensorBoard logging (batch/epoch metrics, histograms, embeddings) |
+| `hardware_monitor.py` | GPU/RAM monitoring, OOM diagnostics |
+
+---
+
+## Training Features
+
+### Progress Monitoring
+
+The training script (`train.py`) includes real-time progress monitoring:
+
+| Feature | Dependency | Fallback |
+|---------|------------|----------|
+| Progress bars | `tqdm` | Simple print statements |
+| GPU memory tracking | PyTorch CUDA | Shows "N/A" on CPU |
+| RAM monitoring | `psutil` | Shows "N/A" if not installed |
+
+**With tqdm installed:**
+```
+Training:  45%|████████████                    | 45/100 [12:34<15:23, 16.8s/epoch]
+Ep 045:  78%|███████████████████████          | 28/36 [00:12<00:03] loss=0.0234 GPU: 2.1/6.0GB
+```
+
+### Hardware Monitoring
+
+The `HardwareMonitor` class tracks resource usage:
+
+```python
+from src.utils import HardwareMonitor
+
+monitor = HardwareMonitor(device, warn_threshold=0.9)
+
+# Get GPU memory (returns dict with allocated, reserved, peak, total)
+gpu_mem = monitor.get_gpu_memory_gb()
+
+# Get formatted status string
+print(monitor.get_status_string())  # "GPU: 2.1/6.0GB (35%) | RAM: 8.2/32.0GB (26%)"
+
+# Check for high memory warning
+warning = monitor.check_memory_warning()
+if warning:
+    print(warning)
+```
+
+### OOM Handling
+
+Training includes automatic OOM (Out of Memory) handling:
+
+1. Catches `torch.cuda.OutOfMemoryError`
+2. Logs diagnostic information (GPU/RAM usage)
+3. Saves emergency checkpoint before exit
+4. Suggests reduced batch size
+
+**Example OOM output:**
+```
+[OOM] CUDA Out of Memory at epoch 45, batch 28
+[OOM] GPU Memory: allocated=5.8GB, reserved=6.0GB, peak=6.0GB
+[OOM] RAM: used=12.4GB, available=19.6GB (39%)
+[OOM] Emergency checkpoint saved: runs/.../checkpoints/emergency_oom_epoch_45.pt
+[OOM] Suggestion: Reduce batch_size from 512 to 256
+```
+
+### TensorBoard Logging
+
+The `TensorBoardLogger` class provides comprehensive logging:
+
+| Method | Logged Metrics |
+|--------|----------------|
+| `log_batch()` | Loss, CE, KL per batch |
+| `log_hyperbolic_epoch()` | Correlations, radii, StateNet |
+| `log_histograms()` | Weight/gradient distributions |
+| `log_manifold_embedding()` | 3D latent space visualization |
+
+**Config-driven logging:**
+```yaml
+logging:
+  enhanced_metrics:
+    enabled: true       # Enable batch-level logging
+  histogram_every: 10   # Log weight histograms every N epochs
+  embedding_every: 50   # Log embeddings every N epochs
+```
 
 ---
 
@@ -261,9 +366,16 @@ The tangent space at the origin T₀M **IS** Euclidean ℝⁿ. This means:
 ### Import Patterns
 
 ```python
-# Core
-from src.core import TERNARY
+# Core - basic operations
+from src.core import TERNARY, valuation, distance, target_radius
 valuations = TERNARY.valuation(indices)
+radii = TERNARY.target_radius(indices, inner=0.1, outer=0.9)
+
+# Core - structured properties (Option B)
+from src.core import digit_count, parent, level_rank
+dc = digit_count(indices)       # Number of non-zero digits
+p = parent(indices)             # Parent in 3-adic tree
+props = TERNARY.properties(indices)  # Dict of all properties
 
 # Geometry
 from src.geometry import poincare_distance
@@ -275,13 +387,54 @@ loss_fn = CombinedLoss(config['loss'], curvature=1.0)
 
 # Config
 from src.config import N_TERNARY_OPERATIONS, PROJECT_ROOT
+
+# Hardware monitoring
+from src.utils import HardwareMonitor
+monitor = HardwareMonitor(device, warn_threshold=0.9)
+```
+
+### Installation
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or: venv\Scripts\activate  # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Optional: Install monitoring extras
+pip install tqdm psutil
 ```
 
 ### Running Training
 
 ```bash
-python src/train.py --config src/presets/research_extended_grokking.yaml
+# Production training
+python src/train.py --config src/presets/5.12.4.yaml
+
+# Validate config only (no training)
+python src/train.py --config src/presets/5.12.4.yaml --validate-only
+
+# With mixed precision (faster on compatible GPUs)
+python src/train.py --config src/presets/5.12.4.yaml --amp
+
+# Custom seed for reproducibility
+python src/train.py --config src/presets/5.12.4.yaml --seed 123
 ```
+
+### CLI Options
+
+| Option | Description |
+|--------|-------------|
+| `--config PATH` | Path to YAML config file (required) |
+| `--seed N` | Random seed (default: 42) |
+| `--device cuda/cpu` | Training device (default: cuda) |
+| `--validate-only` | Validate config and exit |
+| `--force` | Continue even if validation fails |
+| `--amp` | Use automatic mixed precision |
+| `--name NAME` | Custom run name |
 
 ---
 

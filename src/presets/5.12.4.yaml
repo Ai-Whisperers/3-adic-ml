@@ -10,14 +10,11 @@
 # Expected runtime: 4-8 hours on RTX 4090, 8-16 hours on RTX 2060 SUPER
 # Target: Observe grokking patterns, phase transitions, emergent behaviors
 
-# Device Configuration (Enhanced for long-term stability)
+# Device Configuration
 device:
-  name: "v5_12_4_extended_grokking"
-  cuda_device: 0
-  use_amp: false
-  pin_memory: true
-  num_workers: 4
-  empty_cache_freq: 25  # More frequent cache clearing for stability
+  name: "v5_12_4_extended_grokking"  # Metadata only
+  cuda_device: 0       # CUDA device index (used by train.py)
+  use_amp: false       # Automatic mixed precision (used by train.py)
 
 # Model Architecture (V6.0 with true hyperbolic geometry)
 model:
@@ -27,17 +24,10 @@ model:
   max_radius: 0.95
   curvature: 1.0
   learnable_curvature: true
-
   projection_layers: 2
   projection_dropout: 0.1
-
-  # V5.12.4: Improved encoder/decoder for smoother gradients
-  encoder_type: improved
+  encoder_type: improved   # "improved" (SiLU+LayerNorm) or "standard" (ReLU)
   decoder_type: improved
-  encoder_dropout: 0.1
-  decoder_dropout: 0.1
-  logvar_min: -10.0
-  logvar_max: 2.0
 
 # Option C: Partial Freeze (optimized for long training)
 option_c:
@@ -67,9 +57,8 @@ statenet:
   controller_grad_threshold: 0.005  # More sensitive gradient monitoring
   controller_grad_patience: 5
 
-# Progressive Unfreezing (disabled for extended training stability)
-progressive_unfreeze:
-  enabled: false
+# NOTE: Progressive unfreezing replaced by StateNet trainability control
+# StateNet dynamically controls encoder_a/encoder_b/controller trainability
 
 # Loss Configuration (Balanced for grokking observation)
 loss:
@@ -170,95 +159,25 @@ training:
     gradient_norm_track: true
     representation_analysis: true
 
-# Data Configuration
-data:
-  use_full_dataset: true
-  n_operations: 19683
-
-# Enhanced Logging for Grokking Analysis
+# Logging Configuration
 logging:
-  tensorboard: true
-  log_dir: runs/v5_12_4_extended_grokking
-  print_every: 2
-
-  # Enhanced metrics for grokking
   enhanced_metrics:
-    enabled: true
-    log_gradients: true
-    log_weights: true
-    log_activations: false  # Disabled for memory
-    gradient_flow_analysis: true
-    effective_rank: true
-    representation_similarity: true
+    enabled: true  # Enable batch-level TensorBoard logging
+  histogram_every: 10   # Log weight histograms every N epochs
+  embedding_every: 50   # Log embeddings every N epochs
 
-  # Save detailed logs
-  detailed_logging:
-    save_loss_history: true
-    save_gradient_norms: true
-    save_metric_trajectories: true
-    analysis_window: 50  # Window for moving averages
+# =============================================================================
+# METADATA (for documentation, not used by train.py)
+# =============================================================================
 
-# Checkpoints
-checkpoints:
-  save_dir: runs/checkpoints/v5_12_4_extended
-  save_best: true
-  best_metric: composite_score
-  checkpoint_name: v5_12_4_extended_grokking
-
-  # Enhanced checkpointing for grokking analysis
-  checkpoint_phases:
-    - name: exploration_complete
-      trigger_epoch: 150
-    - name: grokking_search_complete
-      trigger_epoch: 350
-    - name: training_complete
-      trigger_epoch: 500
-
-# Success Criteria (Updated for extended training)
+# Success Criteria (reference targets for evaluation)
 targets:
   coverage: 1.0
-  hierarchy_B: -0.83  # Aim for ceiling
-  richness: 0.008  # Higher target for extended training
-  r_v9: 0.12  # Tighter target
-  distance_correlation: 0.70  # Higher target
-  Q_target: 2.2  # Higher structure target
-
-# Memory Optimization for Extended Training
-memory:
-  gradient_checkpointing: false
-  empty_cache_freq: 25  # More frequent clearing
-  cudnn_benchmark: true
-  max_memory_growth: 0.8  # Conservative memory usage
-
-# Early Stopping Override for Grokking
-early_stopping:
-  # Override normal early stopping for grokking observation
-  extended_patience: true
-  plateau_override: true  # Continue training through plateaus
-  grokking_patience: 100  # Very long patience for emergence
-
-# Analysis and Monitoring
-analysis:
-  phase_transition_detection:
-    enabled: true
-    sensitivity: 0.001  # Change detection sensitivity
-    window_size: 30
-
-  emergent_behavior_tracking:
-    enabled: true
-    track_complexity: true
-    track_generalization: true
-    track_representation_changes: true
+  hierarchy_B: -0.83
+  Q_target: 2.2
 
 # Version tracking
 version:
-  model: "5.12.4"
-  config: "extended_grokking_1.0"
-  date: "2026-01-11"
-  changes:
-    - "Extended 500-epoch training for grokking observation"
-    - "Multi-phase learning rate strategy"
-    - "Enhanced grokking detection and monitoring"
-    - "Detailed logging for emergence analysis"
-    - "Conservative parameters for long-term stability"
-    - "Phase transition detection capabilities"
+  model: "6.0"
+  config: "5.12.4"
+  date: "2026-01-24"

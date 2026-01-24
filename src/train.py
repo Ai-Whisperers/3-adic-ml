@@ -76,17 +76,22 @@ from src.utils import TensorBoardLogger, TENSORBOARD_AVAILABLE, HardwareMonitor
 # DETERMINISM
 # =============================================================================
 
-def set_determinism(seed: int, deterministic: bool = True) -> None:
+def set_determinism(seed: int, deterministic: bool = True, use_float64: bool = True) -> None:
     """Set all random seeds for reproducibility.
 
     Args:
         seed: Random seed value
         deterministic: If True, use deterministic algorithms (slower but exact)
+        use_float64: If True, use float64 as default dtype (required for geoopt stability)
     """
     os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+    # Set default dtype to float64 for geoopt compatibility
+    if use_float64:
+        torch.set_default_dtype(torch.float64)
 
     if deterministic:
         torch.backends.cudnn.deterministic = True
@@ -205,9 +210,14 @@ class ModelAuditor:
         print("\n[AUDIT] Model Health Check...")
 
         model_cfg = self.config.get('model', {})
+        option_c_cfg = self.config.get('option_c', {})
         model_name = model_cfg.get('name', 'TernaryVAEV6Controllable')
         encoder_type = model_cfg.get('encoder_type', 'improved')
         decoder_type = model_cfg.get('decoder_type', 'improved')
+
+        # LR scales from option_c config (differential learning rates per component)
+        encoder_a_lr_scale = option_c_cfg.get('encoder_a_lr_scale', 0.05)
+        encoder_b_lr_scale = option_c_cfg.get('encoder_b_lr_scale', 0.1)
 
         # Instantiate model
         model = TernaryVAEV6Controllable(
@@ -221,6 +231,8 @@ class ModelAuditor:
             encoder_b_trainable=True,
             encoder_type=encoder_type,
             decoder_type=decoder_type,
+            encoder_a_lr_scale=encoder_a_lr_scale,
+            encoder_b_lr_scale=encoder_b_lr_scale,
         ).to(self.device)
 
         n_params = sum(p.numel() for p in model.parameters())
@@ -263,7 +275,7 @@ class ModelAuditor:
 
         # Gradient flow check
         model.train()
-        dummy_input = torch.randint(-1, 2, (32, 9)).float().to(self.device)
+        dummy_input = torch.randint(-1, 2, (32, 9)).double().to(self.device)
 
         try:
             out = model(dummy_input)
@@ -613,6 +625,10 @@ def train(
             annealing_step=statenet_cfg.get('annealing_step', 0.005),
             hierarchy_plateau_threshold=statenet_cfg.get('hierarchy_plateau_threshold', 0.001),
             hierarchy_plateau_patience=statenet_cfg.get('hierarchy_plateau_patience', 15),
+            hierarchy_patience_ceiling=statenet_cfg.get('hierarchy_patience_ceiling', 30),
+            controller_grad_threshold=statenet_cfg.get('controller_grad_threshold', 0.01),
+            controller_grad_patience=statenet_cfg.get('controller_grad_patience', 10),
+            controller_patience_ceiling=statenet_cfg.get('controller_patience_ceiling', 20),
         )
         print("  StateNet: Enabled")
     else:
@@ -1011,6 +1027,18 @@ def main():
 
     with open(config_path) as f:
         config = yaml.safe_load(f)
+
+    # Override device settings from YAML if not specified on command line
+    device_cfg = config.get('device', {})
+    if args.device == 'cuda' and device_cfg.get('cuda_device') is not None:
+        cuda_device = device_cfg.get('cuda_device', 0)
+        device = torch.device(f'cuda:{cuda_device}')
+        print(f"  Using CUDA device {cuda_device} from config")
+
+    # Use AMP from config if not specified on command line
+    if not args.amp and device_cfg.get('use_amp', False):
+        args.amp = True
+        print("  Using AMP from config")
 
     # Create run directory
     config_name = config_path.stem

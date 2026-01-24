@@ -6,8 +6,8 @@
 """Checkpoint validation utilities.
 
 Provides validation functions to prevent common training pipeline issues,
-particularly the 0% coverage problem with V5.11+ architectures that require
-frozen checkpoints.
+particularly the 0% coverage problem with V6+ architectures that require
+anchor checkpoints for proper initialization.
 """
 
 from pathlib import Path
@@ -24,11 +24,11 @@ class CheckpointCompatibilityError(Exception):
 class CheckpointValidator:
     """Utility class for validating checkpoints and configurations."""
 
-    # Known good checkpoints for V5.11+ architectures
+    # Known good checkpoints for V6+ architectures
     # These paths are relative to PROJECT_ROOT
     RECOMMENDED_CHECKPOINTS = {
-        "TernaryVAEV5_11": "models/checkpoints/v5_5/latest.pt",
-        "TernaryVAEV5_11_PartialFreeze": "models/checkpoints/v5_5/latest.pt",
+        "TernaryVAEV6": "models/checkpoints/v5_12/v5_12_4/best_Q.pt",
+        "TernaryVAEV6Controllable": "models/checkpoints/v5_12/v5_12_4/best_Q.pt",
     }
 
     @classmethod
@@ -109,7 +109,7 @@ class CheckpointValidator:
     ) -> Dict[str, Any]:
         """Attempt to fix null checkpoint configuration.
 
-        For V5.11+ architectures, provides a default checkpoint path
+        For V6+ architectures, provides a default checkpoint path
         to prevent the 0% coverage issue.
 
         Args:
@@ -125,16 +125,16 @@ class CheckpointValidator:
         if model_name is None:
             model_name = config.get("model", {}).get("name", "")
 
-        # Check if this model needs a frozen checkpoint
+        # Check if this model needs an anchor checkpoint
         if model_name in cls.RECOMMENDED_CHECKPOINTS:
-            frozen_cfg = config.get("frozen_checkpoint", {})
-            current_path = frozen_cfg.get("path")
+            anchor_cfg = config.get("anchor_checkpoint", {})
+            current_path = anchor_cfg.get("path")
 
             if current_path is None or str(current_path).lower() == "null":
-                if "frozen_checkpoint" not in config:
-                    config["frozen_checkpoint"] = {}
-                config["frozen_checkpoint"]["path"] = cls.RECOMMENDED_CHECKPOINTS[model_name]
-                config["frozen_checkpoint"]["auto_fixed"] = True
+                if "anchor_checkpoint" not in config:
+                    config["anchor_checkpoint"] = {}
+                config["anchor_checkpoint"]["path"] = cls.RECOMMENDED_CHECKPOINTS[model_name]
+                config["anchor_checkpoint"]["auto_fixed"] = True
 
         return config
 
@@ -190,7 +190,7 @@ def validate_training_config(config: Dict[str, Any]) -> Tuple[bool, List[str]]:
     """Validate training configuration for common issues.
 
     Checks for:
-    - Null checkpoint paths for V5.11+ architectures
+    - Null checkpoint paths for V6+ architectures
     - Missing required configuration sections
     - Invalid hyperparameter values
 
@@ -210,18 +210,18 @@ def validate_training_config(config: Dict[str, Any]) -> Tuple[bool, List[str]]:
     model_config = config.get("model", {})
     model_name = model_config.get("name", "")
 
-    # V5.11+ architecture checks
-    v5_11_models = ["TernaryVAEV5_11", "TernaryVAEV5_11_PartialFreeze"]
+    # V6+ architecture checks
+    v6_models = ["TernaryVAEV6", "TernaryVAEV6Controllable"]
 
-    if model_name in v5_11_models:
-        # Check frozen checkpoint configuration
-        frozen_cfg = config.get("frozen_checkpoint", {})
-        checkpoint_path = frozen_cfg.get("path")
+    if model_name in v6_models:
+        # Check anchor checkpoint configuration
+        anchor_cfg = config.get("anchor_checkpoint", {})
+        checkpoint_path = anchor_cfg.get("path")
 
         if checkpoint_path is None or str(checkpoint_path).lower() == "null":
             errors.append(
-                f"Model '{model_name}' requires a frozen checkpoint for proper initialization. "
-                f"Set 'frozen_checkpoint.path' to a valid V5.11 checkpoint."
+                f"Model '{model_name}' requires an anchor checkpoint for proper initialization. "
+                f"Set 'anchor_checkpoint.path' to a valid checkpoint."
             )
 
         # Validate if path exists
@@ -251,12 +251,13 @@ def validate_training_config(config: Dict[str, Any]) -> Tuple[bool, List[str]]:
     # StateNet configuration checks
     statenet_cfg = config.get("statenet", {})
     if statenet_cfg.get("enabled", False):
-        coverage_freeze = statenet_cfg.get("coverage_freeze_threshold", 0.99)
-        coverage_unfreeze = statenet_cfg.get("coverage_unfreeze_threshold", 0.999)
+        coverage_fix = statenet_cfg.get("coverage_fix_threshold", 0.99)
+        coverage_train = statenet_cfg.get("coverage_train_threshold", 0.999)
 
-        if coverage_freeze >= coverage_unfreeze:
+        if coverage_fix >= coverage_train:
             errors.append(
-                f"StateNet thresholds invalid: freeze ({coverage_freeze}) must be < unfreeze ({coverage_unfreeze})"
+                f"StateNet thresholds invalid: coverage_fix_threshold ({coverage_fix}) "
+                f"must be < coverage_train_threshold ({coverage_train})"
             )
 
     return len(errors) == 0, errors

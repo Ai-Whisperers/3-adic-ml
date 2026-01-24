@@ -231,7 +231,7 @@ def geodesic_interpolation(x: torch.Tensor, y: torch.Tensor, steps: int = 10, c:
         Points along geodesic, shape (steps, ..., dim)
     """
     manifold = get_manifold(c, device=x.device)
-    t_values = torch.linspace(0, 1, steps, device=x.device)
+    t_values = torch.linspace(0, 1, steps, device=x.device, dtype=x.dtype)
     return torch.stack([manifold.geodesic(t.item(), x, y) for t in t_values])
 
 
