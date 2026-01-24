@@ -32,7 +32,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..core import TERNARY
-from ..geometry import poincare_distance
+from ..geometry import poincare_distance, hyperbolic_radius
 
 
 class PAdicGeodesicLoss(nn.Module):
@@ -232,8 +232,7 @@ class RadialHierarchyLoss(nn.Module):
 
         # V5.12.2: Compute actual radius using hyperbolic distance, not Euclidean norm
         # This ensures consistent geometry throughout the system
-        origin = torch.zeros_like(z_hyp)
-        actual_radius = poincare_distance(z_hyp, origin, c=self.curvature)
+        actual_radius = hyperbolic_radius(z_hyp, c=self.curvature)
 
         # Compute target radius (inverse relationship with valuation)
         normalized_v = valuations / self.max_valuation
@@ -430,8 +429,7 @@ class GlobalRankLoss(nn.Module):
         # Get valuations and radii
         valuations = TERNARY.valuation(batch_indices).double()
         # V5.12.2: Use hyperbolic distance instead of Euclidean norm
-        origin = torch.zeros_like(z_hyp)
-        radii = poincare_distance(z_hyp, origin, c=self.curvature)
+        radii = hyperbolic_radius(z_hyp, c=self.curvature)
 
         if self.use_all_pairs:
             # All pairs (expensive: O(n²))
@@ -587,8 +585,7 @@ class MonotonicRadialLoss(nn.Module):
         # Get valuations and radii
         valuations = TERNARY.valuation(batch_indices)
         # V5.12.2: Use hyperbolic distance instead of Euclidean norm
-        origin = torch.zeros_like(z_hyp)
-        radii = poincare_distance(z_hyp, origin, c=self.curvature)
+        radii = hyperbolic_radius(z_hyp, c=self.curvature)
 
         # Compute mean radius per valuation level
         level_means = []
