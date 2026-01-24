@@ -212,7 +212,8 @@ class TernaryVAEV6(nn.Module):
         z_B_tangent = self.reparameterize(mu_B, logvar_B)
 
         # Project to Poincaré manifold via expmap0
-        z_A_hyp, z_B_hyp = self.projections(z_A_tangent, z_B_tangent)
+        # as_manifold=True returns ManifoldParameter for type safety and constraint enforcement
+        z_A_hyp, z_B_hyp = self.projections(z_A_tangent, z_B_tangent, as_manifold=True)
 
         # Map back to tangent space for decoder (logmap0)
         z_A_dec = log_map_zero(z_A_hyp, c=self.curvature, max_norm=self.max_radius)

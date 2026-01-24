@@ -197,6 +197,44 @@ def parallel_transport(x: torch.Tensor, y: torch.Tensor, v: torch.Tensor, c: flo
     return manifold.transp(x, y, v)
 
 
+def geodesic(x: torch.Tensor, y: torch.Tensor, t: float, c: float = 1.0) -> torch.Tensor:
+    """Interpolate along geodesic from x to y at parameter t.
+
+    The geodesic is the shortest path between two points on the Poincaré ball.
+    Unlike linear interpolation, this follows the curved manifold.
+
+    Args:
+        x: Start point on Poincaré ball, shape (..., dim)
+        y: End point on Poincaré ball, shape (..., dim)
+        t: Interpolation parameter in [0, 1]. t=0 gives x, t=1 gives y
+        c: Curvature parameter
+
+    Returns:
+        Point on geodesic at parameter t
+    """
+    manifold = get_manifold(c, device=x.device)
+    return manifold.geodesic(t, x, y)
+
+
+def geodesic_interpolation(x: torch.Tensor, y: torch.Tensor, steps: int = 10, c: float = 1.0) -> torch.Tensor:
+    """Generate points along geodesic from x to y.
+
+    Useful for visualization and analysis of paths between embeddings.
+
+    Args:
+        x: Start point on Poincaré ball, shape (..., dim)
+        y: End point on Poincaré ball, shape (..., dim)
+        steps: Number of interpolation steps
+        c: Curvature parameter
+
+    Returns:
+        Points along geodesic, shape (steps, ..., dim)
+    """
+    manifold = get_manifold(c, device=x.device)
+    t_values = torch.linspace(0, 1, steps, device=x.device)
+    return torch.stack([manifold.geodesic(t.item(), x, y) for t in t_values])
+
+
 class PoincareModule(nn.Module):
     """Base module for Poincare ball operations.
 
@@ -250,6 +288,14 @@ class PoincareModule(nn.Module):
     def transport(self, x: torch.Tensor, y: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """Parallel transport v from x to y."""
         return parallel_transport(x, y, v, self.c)
+
+    def geodesic(self, x: torch.Tensor, y: torch.Tensor, t: float) -> torch.Tensor:
+        """Interpolate along geodesic from x to y at parameter t."""
+        return geodesic(x, y, t, self.c)
+
+    def geodesic_path(self, x: torch.Tensor, y: torch.Tensor, steps: int = 10) -> torch.Tensor:
+        """Generate points along geodesic from x to y."""
+        return geodesic_interpolation(x, y, steps, self.c)
 
 
 def create_manifold_parameter(data: torch.Tensor, c: float = 1.0, requires_grad: bool = True) -> ManifoldParameter:
@@ -345,6 +391,8 @@ __all__ = [
     "mobius_add",
     "lambda_x",
     "parallel_transport",
+    "geodesic",
+    "geodesic_interpolation",
     "PoincareModule",
     "create_manifold_parameter",
     "create_manifold_tensor",

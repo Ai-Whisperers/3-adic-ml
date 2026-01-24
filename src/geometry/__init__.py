@@ -8,6 +8,8 @@ from .poincare import (
     mobius_add,
     lambda_x,
     parallel_transport,
+    geodesic,
+    geodesic_interpolation,
     PoincareModule,
     create_manifold_parameter,
     create_manifold_tensor,

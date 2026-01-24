@@ -117,6 +117,7 @@ loss:
 riemannian:
   enabled: true
   optimizer: adam
+  stabilize: 10  # Re-project manifold parameters every N steps (for learnable curvature)
 
 # Extended Training Configuration
 training:

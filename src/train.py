@@ -50,13 +50,13 @@ import yaml
 from scipy.stats import spearmanr
 from torch.utils.data import DataLoader, TensorDataset
 
-# TensorBoard (optional)
+# tqdm for progress bars (optional)
 try:
-    from torch.utils.tensorboard import SummaryWriter
-    TENSORBOARD_AVAILABLE = True
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
 except ImportError:
-    SummaryWriter = None
-    TENSORBOARD_AVAILABLE = False
+    tqdm = None
+    TQDM_AVAILABLE = False
 
 # Project root setup
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +69,7 @@ from src.geometry import poincare_distance, get_riemannian_optimizer
 from src.losses import CombinedLoss
 from src.models import StateNet, compute_Q, TernaryVAEV6Controllable
 from src.utils.checkpoint import load_checkpoint_compat, get_model_state_dict
+from src.utils import TensorBoardLogger, TENSORBOARD_AVAILABLE, HardwareMonitor
 
 
 # =============================================================================
@@ -620,8 +621,9 @@ def train(
     # Optimizer
     if riemannian_cfg.get('enabled', False):
         param_groups = model.get_param_groups(base_lr)
-        optimizer = get_riemannian_optimizer(param_groups, lr=base_lr)
-        print("  Optimizer: RiemannianAdam")
+        stabilize = riemannian_cfg.get('stabilize', 10)  # Re-project to manifold every N steps
+        optimizer = get_riemannian_optimizer(param_groups, lr=base_lr, stabilize=stabilize)
+        print(f"  Optimizer: RiemannianAdam (stabilize={stabilize})")
     else:
         optimizer = torch.optim.AdamW(
             model.get_param_groups(base_lr),
@@ -644,8 +646,22 @@ def train(
     # Mixed precision
     scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
 
-    # TensorBoard (optional)
-    writer = SummaryWriter(str(log_dir)) if TENSORBOARD_AVAILABLE else None
+    # TensorBoard logger (uses TensorBoardLogger from utils)
+    logging_cfg = config.get('logging', {})
+    run_name = log_dir.name
+    tb_logger = TensorBoardLogger(
+        tensorboard_dir=str(log_dir),
+        experiment_name=run_name,
+        log_callback=lambda msg: print(f"  {msg}") if logging_cfg.get('verbose', False) else None,
+    )
+
+    # Hardware monitor for memory tracking
+    hw_monitor = HardwareMonitor(device, warn_threshold=0.9)
+
+    # Config for enhanced logging
+    histogram_every = logging_cfg.get('histogram_every', 10)
+    embedding_every = logging_cfg.get('embedding_every', 50)
+    log_batch_metrics = logging_cfg.get('enhanced_metrics', {}).get('enabled', False)
 
     # Checkpoints directory
     ckpt_dir = log_dir / 'checkpoints'
@@ -669,9 +685,18 @@ def train(
 
     print(f"\n{'='*60}")
     print(f"  TRAINING: {epochs} epochs, batch_size={batch_size}, lr={base_lr}")
+    if TQDM_AVAILABLE:
+        print("  Progress: tqdm enabled")
     print(f"{'='*60}\n")
 
-    for epoch in range(epochs):
+    # Global batch counter for TensorBoard
+    global_step = 0
+    total_batches = len(train_loader)
+
+    # Epoch iterator (with or without tqdm)
+    epoch_iter = tqdm(range(epochs), desc="Training", unit="epoch") if TQDM_AVAILABLE else range(epochs)
+
+    for epoch in epoch_iter:
         t0 = time.time()
         model.train()
 
@@ -680,31 +705,83 @@ def train(
         train_acc_sum = 0.0
         n_batches = 0
 
-        for batch_ops, batch_idx in train_loader:
+        # Batch iterator (with or without tqdm)
+        if TQDM_AVAILABLE:
+            batch_iter = tqdm(train_loader, desc=f"Ep {epoch:03d}", leave=False, unit="batch")
+        else:
+            batch_iter = train_loader
+
+        for batch_ops, batch_idx in batch_iter:
             batch_ops = batch_ops.to(device)
             batch_idx = batch_idx.to(device)
 
             optimizer.zero_grad()
 
-            with torch.amp.autocast('cuda', enabled=use_amp):
-                out = model(batch_ops)
-                z_hyp = out.get('z_A_hyp', out.get('z_B_hyp'))
-                logits = out.get('logits_A', out.get('logits'))
+            try:
+                with torch.amp.autocast('cuda', enabled=use_amp):
+                    out = model(batch_ops)
+                    z_hyp = out.get('z_A_hyp', out.get('z_B_hyp'))
+                    logits = out.get('logits_A', out.get('logits'))
 
-                losses = loss_fn(z_hyp, batch_idx, logits, batch_ops, epoch=epoch)
-                loss = losses['total']
+                    losses = loss_fn(z_hyp, batch_idx, logits, batch_ops, epoch=epoch)
+                    loss = losses['total']
 
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-            scaler.step(optimizer)
-            scaler.update()
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+                scaler.step(optimizer)
+                scaler.update()
+
+            except torch.cuda.OutOfMemoryError:
+                # OOM handling
+                print(f"\n[OOM] CUDA Out of Memory at epoch {epoch}, batch {n_batches}")
+                print(f"[OOM] {hw_monitor.get_oom_diagnostic(batch_size)}")
+
+                # Clear cache
+                torch.cuda.empty_cache()
+
+                # Save emergency checkpoint
+                emergency_path = ckpt_dir / f'emergency_oom_epoch_{epoch}.pt'
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                }, emergency_path)
+                print(f"[OOM] Emergency checkpoint saved: {emergency_path}")
+
+                # Re-raise to exit training
+                raise
 
             train_loss_sum += loss.item()
             train_acc_sum += compute_accuracy(logits, batch_ops)
             n_batches += 1
+            global_step += 1
+
+            # Batch-level TensorBoard logging
+            if log_batch_metrics and tb_logger.is_available:
+                tb_logger.log_batch(global_step, loss.item())
+                if hasattr(grad_norm, 'item'):
+                    tb_logger.writer.add_scalar('Batch/GradNorm', grad_norm.item(), global_step)
+
+            # Update tqdm postfix with loss and memory
+            if TQDM_AVAILABLE and hasattr(batch_iter, 'set_postfix'):
+                batch_iter.set_postfix({
+                    'loss': f'{loss.item():.4f}',
+                    'gpu': hw_monitor.get_gpu_status_string() if device.type == 'cuda' else 'cpu',
+                })
+
+            # Check memory warning periodically
+            if n_batches % 10 == 0:
+                warning = hw_monitor.check_memory_warning()
+                if warning:
+                    print(f"\n{warning}")
 
         scheduler.step()
+
+        # Log learning rate
+        current_lr = scheduler.get_last_lr()[0]
+        if tb_logger.is_available:
+            tb_logger.writer.add_scalar('LR/scheduled', current_lr, epoch)
 
         avg_train_loss = train_loss_sum / n_batches
         avg_train_acc = train_acc_sum / n_batches
@@ -767,19 +844,45 @@ def train(
                 results['grokking_events'].append(grokking_detector.events[-1].__dict__)
 
             # TensorBoard logging (log both VAE metrics)
-            if writer is not None:
-                writer.add_scalars('Accuracy', {'train': avg_train_acc, 'val': avg_val_acc}, epoch)
-                writer.add_scalar('Loss/train', avg_train_loss, epoch)
-                writer.add_scalar('Coverage', avg_val_coverage, epoch)
-                writer.add_scalars('Hierarchy/corr', {
+            if tb_logger.is_available:
+                tb_logger.writer.add_scalars('Accuracy', {'train': avg_train_acc, 'val': avg_val_acc}, epoch)
+                tb_logger.writer.add_scalar('Loss/train', avg_train_loss, epoch)
+                tb_logger.writer.add_scalar('Coverage', avg_val_coverage, epoch)
+                tb_logger.writer.add_scalars('Hierarchy/corr', {
                     'VAE_A': hier_metrics_A['hierarchy'],
                     'VAE_B': hier_metrics_B['hierarchy'],
                 }, epoch)
-                writer.add_scalars('Hierarchy/Q', {
+                tb_logger.writer.add_scalars('Hierarchy/Q', {
                     'VAE_A': hier_metrics_A['Q'],
                     'VAE_B': hier_metrics_B['Q'],
                 }, epoch)
-                writer.add_scalar('Hierarchy/dist_corr', hier_metrics_A['dist_corr'], epoch)
+                tb_logger.writer.add_scalar('Hierarchy/dist_corr', hier_metrics_A['dist_corr'], epoch)
+                tb_logger.writer.add_scalars('Radius/mean', {
+                    'VAE_A': hier_metrics_A['mean_radius'],
+                    'VAE_B': hier_metrics_B['mean_radius'],
+                }, epoch)
+
+                # StateNet metrics
+                if statenet is not None:
+                    tb_logger.writer.add_scalar('StateNet/encoder_a_trainable',
+                                                 int(statenet_state['encoder_a_trainable']), epoch)
+                    tb_logger.writer.add_scalar('StateNet/encoder_b_trainable',
+                                                 int(statenet_state['encoder_b_trainable']), epoch)
+                    tb_logger.writer.add_scalar('StateNet/best_Q', statenet_state.get('best_Q', 0), epoch)
+
+                # Hardware metrics
+                if device.type == 'cuda':
+                    gpu_mem = hw_monitor.get_gpu_memory_gb()
+                    tb_logger.writer.add_scalar('Hardware/GPU_allocated_GB', gpu_mem['allocated'], epoch)
+                    tb_logger.writer.add_scalar('Hardware/GPU_peak_GB', gpu_mem['peak'], epoch)
+
+                # Flush for real-time updates
+                tb_logger.flush()
+
+            # Weight histograms (periodic)
+            if histogram_every > 0 and epoch % histogram_every == 0 and epoch > 0:
+                if tb_logger.is_available:
+                    tb_logger.log_histograms(epoch, model)
 
             # Track best metrics (use VAE-A as primary)
             if hier_metrics_A['Q'] > best_Q:
@@ -802,16 +905,31 @@ def train(
             # Print progress
             if epoch % print_every == 0 or epoch == epochs - 1:
                 dt = time.time() - t0
-                print(
-                    f"Ep {epoch:03d} | "
-                    f"Loss {avg_train_loss:.4f} | "
-                    f"Acc T/V {avg_train_acc:.3f}/{avg_val_acc:.3f} | "
-                    f"Cov {avg_val_coverage:.3f} | "
-                    f"Hier A/B {hier_metrics_A['hierarchy']:.3f}/{hier_metrics_B['hierarchy']:.3f} | "
-                    f"Q {hier_metrics_A['Q']:.3f} | "
-                    f"State {train_summary} | "
-                    f"{dt:.1f}s"
-                )
+                # Main metrics line
+                if not TQDM_AVAILABLE:  # Only print if not using tqdm (tqdm handles its own output)
+                    print(
+                        f"Ep {epoch:03d} | "
+                        f"Loss {avg_train_loss:.4f} | "
+                        f"Acc T/V {avg_train_acc:.3f}/{avg_val_acc:.3f} | "
+                        f"Cov {avg_val_coverage:.3f} | "
+                        f"Hier A/B {hier_metrics_A['hierarchy']:.3f}/{hier_metrics_B['hierarchy']:.3f} | "
+                        f"Q {hier_metrics_A['Q']:.3f} | "
+                        f"State {train_summary} | "
+                        f"{dt:.1f}s"
+                    )
+                else:
+                    # Update tqdm with epoch stats
+                    epoch_iter.set_postfix({
+                        'loss': f'{avg_train_loss:.4f}',
+                        'cov': f'{avg_val_coverage:.3f}',
+                        'Q': f'{hier_metrics_A["Q"]:.2f}',
+                    })
+                    # Print hardware stats on separate line
+                    tqdm.write(
+                        f"  Ep {epoch:03d} | Cov {avg_val_coverage:.3f} | "
+                        f"Hier A/B {hier_metrics_A['hierarchy']:.3f}/{hier_metrics_B['hierarchy']:.3f} | "
+                        f"Q {hier_metrics_A['Q']:.3f} | {hw_monitor.get_peak_status_string()} | {dt:.1f}s"
+                    )
 
         # Periodic checkpoint
         if epoch % save_every == 0 and epoch > 0:
@@ -831,8 +949,8 @@ def train(
         'best_coverage': best_coverage,
     }, ckpt_dir / 'final.pt')
 
-    if writer is not None:
-        writer.close()
+    # Close TensorBoard logger
+    tb_logger.close()
 
     results.update({
         'epochs_trained': epochs,
