@@ -1,0 +1,270 @@
+# v6.yaml - P-Adic VAE V6.0 Configuration
+# True Hyperbolic Architecture with Riemannian Optimization
+#
+# V6.0 Architecture Features:
+# - True hyperbolic geometry via geoopt expmap0/logmap0
+# - Decoder uses logmap0(z_hyp) instead of z_euc
+# - ManifoldParameter for z_hyp (type safety + constraint enforcement)
+# - RiemannianAdam with stabilize for learnable curvature
+# - Geodesic interpolation for visualization/analysis
+# - "Trainable" terminology (positive logic, not "frozen")
+#
+# Key Changes from V5.x:
+# - Projection: direction*radius → expmap0 (true hyperbolic)
+# - Decoder input: z_euc → logmap0(z_hyp)
+# - Optimizer: Adam → RiemannianAdam with stabilize
+# - Classes: TernaryVAEV5_11* → TernaryVAEV6*
+#
+# Reference:
+#   Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
+
+# =============================================================================
+# Device Configuration
+# =============================================================================
+device:
+  name: "v6_hyperbolic"
+  cuda_device: 0
+  use_amp: false  # Disable AMP for numerical stability near manifold boundary
+  pin_memory: true
+  num_workers: 4
+  empty_cache_freq: 25
+
+# =============================================================================
+# Model Architecture (V6.0 True Hyperbolic)
+# =============================================================================
+model:
+  name: TernaryVAEV6Controllable
+  latent_dim: 16
+  hidden_dim: 64
+  max_radius: 0.95  # Poincaré ball boundary constraint
+  curvature: 1.0
+  learnable_curvature: true  # Curvature is optimized via RiemannianAdam
+
+  # Projection network (tangent space transform before expmap0)
+  projection_layers: 2
+  projection_dropout: 0.1
+
+  # Encoder/Decoder architecture
+  encoder_type: improved  # SiLU + LayerNorm
+  decoder_type: improved
+  encoder_dropout: 0.1
+  decoder_dropout: 0.1
+  logvar_min: -10.0
+  logvar_max: 2.0
+
+# =============================================================================
+# Riemannian Optimization (V6.0 Feature)
+# =============================================================================
+riemannian:
+  enabled: true
+  optimizer: adam  # RiemannianAdam from geoopt
+  stabilize: 10    # Re-project manifold parameters every N steps
+  # Note: stabilize ensures learnable curvature stays on positive reals manifold
+
+# =============================================================================
+# Geometry Settings (V6.0)
+# =============================================================================
+geometry:
+  # z_hyp is wrapped as ManifoldParameter (as_manifold=True in forward pass)
+  use_manifold_parameter: true
+  # Geodesic interpolation available via geodesic() and geodesic_interpolation()
+  geodesic_steps: 10  # Default steps for geodesic_interpolation
+
+# =============================================================================
+# Differential Learning Rates
+# =============================================================================
+option_c:
+  enabled: true
+  encoder_b_lr_scale: 0.1   # Hierarchy encoder: slower learning
+  encoder_a_lr_scale: 0.05  # Coverage encoder: slowest (preserve reconstruction)
+
+# =============================================================================
+# Anchor Checkpoint (Optional: Start from Pre-trained Weights)
+# =============================================================================
+anchor_checkpoint:
+  path: null  # Set to checkpoint path to resume, e.g., "runs/checkpoints/v6/best_Q.pt"
+  encoder_to_load: both
+  decoder_to_load: decoder_A
+
+# =============================================================================
+# StateNet Controller (Dynamic Trainability)
+# =============================================================================
+statenet:
+  enabled: true
+  # Trainability thresholds (V6.0 terminology)
+  coverage_fix_threshold: 0.995    # Fix encoder when coverage drops below
+  coverage_train_threshold: 1.0    # Allow training when coverage above
+  coverage_floor: 0.95
+
+  # Warmup and hysteresis
+  warmup_epochs: 10
+  hysteresis_epochs: 5
+
+  # Threshold annealing
+  enable_annealing: true
+  annealing_step: 0.002
+
+  # Hierarchy plateau detection
+  hierarchy_plateau_threshold: 0.0005
+  hierarchy_plateau_patience: 10
+  hierarchy_patience_ceiling: 25
+
+  # Controller gradient monitoring
+  controller_grad_threshold: 0.005
+  controller_grad_patience: 5
+
+# =============================================================================
+# Loss Configuration
+# =============================================================================
+loss:
+  # PRIMARY: Rich Hierarchy Loss (unified hierarchy + coverage + separation)
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0
+    coverage_weight: 1.0
+    richness_weight: 2.5
+    separation_weight: 3.0
+    min_richness_ratio: 0.4
+
+  # Radial targets (MSE to target radii based on 3-adic valuation)
+  radial:
+    enabled: true
+    inner_radius: 0.08  # High valuation (v=9) target
+    outer_radius: 0.90  # Low valuation (v=0) target
+    radial_weight: 1.0
+    margin_weight: 0.5
+
+  # Geodesic loss (Poincaré distance alignment)
+  geodesic:
+    enabled: true
+    phase_start_epoch: 30  # Start after initial convergence
+    curvature: 1.0
+    max_target_distance: 3.0
+    n_pairs: 2000
+    use_smooth_l1: true
+    weight: 0.4
+
+  # Global rank loss (soft ordering violations)
+  rank:
+    enabled: true
+    weight: 0.5
+    temperature: 0.1
+    n_pairs: 2000
+
+  # Zero-structure loss
+  zero_structure:
+    enabled: true
+    valuation_weight: 0.5
+    sparsity_weight: 0.3
+
+  # Hyperbolic KL (optional, available in src/losses/hyperbolic_kl.py)
+  # hyperbolic_kl:
+  #   enabled: false
+  #   beta: 1.0
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+training:
+  epochs: 100
+  batch_size: 512
+  lr: 8.0e-4
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+
+  # Stratified sampling (oversample high-valuation operations)
+  use_stratified: true
+  high_v_budget_ratio: 0.25
+
+  # Adaptive curriculum
+  use_adaptive: true
+  hierarchy_threshold: -0.75
+  patience: 50
+  min_epochs: 50
+
+  # Learning rate scheduler
+  scheduler:
+    type: cosine_warmup_restart
+    T_0: 25
+    T_mult: 2
+
+  # Evaluation frequency
+  eval_every: 2
+  save_every: 25
+  print_every: 2
+
+# =============================================================================
+# Data Configuration
+# =============================================================================
+data:
+  use_full_dataset: true
+  n_operations: 19683  # 3^9 ternary operations
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  tensorboard: true
+  log_dir: runs/v6
+  print_every: 2
+
+  enhanced_metrics:
+    enabled: true
+    log_gradients: true
+    log_weights: true
+    log_activations: false  # Disabled for memory
+    gradient_flow_analysis: true
+    effective_rank: true
+
+# =============================================================================
+# Checkpoints
+# =============================================================================
+checkpoints:
+  save_dir: runs/checkpoints/v6
+  save_best: true
+  best_metric: composite_score
+  checkpoint_name: v6
+
+# =============================================================================
+# Success Criteria
+# =============================================================================
+targets:
+  coverage: 1.0
+  hierarchy_B: -0.83
+  richness: 0.008
+  r_v9: 0.12
+  distance_correlation: 0.70
+  Q_target: 2.2
+
+# =============================================================================
+# Memory Optimization
+# =============================================================================
+memory:
+  gradient_checkpointing: false
+  empty_cache_freq: 25
+  cudnn_benchmark: true
+  max_memory_growth: 0.8
+
+# =============================================================================
+# Early Stopping
+# =============================================================================
+early_stopping:
+  extended_patience: true
+  plateau_override: false
+  grokking_patience: 50
+
+# =============================================================================
+# Version Tracking
+# =============================================================================
+version:
+  model: "6.0"
+  config: "v6_hyperbolic"
+  date: "2025-01-24"
+  changes:
+    - "True hyperbolic geometry via geoopt expmap0/logmap0"
+    - "Decoder uses logmap0(z_hyp) instead of z_euc"
+    - "ManifoldParameter for z_hyp (as_manifold=True)"
+    - "RiemannianAdam with stabilize=10 for learnable curvature"
+    - "Geodesic interpolation functions added"
+    - "Trainable terminology (positive logic)"
+    - "TernaryVAEV6Controllable class"
