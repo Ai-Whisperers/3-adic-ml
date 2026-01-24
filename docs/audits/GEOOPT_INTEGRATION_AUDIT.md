@@ -18,10 +18,10 @@ The codebase now implements **true hyperbolic learning** via geoopt's `expmap0`/
 | Sampling | `mu + eps * std` | Same (tangent space IS Euclidean) | ✅ Correct |
 | Projection | `direction * radius` | `expmap0(z_tangent)` | ✅ Fixed |
 | Decoder input | `z_euc` (ignores z_hyp!) | `logmap0(z_hyp)` | ✅ Fixed |
-| Latent type | Regular Tensor | Regular Tensor | Verifying |
-| Optimizer | AdamW | RiemannianAdam | Verifying |
+| Latent type | Regular Tensor | Regular Tensor | ❌ Not using ManifoldParameter |
+| Optimizer | AdamW | RiemannianAdam (ineffective) | ❌ No ManifoldParams to optimize |
 | KL divergence | None | HyperbolicKLDivergence | ✅ Implemented |
-| Interpolation | Linear | `geodesic()` available | Verifying |
+| Interpolation | Linear | Linear | ❌ No geodesic wrapper |
 
 ### The Problem (V5.11 - RESOLVED)
 
@@ -162,11 +162,16 @@ def forward(self, z_tangent: torch.Tensor) -> torch.Tensor:
     return z_hyp
 ```
 
-#### Change 4: ManifoldParameter for Latents - Verifying
+#### Change 4: ManifoldParameter for Latents - ❌ NOT IMPLEMENTED
 
-**File**: `src/models/vae.py`
+**File**: `src/models/vae.py`, `src/models/hyperbolic_projection.py`
 
-**Status**: Verifying whether `ManifoldParameter` is used for latent embeddings. Current implementation uses regular Tensor with expmap0/logmap0 operations, which may be sufficient for training but limits RiemannianAdam effectiveness.
+**Status**: NOT IMPLEMENTED. The `as_manifold=True` option exists in `HyperbolicProjection.forward()` but is never used. In `vae.py:215`:
+```python
+z_A_hyp, z_B_hyp = self.projections(z_A_tangent, z_B_tangent)  # as_manifold=False by default
+```
+
+**Impact**: RiemannianAdam falls back to standard Adam behavior since there are no ManifoldParameters.
 
 #### Change 5: Hyperbolic KL Divergence ✅ IMPLEMENTED
 
@@ -194,17 +199,30 @@ class HyperbolicKLDivergence(nn.Module):
 
 **Integration**: Added to `src/losses/__init__.py` exports.
 
-#### Change 6: RiemannianAdam with Stabilize - Verifying
+#### Change 6: RiemannianAdam with Stabilize - ❌ NOT EFFECTIVE
 
-**File**: `src/train.py`
+**File**: `src/train.py:624`
 
-**Status**: RiemannianAdam is configured via `get_riemannian_optimizer()`. Verifying whether `stabilize` parameter is set and whether it operates on ManifoldParameter objects effectively.
+```python
+optimizer = get_riemannian_optimizer(param_groups, lr=base_lr)  # No stabilize passed
+```
 
-#### Change 7: Geodesic Interpolation - Verifying
+**Status**:
+1. `stabilize` parameter is NOT passed
+2. Even if passed, RiemannianAdam only applies Riemannian updates to ManifoldParameter objects
+3. Since latents are regular Tensors (see Change 4), RiemannianAdam acts like standard Adam
+
+**Impact**: Optimization is effectively Euclidean despite using RiemannianAdam.
+
+#### Change 7: Geodesic Interpolation - ❌ NOT IMPLEMENTED
 
 **File**: `src/geometry/poincare.py`
 
-**Status**: Verifying whether `geodesic_interpolation` wrapper exists for visualization/analysis.
+**Status**: NOT IMPLEMENTED. No `geodesic()` or `geodesic_interpolation()` wrapper exists.
+
+The geoopt manifold has `manifold.geodesic(t, x, y)` but it's not exposed in `poincare.py`. The `PoincareModule` class provides dist, proj, expmap0, logmap0, add, conformal, transport — but no geodesic.
+
+**Impact**: Interpolation between points uses linear (Euclidean) paths instead of geodesic (hyperbolic) paths.
 
 #### Change 8: Config Schema ✅ IMPLEMENTED
 
@@ -363,14 +381,15 @@ class ManifoldBridge(nn.Module):
 
 ## Part 3: Implementation Plan (V6.0 Status)
 
-### Phase 1: Foundation ✅ COMPLETE
+### Phase 1: Foundation - Partial
 
 | Task | File | Description | Status |
 |------|------|-------------|--------|
-| 1.1 | `src/geometry/manifold_bridge.py` | ManifoldBridge abstraction | Verifying |
+| 1.1 | `src/geometry/manifold_bridge.py` | ManifoldBridge abstraction | ❌ Not created |
 | 1.2 | `src/losses/hyperbolic_kl.py` | HyperbolicKLDivergence | ✅ Done |
 | 1.3 | `src/geometry/poincare.py` | expmap0, logmap0 wrappers | ✅ Done |
-| 1.4 | `src/config/constants.py` | Trainable terminology | ✅ Done |
+| 1.4 | `src/geometry/poincare.py` | geodesic wrapper | ❌ Not done |
+| 1.5 | `src/config/constants.py` | Trainable terminology | ✅ Done |
 
 ### Phase 2: VAE Integration ✅ COMPLETE
 
@@ -385,10 +404,11 @@ class ManifoldBridge(nn.Module):
 
 | Task | File | Description | Status |
 |------|------|-------------|--------|
-| 3.1 | `src/losses/combined.py` | Add hyperbolic KL | Verifying |
-| 3.2 | `src/train.py` | RiemannianAdam stabilize | Verifying |
+| 3.1 | `src/losses/combined.py` | Add hyperbolic KL | ❌ Not integrated |
+| 3.2 | `src/train.py` | RiemannianAdam stabilize | ❌ Not passed |
 | 3.3 | `src/train.py` | Geometry config | ✅ Done |
-| 3.4 | `src/utils/checkpoint.py` | Save/load manifold state | Verifying |
+| 3.4 | `src/train.py` | Use ManifoldParameter | ❌ Not done |
+| 3.5 | `src/utils/checkpoint.py` | Save/load manifold state | ❌ Not verified |
 
 ### Phase 4: Presets & Validation - Partial
 
@@ -482,18 +502,18 @@ def test_tangent_output_is_euclidean():
 
 | File | Status | V6.0 Status |
 |------|--------|-------------|
-| `src/geometry/manifold_bridge.py` | NEW | Verifying |
-| `src/geometry/poincare.py` | MODIFY | ✅ Done (expmap0, logmap0) |
+| `src/geometry/manifold_bridge.py` | NEW | ❌ Not created |
+| `src/geometry/poincare.py` | MODIFY | ✅ expmap0/logmap0, ❌ geodesic |
 | `src/losses/hyperbolic_kl.py` | NEW | ✅ Done |
-| `src/losses/combined.py` | MODIFY | Verifying |
-| `src/models/vae.py` | MODIFY | ✅ Done (logmap0 decoder) |
-| `src/models/hyperbolic_projection.py` | MODIFY | ✅ Done (expmap0) |
-| `src/train.py` | MODIFY | ✅ Done (V6.0 classes) |
-| `src/utils/checkpoint.py` | MODIFY | Verifying |
+| `src/losses/combined.py` | MODIFY | ❌ HyperbolicKL not integrated |
+| `src/models/vae.py` | MODIFY | ✅ logmap0 decoder, ❌ ManifoldParameter |
+| `src/models/hyperbolic_projection.py` | MODIFY | ✅ expmap0, ⚠️ as_manifold unused |
+| `src/train.py` | MODIFY | ✅ V6.0 classes, ❌ stabilize not passed |
+| `src/utils/checkpoint.py` | MODIFY | ❌ Not verified |
 | `src/config/constants.py` | MODIFY | ✅ Done (trainable terminology) |
 | `src/presets/5.12.4.yaml` | MODIFY | ✅ Done (V6.0 config) |
-| `tests/test_manifold_bridge.py` | NEW | Pending |
-| `tests/test_hyperbolic_vae.py` | NEW | Pending |
+| `tests/test_manifold_bridge.py` | NEW | ❌ Pending |
+| `tests/test_hyperbolic_vae.py` | NEW | ❌ Pending |
 
 ---
 
@@ -507,7 +527,11 @@ def test_tangent_output_is_euclidean():
 ---
 
 **Audit updated**: 2025-01-24
-**V6.0 Implementation**: Core architecture complete
-**Remaining**: ManifoldParameter usage, RiemannianAdam stabilize, tests
+**V6.0 Implementation**: Core geometry correct (expmap0/logmap0), optimization still Euclidean
+**Not Implemented**:
+- ManifoldParameter for latents (`as_manifold=True` exists but unused)
+- RiemannianAdam stabilize parameter
+- Geodesic interpolation wrapper
+- HyperbolicKL integration in combined loss
 **Breaking changes**: Class names updated to V6 (TernaryVAEV6, TernaryVAEV6Controllable)
 **Terminology**: "trainable" replaces "frozen" (positive logic)
