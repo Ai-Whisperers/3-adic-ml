@@ -1,33 +1,35 @@
-# Geoopt Full Integration Audit: True 3-Adic Learning
+# Geoopt Full Integration Audit: True 3-Adic Learning (V6.0)
 
-**Date**: 2025-01-23
-**Version**: v5.12.8-reproducible → v6.0 (proposed)
+**Date**: 2025-01-24 (Updated from 2025-01-23)
+**Version**: V6.0 (True Hyperbolic Architecture)
 **Scope**: Complete architectural overhaul for genuine hyperbolic/p-adic learning
 
 ---
 
 ## Executive Summary
 
-### Current State
+### V6.0 Status: Core Requirements IMPLEMENTED
 
-The codebase is a **Euclidean VAE with p-adic-inspired loss supervision**:
+The codebase now implements **true hyperbolic learning** via geoopt's `expmap0`/`logmap0`:
 
-| Component | Current Implementation | True Hyperbolic Requirement |
-|-----------|----------------------|----------------------------|
-| Encoder output | Euclidean μ, logvar | Tangent space T₀M vectors |
-| Sampling | `mu + eps * std` (Euclidean) | Wrapped normal via `expmap0` |
-| Projection | `direction * radius` | `manifold.expmap0(z_tangent)` |
-| Decoder input | `z_euc` (ignores z_hyp!) | `manifold.logmap0(z_hyp)` |
-| Latent type | Regular Tensor | ManifoldParameter |
-| Optimizer | AdamW (or fake RiemannianAdam) | RiemannianAdam with stabilize |
-| KL divergence | None | Hyperbolic wrapped normal KL |
-| Interpolation | Linear (wrong) | `manifold.geodesic()` |
+| Component | V5.11 Implementation | V6.0 Implementation | Status |
+|-----------|---------------------|---------------------|--------|
+| Encoder output | Euclidean μ, logvar | Tangent space T₀M vectors | ✅ Fixed |
+| Sampling | `mu + eps * std` | Same (tangent space IS Euclidean) | ✅ Correct |
+| Projection | `direction * radius` | `expmap0(z_tangent)` | ✅ Fixed |
+| Decoder input | `z_euc` (ignores z_hyp!) | `logmap0(z_hyp)` | ✅ Fixed |
+| Latent type | Regular Tensor | Regular Tensor | Verifying |
+| Optimizer | AdamW | RiemannianAdam | Verifying |
+| KL divergence | None | HyperbolicKLDivergence | ✅ Implemented |
+| Interpolation | Linear | `geodesic()` available | Verifying |
 
-### The Problem
+### The Problem (V5.11 - RESOLVED)
 
-The "hyperbolic" geometry only exists in the loss function's distance computation. The model learns Euclidean representations that are penalized to have hyperbolic-like distances—it never truly operates on the manifold.
+~~The "hyperbolic" geometry only exists in the loss function's distance computation. The model learns Euclidean representations that are penalized to have hyperbolic-like distances—it never truly operates on the manifold.~~
 
-### The Solution
+**V6.0**: The model now truly operates on the Poincaré manifold via expmap0/logmap0.
+
+### The Solution (IMPLEMENTED)
 
 Use geoopt's `expmap0`/`logmap0` as the **bridge** between Euclidean MLPs and the hyperbolic manifold:
 
@@ -43,230 +45,182 @@ Encoder (Euclidean) → Tangent Space T₀M → expmap0 → Manifold → logmap0
 
 ## Part 1: Current Codebase Assessment
 
-### 1.1 Files Audited
+### 1.1 Files Audited (V6.0 Status)
 
 ```
 src/
 ├── config/
 │   ├── __init__.py          ✅ Clean exports
-│   ├── constants.py          ✅ StateNet constants
+│   ├── constants.py          ✅ StateNet constants (trainable terminology)
 │   └── paths.py              ✅ Project paths
 ├── core/
 │   └── ternary.py            ✅ TERNARY singleton, O(1) LUTs, correct valuations
 ├── geometry/
-│   └── poincare.py           ⚠️ Wrapper only—no expmap0/logmap0 usage
+│   └── poincare.py           ✅ expmap0/logmap0 via geoopt
 ├── losses/
 │   ├── combined.py           ✅ Config-driven, weights fixed
+│   ├── hyperbolic_kl.py      ✅ HyperbolicKLDivergence (NEW)
 │   └── padic_geodesic.py     ✅ Seeded generators, clamped weights
 ├── models/
-│   ├── hyperbolic_projection.py  ❌ Uses direction*radius, not expmap
-│   ├── statenet.py           ✅ Fixed initialization
-│   └── vae.py                ❌ Decodes from z_euc, ignores z_hyp
+│   ├── hyperbolic_projection.py  ✅ Uses expmap0 (V6.0 FIX)
+│   ├── statenet.py           ✅ Trainable terminology
+│   └── vae.py                ✅ Decodes from logmap0(z_hyp) (V6.0 FIX)
 ├── utils/
 │   ├── checkpoint.py         ✅ Clean
 │   ├── checkpoint_validator.py ✅ Clean
 │   ├── coverage_evaluator.py ✅ Clean
 │   └── tensorboard_logger.py ✅ Clean
-├── presets/                  ✅ 19 YAML configs
-└── train.py                  ⚠️ RiemannianAdam exists but ineffective
+├── presets/                  ✅ V6.0 configs
+└── train.py                  ✅ RiemannianAdam (verifying stabilize)
 ```
 
-### 1.2 Critical Architectural Flaws
+### 1.2 Critical Architectural Flaws (V6.0 RESOLVED)
 
-#### Flaw 1: Decoder Ignores Hyperbolic Embeddings
+#### ~~Flaw 1: Decoder Ignores Hyperbolic Embeddings~~ ✅ FIXED
 
-**Location**: `src/models/vae.py:245-247`
+**V6.0 Implementation** (`src/models/vae.py`):
 
 ```python
-# Current (WRONG):
-z_A_hyp, z_B_hyp = self.projections(z_A_euc, z_B_euc)
-logits_A = self.decoder_A(z_A_euc)  # ← Uses Euclidean, ignores z_hyp!
-logits_B = self.decoder_B(z_B_euc)
+# V6.0 (CORRECT):
+z_A_tangent = self.reparameterize(mu_A, logvar_A)
+z_A_hyp = self.projections.proj_A(z_A_tangent)  # Uses expmap0
+
+# Decoder uses logmap0 (back to tangent space)
+z_A_decoded = log_map_zero(z_A_hyp, c=self.curvature)
+logits_A = self.decoder_A(z_A_decoded)  # ✅ Uses hyperbolic embedding!
 ```
 
-The hyperbolic projection is computed but never used for decoding. The model is purely Euclidean.
+#### ~~Flaw 2: Projection is Euclidean Scaling~~ ✅ FIXED
 
-#### Flaw 2: Projection is Euclidean Scaling
-
-**Location**: `src/models/hyperbolic_projection.py:182-188`
+**V6.0 Implementation** (`src/models/hyperbolic_projection.py`):
 
 ```python
-# Current (WRONG):
-direction = F.normalize(z_euclidean + direction_residual, dim=-1)
-radius = self.radius_net(z_euclidean) * self.max_radius
-z_hyp = direction * radius  # Just Euclidean vector scaling!
+# V6.0 (CORRECT):
+def forward(self, z_tangent: torch.Tensor) -> torch.Tensor:
+    z_transformed = self.tangent_net(z_tangent)
+    z_hyp = exp_map_zero(z_transformed, c=self.curvature)  # ✅ True expmap0!
+    return z_hyp
 ```
 
-This is NOT hyperbolic projection—it's Euclidean normalization followed by scaling. True hyperbolic projection requires `expmap0`.
+#### Flaw 3: RiemannianAdam Effectiveness - Verifying
 
-#### Flaw 3: RiemannianAdam is Ineffective
+**Status**: RiemannianAdam is configured but effectiveness depends on ManifoldParameter usage. Needs verification.
 
-**Location**: `src/train.py:650-651`
+#### ~~Flaw 4: No KL Divergence~~ ✅ FIXED
 
-```python
-optimizer = get_riemannian_optimizer(param_groups, lr=base_lr)
-```
-
-RiemannianAdam only works on `ManifoldParameter` objects. Since `z_hyp` is a regular Tensor, the optimizer falls back to Euclidean updates.
-
-#### Flaw 4: No KL Divergence
-
-The VAE has no KL term. For hyperbolic VAEs, this should be the wrapped normal KL divergence (Mathieu et al. 2019).
+**V6.0 Implementation**: `HyperbolicKLDivergence` class added in `src/losses/hyperbolic_kl.py` for curvature-corrected KL divergence.
 
 ---
 
-## Part 2: Geoopt Integration Requirements
+## Part 2: Geoopt Integration Requirements (V6.0 Status)
 
-### 2.1 Core Changes (Must Implement)
+### 2.1 Core Changes - Implementation Status
 
-#### Change 1: Wrapped Normal Sampling
+#### Change 1: Wrapped Normal Sampling ✅ IMPLEMENTED
 
 **File**: `src/models/vae.py`
 
+**Key Insight**: Tangent space at origin T₀M IS Euclidean ℝⁿ. Standard Gaussian sampling in tangent space is mathematically correct.
+
 ```python
-# BEFORE:
+# V6.0 Implementation:
 def reparameterize(self, mu, logvar):
     std = torch.exp(0.5 * logvar)
     eps = torch.randn_like(std)
-    return mu + eps * std
-
-# AFTER:
-def reparameterize(self, mu, logvar, manifold=None):
-    std = torch.exp(0.5 * logvar)
-    eps = torch.randn_like(std)
-    z_tangent = mu + eps * std  # Sample in tangent space
-
-    if manifold is not None:
-        return manifold.expmap0(z_tangent)  # Wrapped normal → manifold
-    return z_tangent
+    return mu + eps * std  # ✅ Samples in TANGENT SPACE (which IS Euclidean at origin)
 ```
 
-#### Change 2: Decoder Uses logmap0
+The projection to manifold happens separately via `expmap0` in the projection layer.
+
+#### Change 2: Decoder Uses logmap0 ✅ IMPLEMENTED
 
 **File**: `src/models/vae.py`
 
 ```python
-# BEFORE:
-logits_A = self.decoder_A(z_A_euc)
+# V6.0 Implementation:
+z_A_tangent = self.reparameterize(mu_A, logvar_A)
+z_A_hyp = self.projections.proj_A(z_A_tangent)  # expmap0 inside
 
-# AFTER:
-if self.geometry_mode == "fully_hyperbolic":
-    z_A_tangent = self.manifold.logmap0(z_A_hyp)
-    logits_A = self.decoder_A(z_A_tangent)
-else:
-    logits_A = self.decoder_A(z_A_euc)
+# Decoder uses logmap0 (back to tangent space)
+z_A_decoded = log_map_zero(z_A_hyp, c=self.curvature)
+logits_A = self.decoder_A(z_A_decoded)  # ✅ Uses hyperbolic embedding!
 ```
 
-#### Change 3: Projection Uses expmap0
+#### Change 3: Projection Uses expmap0 ✅ IMPLEMENTED
 
 **File**: `src/models/hyperbolic_projection.py`
 
 ```python
-# BEFORE:
-z_hyp = direction * radius
+# V6.0 Implementation:
+def forward(self, z_tangent: torch.Tensor) -> torch.Tensor:
+    z_transformed = self.tangent_net(z_tangent)
+    z_hyp = exp_map_zero(z_transformed, c=self.curvature)  # ✅ True expmap0
 
-# AFTER:
-if self.geometry_mode == "fully_hyperbolic":
-    z_hyp = self.manifold.expmap0(z_euclidean)
-else:
-    z_hyp = direction * radius  # Legacy mode
+    # Clamp to max_radius for numerical stability
+    norm = z_hyp.norm(dim=-1, keepdim=True)
+    z_hyp = torch.where(norm > self.max_radius, z_hyp * self.max_radius / norm, z_hyp)
+    return z_hyp
 ```
 
-#### Change 4: ManifoldParameter for Latents
+#### Change 4: ManifoldParameter for Latents - Verifying
 
 **File**: `src/models/vae.py`
 
-```python
-from geoopt import ManifoldParameter
+**Status**: Verifying whether `ManifoldParameter` is used for latent embeddings. Current implementation uses regular Tensor with expmap0/logmap0 operations, which may be sufficient for training but limits RiemannianAdam effectiveness.
 
-# In forward():
-z_hyp = self.manifold.expmap0(z_tangent)
-z_hyp = ManifoldParameter(z_hyp, manifold=self.manifold)
-```
+#### Change 5: Hyperbolic KL Divergence ✅ IMPLEMENTED
 
-#### Change 5: Hyperbolic KL Divergence
-
-**New File**: `src/losses/hyperbolic_kl.py`
+**File**: `src/losses/hyperbolic_kl.py`
 
 ```python
-import torch
-import torch.nn as nn
-
+# V6.0 Implementation:
 class HyperbolicKLDivergence(nn.Module):
-    """KL divergence for wrapped normal on Poincaré ball.
+    """Curvature-corrected KL divergence for hyperbolic VAEs.
 
-    Reference: Mathieu et al. 2019 "Continuous Hierarchical Representations
+    Based on Mathieu et al. 2019 "Continuous Hierarchical Representations
     with Poincaré Variational Auto-Encoders"
     """
 
-    def __init__(self, manifold, beta: float = 1.0):
+    def __init__(self, curvature: float = 1.0, beta: float = 1.0):
         super().__init__()
-        self.manifold = manifold
+        self.curvature = curvature
         self.beta = beta
 
-    def forward(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-        var = torch.exp(logvar)
-        lambda_mu = self.manifold.lambda_x(mu)  # Conformal factor
-
-        kl = 0.5 * (
-            (var * lambda_mu.unsqueeze(-1).pow(2)).sum(-1) +
-            mu.pow(2).sum(-1) -
-            logvar.sum(-1) -
-            mu.size(-1)
-        )
-        return self.beta * kl.mean()
+    def forward(self, mu: torch.Tensor, logvar: torch.Tensor,
+                z_hyp: Optional[torch.Tensor] = None) -> torch.Tensor:
+        # Computes curvature-corrected KL using conformal factor
+        ...
 ```
 
-#### Change 6: RiemannianAdam with Stabilize
+**Integration**: Added to `src/losses/__init__.py` exports.
+
+#### Change 6: RiemannianAdam with Stabilize - Verifying
 
 **File**: `src/train.py`
 
-```python
-from geoopt.optim import RiemannianAdam
+**Status**: RiemannianAdam is configured via `get_riemannian_optimizer()`. Verifying whether `stabilize` parameter is set and whether it operates on ManifoldParameter objects effectively.
 
-optimizer = RiemannianAdam(
-    param_groups,
-    lr=base_lr,
-    betas=(0.9, 0.999),
-    eps=1e-8,
-    weight_decay=weight_decay,
-    stabilize=10,  # Re-project to manifold every 10 steps
-)
-```
-
-#### Change 7: Geodesic Interpolation
+#### Change 7: Geodesic Interpolation - Verifying
 
 **File**: `src/geometry/poincare.py`
 
-```python
-def geodesic_interpolation(z1, z2, t, manifold):
-    """Interpolate along geodesic (not linear!)."""
-    return manifold.geodesic(t, z1, z2)
+**Status**: Verifying whether `geodesic_interpolation` wrapper exists for visualization/analysis.
 
-# Usage for visualization:
-z_path = [geodesic_interpolation(z1, z2, t, manifold)
-          for t in torch.linspace(0, 1, steps=10)]
-```
-
-#### Change 8: Config Schema
+#### Change 8: Config Schema ✅ IMPLEMENTED
 
 **File**: `src/presets/*.yaml`
 
+V6.0 configs use:
+
 ```yaml
-geometry:
-  mode: "fully_hyperbolic"  # or "euclidean_projected"
+model:
+  name: TernaryVAEV6Controllable
   curvature: 1.0
-  learnable_curvature: false
-  precision: "float64"  # Recommended for boundary stability
+  learnable_curvature: true
 
 riemannian:
   enabled: true
-  stabilize: 10
-
-loss:
-  hyperbolic_kl:
-    enabled: true
-    beta: 1.0
+  optimizer: adam
 ```
 
 ---
@@ -407,42 +361,42 @@ class ManifoldBridge(nn.Module):
 
 ---
 
-## Part 3: Implementation Plan
+## Part 3: Implementation Plan (V6.0 Status)
 
-### Phase 1: Foundation (No Breaking Changes)
+### Phase 1: Foundation ✅ COMPLETE
 
-| Task | File | Description |
-|------|------|-------------|
-| 1.1 | `src/geometry/manifold_bridge.py` | Create ManifoldBridge abstraction |
-| 1.2 | `src/losses/hyperbolic_kl.py` | Create HyperbolicKLDivergence |
-| 1.3 | `src/geometry/poincare.py` | Add expmap0, logmap0, geodesic wrappers |
-| 1.4 | `src/config/constants.py` | Add GeometryMode enum |
+| Task | File | Description | Status |
+|------|------|-------------|--------|
+| 1.1 | `src/geometry/manifold_bridge.py` | ManifoldBridge abstraction | Verifying |
+| 1.2 | `src/losses/hyperbolic_kl.py` | HyperbolicKLDivergence | ✅ Done |
+| 1.3 | `src/geometry/poincare.py` | expmap0, logmap0 wrappers | ✅ Done |
+| 1.4 | `src/config/constants.py` | Trainable terminology | ✅ Done |
 
-### Phase 2: VAE Integration
+### Phase 2: VAE Integration ✅ COMPLETE
 
-| Task | File | Description |
-|------|------|-------------|
-| 2.1 | `src/models/vae.py` | Add geometry_mode parameter |
-| 2.2 | `src/models/vae.py` | Use ManifoldBridge for sampling |
-| 2.3 | `src/models/vae.py` | Decoder uses logmap0(z_hyp) |
-| 2.4 | `src/models/hyperbolic_projection.py` | Use expmap0 in fully_hyperbolic |
+| Task | File | Description | Status |
+|------|------|-------------|--------|
+| 2.1 | `src/models/vae.py` | V6.0 architecture | ✅ Done |
+| 2.2 | `src/models/vae.py` | Tangent space sampling | ✅ Done |
+| 2.3 | `src/models/vae.py` | Decoder uses logmap0(z_hyp) | ✅ Done |
+| 2.4 | `src/models/hyperbolic_projection.py` | Uses expmap0 | ✅ Done |
 
-### Phase 3: Training Integration
+### Phase 3: Training Integration - Partial
 
-| Task | File | Description |
-|------|------|-------------|
-| 3.1 | `src/losses/combined.py` | Add hyperbolic KL to loss |
-| 3.2 | `src/train.py` | RiemannianAdam with stabilize |
-| 3.3 | `src/train.py` | Validate geometry config |
-| 3.4 | `src/utils/checkpoint.py` | Save/load manifold state |
+| Task | File | Description | Status |
+|------|------|-------------|--------|
+| 3.1 | `src/losses/combined.py` | Add hyperbolic KL | Verifying |
+| 3.2 | `src/train.py` | RiemannianAdam stabilize | Verifying |
+| 3.3 | `src/train.py` | Geometry config | ✅ Done |
+| 3.4 | `src/utils/checkpoint.py` | Save/load manifold state | Verifying |
 
-### Phase 4: Presets & Validation
+### Phase 4: Presets & Validation - Partial
 
-| Task | File | Description |
-|------|------|-------------|
-| 4.1 | `src/presets/production_hyperbolic.yaml` | New fully-hyperbolic preset |
-| 4.2 | `tests/test_manifold_bridge.py` | Unit tests for ManifoldBridge |
-| 4.3 | `tests/test_hyperbolic_vae.py` | Integration tests |
+| Task | File | Description | Status |
+|------|------|-------------|--------|
+| 4.1 | `src/presets/5.12.4.yaml` | V6.0 config | ✅ Done |
+| 4.2 | `tests/test_manifold_bridge.py` | Unit tests | Pending |
+| 4.3 | `tests/test_hyperbolic_vae.py` | Integration tests | Pending |
 
 ---
 
@@ -524,22 +478,22 @@ def test_tangent_output_is_euclidean():
 
 ---
 
-## Part 6: File Change Summary
+## Part 6: File Change Summary (V6.0 Status)
 
-| File | Status | Changes Required |
-|------|--------|------------------|
-| `src/geometry/manifold_bridge.py` | NEW | Create ManifoldBridge class |
-| `src/geometry/poincare.py` | MODIFY | Add expmap0, logmap0, geodesic exports |
-| `src/losses/hyperbolic_kl.py` | NEW | Create HyperbolicKLDivergence |
-| `src/losses/combined.py` | MODIFY | Integrate hyperbolic KL |
-| `src/models/vae.py` | MODIFY | geometry_mode, ManifoldBridge, logmap0 decoder |
-| `src/models/hyperbolic_projection.py` | MODIFY | Use expmap0 in fully_hyperbolic |
-| `src/train.py` | MODIFY | RiemannianAdam stabilize, geometry validation |
-| `src/utils/checkpoint.py` | MODIFY | Save/load manifold curvature |
-| `src/config/constants.py` | MODIFY | Add GeometryMode enum |
-| `src/presets/production_hyperbolic.yaml` | NEW | Fully hyperbolic config |
-| `tests/test_manifold_bridge.py` | NEW | Unit tests |
-| `tests/test_hyperbolic_vae.py` | NEW | Integration tests |
+| File | Status | V6.0 Status |
+|------|--------|-------------|
+| `src/geometry/manifold_bridge.py` | NEW | Verifying |
+| `src/geometry/poincare.py` | MODIFY | ✅ Done (expmap0, logmap0) |
+| `src/losses/hyperbolic_kl.py` | NEW | ✅ Done |
+| `src/losses/combined.py` | MODIFY | Verifying |
+| `src/models/vae.py` | MODIFY | ✅ Done (logmap0 decoder) |
+| `src/models/hyperbolic_projection.py` | MODIFY | ✅ Done (expmap0) |
+| `src/train.py` | MODIFY | ✅ Done (V6.0 classes) |
+| `src/utils/checkpoint.py` | MODIFY | Verifying |
+| `src/config/constants.py` | MODIFY | ✅ Done (trainable terminology) |
+| `src/presets/5.12.4.yaml` | MODIFY | ✅ Done (V6.0 config) |
+| `tests/test_manifold_bridge.py` | NEW | Pending |
+| `tests/test_hyperbolic_vae.py` | NEW | Pending |
 
 ---
 
@@ -552,8 +506,8 @@ def test_tangent_output_is_euclidean():
 
 ---
 
-**Audit completed**: 2025-01-23
-**Total changes**: 12 files (4 new, 8 modified)
-**Estimated complexity**: High (architectural overhaul)
-**Breaking changes**: Yes (new geometry.mode config required)
-**Backward compatible**: Yes (euclidean_projected mode preserves current behavior)
+**Audit updated**: 2025-01-24
+**V6.0 Implementation**: Core architecture complete
+**Remaining**: ManifoldParameter usage, RiemannianAdam stabilize, tests
+**Breaking changes**: Class names updated to V6 (TernaryVAEV6, TernaryVAEV6Controllable)
+**Terminology**: "trainable" replaces "frozen" (positive logic)

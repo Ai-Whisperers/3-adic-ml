@@ -1,7 +1,8 @@
-# Audit Index: p-adic-vaes
+# Audit Index: p-adic-vaes (V6.0)
 
 **Last Updated**: 2025-01-24
 **Auditor**: Claude Opus 4.5
+**Version**: V6.0 (True Hyperbolic Architecture)
 
 ---
 
@@ -9,142 +10,111 @@
 
 This directory contains comprehensive audits of the p-adic-vaes codebase. The audits are organized into three categories:
 
-1. **Module Audits** - Per-module code reviews (current session)
+1. **Module Audits** - Per-module code reviews
 2. **Integration Audits** - Cross-cutting concerns and integration analysis
 3. **Previous Audits** - Historical audits for reference
 
 ---
 
-## Module Audits (Current)
+## V6.0 Architecture Status
 
-These audits cover individual `src/` modules with detailed analysis of correctness, architecture, and recommendations.
+### Critical Issues Resolution
 
-| Module | File | Rating | Key Finding |
+| Issue | Severity | Status | Resolution |
+|-------|----------|--------|------------|
+| **Decoder uses z_euc** | Critical | ✅ Fixed | Decoder now uses `logmap0(z_hyp)` |
+| **Euclidean reparameterization** | High | ✅ Fixed | Sample in tangent space (IS Euclidean at origin) |
+| **Euclidean projection math** | High | ✅ Fixed | Uses `expmap0` via geoopt |
+| **"Freeze" terminology** | Medium | ✅ Fixed | Now uses "trainable" (positive logic) |
+| **V5.5 backward compat cruft** | Low | ✅ Removed | No more key mapping, deprecated params |
+| **Class naming** | Low | ✅ Fixed | `TernaryVAEV6`, `TernaryVAEV6Controllable` |
+
+### Current Class Names
+
+| Old Name | New Name |
+|----------|----------|
+| `TernaryVAEV5_11` | `TernaryVAEV6` |
+| `TernaryVAEV5_11_PartialFreeze` | `TernaryVAEV6Controllable` |
+
+### StateNet Terminology
+
+| Old | New |
+|-----|-----|
+| `encoder_a_frozen` | `encoder_a_trainable` |
+| `coverage_freeze_threshold` | `coverage_fix_threshold` |
+| `coverage_unfreeze_threshold` | `coverage_train_threshold` |
+
+---
+
+## Module Audits
+
+| Module | File | Rating | V6.0 Status |
 |--------|------|--------|-------------|
-| **src/core/** | [CORE_MODULE_AUDIT.md](CORE_MODULE_AUDIT.md) | **7.5/10** | Good LUT design but dead code, silent error masking, race conditions |
-| **src/losses/** | [LOSSES_MODULE_AUDIT.md](LOSSES_MODULE_AUDIT.md) | **8/10** | Correct geometry but device mismatches, hardcoded magic numbers |
-| **src/utils/** | [UTILS_MODULE_AUDIT.md](UTILS_MODULE_AUDIT.md) | **7/10** | KeyError risks, dead imports, fragile model signatures |
-| **src/geometry/** | [GEOMETRY_MODULE_AUDIT.md](GEOMETRY_MODULE_AUDIT.md) | **8/10** | Ready for true hyperbolic; minor optimizations needed |
-| **src/config/** + **src/presets/** | [CONFIG_PRESETS_MODULE_AUDIT.md](CONFIG_PRESETS_MODULE_AUDIT.md) | **8/10** | Good separation of concerns |
-| **src/models/** | [MODELS_MODULE_AUDIT.md](MODELS_MODULE_AUDIT.md) | **6/10** | **Critical flaw**: decoder ignores z_hyp |
+| **src/core/** | [CORE_MODULE_AUDIT.md](CORE_MODULE_AUDIT.md) | **7.5/10** | Unchanged |
+| **src/losses/** | [LOSSES_MODULE_AUDIT.md](LOSSES_MODULE_AUDIT.md) | **8/10** | Unchanged |
+| **src/utils/** | [UTILS_MODULE_AUDIT.md](UTILS_MODULE_AUDIT.md) | **7/10** | Unchanged |
+| **src/geometry/** | [GEOMETRY_MODULE_AUDIT.md](GEOMETRY_MODULE_AUDIT.md) | **8/10** | Unchanged |
+| **src/config/** | [CONFIG_PRESETS_MODULE_AUDIT.md](CONFIG_PRESETS_MODULE_AUDIT.md) | **8/10** | Config keys renamed |
+| **src/models/** | [MODELS_MODULE_AUDIT.md](MODELS_MODULE_AUDIT.md) | **8/10** | ✅ **Major fixes applied** |
 
-### Module Ratings Summary (Revised 2025-01-23)
+### Module Ratings (V6.0)
 
 ```
+src/models/     ████████░░   8/10  Good (was 6/10 - fixed!)
 src/geometry/   ████████░░   8/10  Good
 src/config/     ████████░░   8/10  Good
-src/losses/     ████████░░   8/10  Good (was 9)
-src/core/       ███████▌░░  7.5/10 Good (was 10)
-src/utils/      ███████░░░   7/10  Acceptable (was 8.5)
-src/models/     ██████░░░░   6/10  Needs Work
+src/losses/     ████████░░   8/10  Good
+src/core/       ███████▌░░  7.5/10 Good
+src/utils/      ███████░░░   7/10  Acceptable
 ```
 
 ---
 
 ## Integration Audits
 
-Cross-cutting analysis covering system-wide concerns.
-
-| Topic | File | Summary |
-|-------|------|---------|
-| **Geoopt Integration** | [GEOOPT_INTEGRATION_AUDIT.md](GEOOPT_INTEGRATION_AUDIT.md) | 12 requirements for true hyperbolic learning |
-| **Real Non-Euclidean** | [real-non-euclidean.md](real-non-euclidean.md) | Analysis of non-Euclidean implementation |
-| **TensorBoard Logs** | [tensorboard-logs.md](tensorboard-logs.md) | Logging and visualization analysis |
-| **Terminal Monitoring** | [terminal-monitoring-integration.md](terminal-monitoring-integration.md) | CLI monitoring integration |
+| Topic | File | V6.0 Status |
+|-------|------|-------------|
+| **Geoopt Integration** | [GEOOPT_INTEGRATION_AUDIT.md](GEOOPT_INTEGRATION_AUDIT.md) | ✅ Core requirements implemented |
+| **Real Non-Euclidean** | [real-non-euclidean.md](real-non-euclidean.md) | Verifying |
+| **TensorBoard Logs** | [tensorboard-logs.md](tensorboard-logs.md) | Unchanged |
+| **Terminal Monitoring** | [terminal-monitoring-integration.md](terminal-monitoring-integration.md) | Unchanged |
 
 ---
 
-## Presets Analysis
+## Key Files (V6.0)
 
-Analysis of YAML configuration presets.
-
-| Topic | File | Summary |
-|-------|------|---------|
-| **YAML Completeness** | [presets-analysis/YAML_COMPLETENESS_AUDIT.md](presets-analysis/YAML_COMPLETENESS_AUDIT.md) | Config schema coverage |
-| **Gemini YAML Audit** | [presets-analysis/audit-yaml-gemini.md](presets-analysis/audit-yaml-gemini.md) | External audit notes |
-
----
-
-## Previous Audits (Historical)
-
-Older audits retained for reference. Some findings may be outdated.
-
-| Topic | File | Status |
-|-------|------|--------|
-| **Comprehensive Audit** | [previous-audits/SRC_COMPREHENSIVE_AUDIT.md](previous-audits/SRC_COMPREHENSIVE_AUDIT.md) | Superseded by module audits |
-| **Feature Implementation** | [previous-audits/FEATURE_IMPLEMENTATION_AUDIT.md](previous-audits/FEATURE_IMPLEMENTATION_AUDIT.md) | Historical reference |
-| **Pre-Audit** | [previous-audits/pre-audit.md](previous-audits/pre-audit.md) | Initial assessment |
-| **Presets Audit** | [previous-audits/presets-audit.md](previous-audits/presets-audit.md) | Superseded by CONFIG_PRESETS |
+| File | Purpose |
+|------|---------|
+| `src/models/vae.py` | `TernaryVAEV6`, `TernaryVAEV6Controllable` |
+| `src/models/statenet.py` | Q-gated trainability controller |
+| `src/models/hyperbolic_projection.py` | expmap0/logmap0 projections |
+| `src/geometry/poincare.py` | Riemannian backend (geoopt) |
+| `src/losses/padic_geodesic.py` | All hierarchy/geodesic losses |
+| `src/train.py` | Unified training entry point |
+| `src/presets/5.12.4.yaml` | Main training config |
 
 ---
 
-## Critical Findings Summary
+## Remaining Issues
 
-### Architecture Issues
+| Issue | Severity | Module | Status |
+|-------|----------|--------|--------|
+| Silent error masking | Medium | core | ⚠️ Open |
+| KeyError risks | Medium | utils | ⚠️ Open |
+| Race conditions in cache | Low | core | Documented (benign) |
 
-| Issue | Severity | Module | Status | Description |
-|-------|----------|--------|--------|-------------|
-| **Decoder uses z_euc** | 🔴 Critical | models | ✅ Fixed | Decoder now uses `logmap0(z_hyp)` |
-| **Euclidean reparameterization** | 🟠 High | models | ✅ Fixed | Sample in tangent space (which IS Euclidean) |
-| **Euclidean projection math** | 🟠 High | models | ✅ Fixed | Now uses `expmap0` via geoopt |
+---
 
-### Code Quality Issues (Found on Re-review)
-
-| Issue | Severity | Module | Status | Description |
-|-------|----------|--------|--------|-------------|
-| **Device mismatch in losses** | 🟠 Medium | losses | ✅ Fixed | `torch.tensor(0.0)` creates CPU tensors in GPU context |
-| **Silent error masking** | 🟠 Medium | core | ⚠️ Open | `torch.clamp` silently masks invalid inputs |
-| **KeyError risks** | 🟠 Medium | utils | ⚠️ Open | Direct dict access without `.get()` defaults |
-| **Dead code/imports** | 🟡 Low | core, utils | ✅ Fixed | `self._device` unused, `numpy` imported but never used |
-| **Race conditions** | 🟡 Low | core | 📝 Documented | Cache not thread-safe (benign) |
-| **Hardcoded magic numbers** | 🟡 Low | losses | ✅ Fixed | Now configurable via YAML with sensible defaults |
-| **Non-reproducible sampling** | 🟡 Low | utils | ✅ Fixed | `random.sample` now seeded in TensorBoard logger |
-| **Fragile model signatures** | 🟡 Low | utils | ✅ Fixed | Model params now use named constants |
-
-#### Fix Details (2025-01-24)
-
-**True Hyperbolic VAE (V6.0):**
-- `HyperbolicProjection` now uses `expmap0` instead of direction × radius
-- `TernaryVAEV5_11.forward()` uses `logmap0(z_hyp)` for decoder input
-- Removed transitional `DecoderMappingLayer` (no longer needed)
-- Architecture: Encoder → tangent → expmap0 → manifold → logmap0 → Decoder
-- Key insight: Tangent space at origin IS Euclidean, so MLPs and Gaussian sampling work
-
-**Magic numbers → YAML configurable (Option B):**
-- `valuation_weight_exponent` (0.25) → `RadialHierarchyLoss.__init__`, wired via `CombinedLoss`
-- `margin_step_factor` (0.5) → `RadialHierarchyLoss.__init__`, wired via `CombinedLoss`
-- `target_loss_weight` (0.5) → `MonotonicRadialLoss.__init__`, wired via `CombinedLoss`
-- `separation_margin` (0.01) → `RichHierarchyLoss.__init__`, wired via `CombinedLoss`
-
-Parameters use current values as defaults; YAML override is optional but available.
-
-### Positive Findings
+## Positive Findings
 
 | Finding | Module | Impact |
 |---------|--------|--------|
+| True hyperbolic via expmap0/logmap0 | models | ✅ Architecture is now correct |
 | Correct poincare_distance usage | losses | All losses compute hyperbolic radii correctly |
-| O(1) valuation lookups | core | Efficient 3-adic computations (when inputs valid) |
-| Seeded generators | losses | Reproducible pair sampling in loss functions |
+| O(1) valuation lookups | core | Efficient 3-adic computations |
+| Seeded generators | losses | Reproducible pair sampling |
 | Config-driven composition | losses | Flexible loss function assembly |
-| Graceful degradation | utils | TensorBoard optional |
-
----
-
-## Recommended Reading Order
-
-For understanding the codebase architecture:
-
-1. **[CORE_MODULE_AUDIT.md](CORE_MODULE_AUDIT.md)** - Foundation (TernarySpace singleton)
-2. **[GEOMETRY_MODULE_AUDIT.md](GEOMETRY_MODULE_AUDIT.md)** - Hyperbolic operations
-3. **[MODELS_MODULE_AUDIT.md](MODELS_MODULE_AUDIT.md)** - VAE architecture (and its flaw)
-4. **[LOSSES_MODULE_AUDIT.md](LOSSES_MODULE_AUDIT.md)** - Training objectives
-5. **[GEOOPT_INTEGRATION_AUDIT.md](GEOOPT_INTEGRATION_AUDIT.md)** - Path to true hyperbolic
-
-For fixing the architecture:
-
-1. **[GEOOPT_INTEGRATION_AUDIT.md](GEOOPT_INTEGRATION_AUDIT.md)** - Implementation plan
-2. **[MODELS_MODULE_AUDIT.md](MODELS_MODULE_AUDIT.md)** - What needs to change
-3. **[GEOMETRY_MODULE_AUDIT.md](GEOMETRY_MODULE_AUDIT.md)** - Available operations
+| Trainable terminology | models | Clear, positive logic |
 
 ---
 
@@ -154,19 +124,19 @@ For fixing the architecture:
 docs/audits/
 ├── INDEX.md                          # This file
 │
-├── # Module Audits (Current)
-├── CORE_MODULE_AUDIT.md              # src/core/ - 10/10
-├── LOSSES_MODULE_AUDIT.md            # src/losses/ - 9/10
-├── UTILS_MODULE_AUDIT.md             # src/utils/ - 8.5/10
-├── GEOMETRY_MODULE_AUDIT.md          # src/geometry/ - 8/10
-├── CONFIG_PRESETS_MODULE_AUDIT.md    # src/config/ + src/presets/ - 8/10
-├── MODELS_MODULE_AUDIT.md            # src/models/ - 6/10
+├── # Module Audits
+├── CORE_MODULE_AUDIT.md
+├── LOSSES_MODULE_AUDIT.md
+├── UTILS_MODULE_AUDIT.md
+├── GEOMETRY_MODULE_AUDIT.md
+├── CONFIG_PRESETS_MODULE_AUDIT.md
+├── MODELS_MODULE_AUDIT.md            # Updated for V6.0
 │
 ├── # Integration Audits
-├── GEOOPT_INTEGRATION_AUDIT.md       # True hyperbolic requirements
-├── real-non-euclidean.md             # Non-Euclidean analysis
-├── tensorboard-logs.md               # Logging analysis
-├── terminal-monitoring-integration.md # CLI monitoring
+├── GEOOPT_INTEGRATION_AUDIT.md       # Updated for V6.0
+├── real-non-euclidean.md
+├── tensorboard-logs.md
+├── terminal-monitoring-integration.md
 │
 ├── # Presets Analysis
 ├── presets-analysis/
@@ -180,28 +150,6 @@ docs/audits/
         ├── pre-audit.md
         └── presets-audit.md
 ```
-
----
-
-## Audit Methodology
-
-Each module audit follows a consistent structure:
-
-1. **Executive Summary** - Key findings and verdict
-2. **File Structure** - Module organization
-3. **Detailed Analysis** - Per-file/per-function review
-4. **Issues Summary** - Categorized by severity (Critical/High/Medium/Low)
-5. **Code Quality Assessment** - Scored metrics
-6. **Recommendations** - Actionable improvements
-7. **Verdict** - Final rating and conclusion
-
-Ratings scale:
-- **10/10**: Exemplary, no changes needed
-- **9/10**: Excellent, minor suggestions
-- **8/10**: Good, some improvements recommended
-- **7/10**: Acceptable, several issues to address
-- **6/10**: Needs work, significant issues
-- **<6/10**: Major refactoring required
 
 ---
 
