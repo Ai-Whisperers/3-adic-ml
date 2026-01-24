@@ -15,35 +15,43 @@ src/
 └── utils/          # Checkpoints, coverage, TensorBoard
 ```
 
-### Data Flow
+### Data Flow (True Hyperbolic - V6.0)
 
 ```
 Input (ternary ops)
        │
        ▼
    ┌───────────┐
-   │  Encoder  │ → μ, σ (Euclidean)
+   │  Encoder  │ → μ, logvar (tangent space T₀M)
    └───────────┘
        │
-       ▼ Reparameterization
+       ▼ Reparameterization (in tangent space)
    ┌───────────┐
-   │  z_euc    │ (Euclidean latent)
+   │ z_tangent │ = μ + ε * σ (Euclidean - tangent space IS Euclidean)
    └───────────┘
        │
-       ▼ Hyperbolic Projection
+       ▼ expmap0 (true hyperbolic projection)
    ┌───────────┐
-   │  z_hyp    │ (Poincare ball)
+   │  z_hyp    │ (on Poincaré manifold)
    └───────────┘
        │
-       ├──────────────────┐
-       ▼                  ▼
-   ┌───────────┐    ┌───────────┐
-   │  Decoder  │    │  Losses   │ (uses z_hyp for hierarchy)
-   └───────────┘    └───────────┘
+       ├──────────────────────────┐
+       ▼                          ▼
+   ┌───────────┐            ┌───────────┐
+   │  logmap0  │            │  Losses   │ (hyperbolic distances)
+   └───────────┘            └───────────┘
+       │
+       ▼
+   ┌───────────┐
+   │  Decoder  │ ← tangent space (Euclidean-compatible)
+   └───────────┘
        │
        ▼
    Output (logits)
 ```
+
+Key insight: The tangent space at origin T₀M IS Euclidean ℝⁿ. Standard MLPs work in tangent space.
+The manifold operations (expmap0, logmap0) provide the non-Euclidean structure.
 
 ---
 
@@ -215,58 +223,36 @@ All stochastic operations use seeded `torch.Generator`:
 
 ---
 
-## Architecture Issues
+## Architecture (V6.0 - True Hyperbolic)
 
-| Issue | Severity | Status | Description |
-|-------|----------|--------|-------------|
-| **Decoder uses z_euc** | 🔴 Critical | ✅ Fixed (Option C) | Enable `use_decoder_mapping=True` for geometric coherence |
-| **Euclidean reparameterization** | 🟠 High | ⚠️ Open | Should use wrapped normal on manifold |
-| **Euclidean projection math** | 🟠 High | ⚠️ Open | Should use expmap0, not direction × radius |
+All architectural issues have been resolved with proper geoopt integration:
 
-See `docs/audits/MODELS_MODULE_AUDIT.md` for details.
+| Issue | Status | Solution |
+|-------|--------|----------|
+| **Decoder uses z_euc** | ✅ Fixed | Decoder receives `logmap0(z_hyp)` |
+| **Euclidean reparameterization** | ✅ Fixed | Sample in tangent space (which IS Euclidean) |
+| **Euclidean projection math** | ✅ Fixed | Use `expmap0` instead of direction × radius |
 
-### Decoder z_euc Issue (Fixed with Option C)
+### How It Works
 
-**Problem:** Decoder and losses operated on different latent representations.
+1. **Encoder** outputs μ, logvar in tangent space T₀M at origin
+2. **Reparameterization**: `z_tangent = μ + ε * σ` (valid - tangent space is Euclidean)
+3. **Projection**: `z_hyp = expmap0(transform(z_tangent))` (true hyperbolic)
+4. **Losses**: Operate on `z_hyp` using `poincare_distance`
+5. **Decoder**: Receives `logmap0(z_hyp)` (back to tangent space)
 
-**Legacy Data Flow (use_decoder_mapping=False):**
-```
-Encoder → μ, σ → z_euc (Euclidean) → Decoder (reconstruction)
-                         ↓
-                     z_hyp (Poincaré) → Losses (hierarchy)
-```
+### Key Insight
 
-**Fixed Data Flow (use_decoder_mapping=True):**
-```
-Encoder → μ, σ → z_euc → z_hyp (Poincaré) → DecoderMappingLayer → Decoder
-                              ↓
-                          Losses (hierarchy)
-```
+The tangent space at the origin T₀M **IS** Euclidean ℝⁿ. This means:
+- Standard MLPs work in tangent space
+- Gaussian sampling is valid in tangent space
+- `expmap0`/`logmap0` provide the bridge to/from the hyperbolic manifold
 
-Both decoder and losses now use z_hyp, creating geometric coherence.
+### Implementation Files
 
-**Implementation (vae.py):**
-```python
-# Enable in model instantiation:
-model = TernaryVAEV5_11(use_decoder_mapping=True, mapping_hidden_dim=32)
-
-# Or via YAML config:
-model:
-  use_decoder_mapping: true
-  mapping_hidden_dim: 32
-```
-
-**DecoderMappingLayer Design:**
-- Residual architecture: `z_mapped = z_hyp + MLP(z_hyp)`
-- Initializes as identity (fc2 weights/bias = 0)
-- SiLU activation for smooth gradients
-- ~5K parameters (negligible overhead)
-
-**Why Option C over Option A (log_map_zero):**
-1. **Self-adapting** - learns optimal mapping, not fixed transform
-2. **Smooth gradients** - residual avoids log_map boundary instability
-3. **Distribution match** - adapts to decoder's Gaussian training expectations
-4. **No regression** - starts as identity, performance preserved
+- `src/models/hyperbolic_projection.py`: Uses `expmap0` for projection
+- `src/models/vae.py`: Uses `logmap0` for decoder input
+- `src/geometry/poincare.py`: Provides `exp_map_zero`, `log_map_zero` via geoopt
 
 ---
 

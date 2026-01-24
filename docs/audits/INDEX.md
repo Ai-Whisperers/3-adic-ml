@@ -84,9 +84,9 @@ Older audits retained for reference. Some findings may be outdated.
 
 | Issue | Severity | Module | Status | Description |
 |-------|----------|--------|--------|-------------|
-| **Decoder uses z_euc** | 🔴 Critical | models | ✅ Fixed | Enable `use_decoder_mapping=True` (Option C) |
-| **Euclidean reparameterization** | 🟠 High | models | ⚠️ Open | Should use wrapped normal on manifold |
-| **Euclidean projection math** | 🟠 High | models | ⚠️ Open | Should use expmap0, not direction × radius |
+| **Decoder uses z_euc** | 🔴 Critical | models | ✅ Fixed | Decoder now uses `logmap0(z_hyp)` |
+| **Euclidean reparameterization** | 🟠 High | models | ✅ Fixed | Sample in tangent space (which IS Euclidean) |
+| **Euclidean projection math** | 🟠 High | models | ✅ Fixed | Now uses `expmap0` via geoopt |
 
 ### Code Quality Issues (Found on Re-review)
 
@@ -103,12 +103,12 @@ Older audits retained for reference. Some findings may be outdated.
 
 #### Fix Details (2025-01-24)
 
-**Decoder z_euc → Option C (DecoderMappingLayer):**
-- Added `DecoderMappingLayer` class to `vae.py` - residual MLP that bridges z_hyp to decoder input
-- New model params: `use_decoder_mapping` (bool), `mapping_hidden_dim` (int, default 32)
-- Initializes as identity (no performance regression)
-- ~5K parameters (negligible overhead)
-- Updated `get_param_groups` to include decoder_mappings with full LR
+**True Hyperbolic VAE (V6.0):**
+- `HyperbolicProjection` now uses `expmap0` instead of direction × radius
+- `TernaryVAEV5_11.forward()` uses `logmap0(z_hyp)` for decoder input
+- Removed transitional `DecoderMappingLayer` (no longer needed)
+- Architecture: Encoder → tangent → expmap0 → manifold → logmap0 → Decoder
+- Key insight: Tangent space at origin IS Euclidean, so MLPs and Gaussian sampling work
 
 **Magic numbers → YAML configurable (Option B):**
 - `valuation_weight_exponent` (0.25) → `RadialHierarchyLoss.__init__`, wired via `CombinedLoss`
