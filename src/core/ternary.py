@@ -53,13 +53,17 @@ class TernarySpace:
 
     All operations are O(1) lookups after initialization.
 
+    Precision:
+        All floating-point operations use float64 for consistency with
+        geoopt's hyperbolic geometry (boundary stability near radius=1).
+
     Thread Safety:
         The device cache is not thread-safe. In multi-threaded scenarios,
         concurrent first-access to a new device may cause redundant copies.
         This is benign (no corruption) but slightly wasteful.
 
     Memory Usage:
-        ~865 KB per device (valuation LUT + ternary LUT + weights)
+        ~1.1 MB per device (valuation LUT + ternary LUT float64 + weights)
     """
 
     # Class constants - canonical values
@@ -75,7 +79,7 @@ class TernarySpace:
         self._valuation_lut = self._build_valuation_lut()
 
         # Precompute ternary LUT: index -> (d0, d1, ..., d8)
-        # Memory: 19,683 * 9 * 4 bytes = ~708 KB
+        # Memory: 19,683 * 9 * 8 bytes = ~1.4 MB (float64 for geoopt compatibility)
         self._ternary_lut = self._build_ternary_lut()
 
         # Base-3 weights for index computation: [1, 3, 9, 27, ...]
@@ -109,7 +113,7 @@ class TernarySpace:
                 digits.append((m % 3) - 1)  # Convert 0,1,2 to -1,0,1
                 m //= 3
             ternary.append(digits)
-        return torch.tensor(ternary, dtype=torch.float32)
+        return torch.tensor(ternary, dtype=torch.float64)
 
     def _get_cached_lut(self, name: str, lut: torch.Tensor, device: torch.device) -> torch.Tensor:
         """Get device-cached version of a LUT."""
@@ -182,7 +186,7 @@ class TernarySpace:
         v = self.valuation_of_difference(idx_i, idx_j)
 
         # Convert to distance: d = 3^(-v)
-        distances = torch.pow(3.0, -v.float())
+        distances = torch.pow(3.0, -v.double())
 
         # Set distance to 0 for identical indices
         distances[zero_mask] = 0.0
@@ -335,7 +339,7 @@ class TernarySpace:
         E[v_3(n)] for n ~ Uniform(1, N_OPERATIONS-1)
         """
         # Exclude 0 which has infinite valuation
-        v = self._valuation_lut[1:].float()
+        v = self._valuation_lut[1:].double()
         return v.mean().item()
 
 
