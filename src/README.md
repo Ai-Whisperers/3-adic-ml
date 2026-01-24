@@ -225,6 +225,60 @@ All stochastic operations use seeded `torch.Generator`:
 
 See `docs/audits/MODELS_MODULE_AUDIT.md` for details.
 
+### Critical Issue: Decoder Uses z_euc (Detailed Analysis)
+
+**Current Data Flow (vae.py:226-261):**
+```
+Encoder → μ, σ
+    ↓
+Reparameterize: z_euc = μ + σ*ε  (Euclidean sampling)
+    ↓
+    ├── Projection: z_hyp = project(z_euc)  → Poincaré ball
+    │       ↓
+    │   Losses (hierarchy, radial, geodesic) ← uses z_hyp ✓
+    │
+    └── Decoder: logits = decoder(z_euc)    ← uses z_euc ✗
+            ↓
+        Reconstruction loss
+```
+
+**The Asymmetry:**
+- **Decoder receives:** `z_euc` (line 246-247) - Euclidean latent
+- **Losses receive:** `z_hyp` (train.py:718) - Hyperbolic projection
+- They operate on **different representations** of the same sample
+
+**Code Location:**
+```python
+# src/models/vae.py lines 246-247
+logits_A = self.decoder_A(z_A_euc)  # ← ISSUE: uses Euclidean
+logits_B = self.decoder_B(z_B_euc)
+```
+
+**Why This Matters:**
+- Reconstruction optimizes Euclidean geometry
+- Hierarchy losses optimize hyperbolic geometry
+- These objectives are **partially decoupled** - not fully coherent
+
+**Historical Context:**
+- V5.12.1 config proposed using `log_map_zero(z_hyp)` for decoder input
+- This was **documented but never implemented**
+- Current design is intentional compatibility layer for v5.5 frozen checkpoint
+
+**Fix Options:**
+
+| Option | Approach | Pros | Cons |
+|--------|----------|------|------|
+| **A** | `log_map_zero(z_hyp)` → decoder | Geometrically coherent | Needs decoder retraining |
+| **B** | Direct `z_hyp` → decoder | Simple | Breaks norm assumptions |
+| **C** | Learnable mapping layer | Gradual transition | Adds parameters |
+
+**Recommended (Option A):**
+```python
+from src.geometry import log_map_zero
+z_A_tangent = log_map_zero(z_A_hyp, c=curvature)
+logits_A = self.decoder_A(z_A_tangent)
+```
+
 ---
 
 ## Quick Reference
