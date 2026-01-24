@@ -19,18 +19,14 @@ device:
   num_workers: 4
   empty_cache_freq: 25  # More frequent cache clearing for stability
 
-# Model Architecture (V5.12.4 with grokking optimizations)
+# Model Architecture (V6.0 with true hyperbolic geometry)
 model:
   name: TernaryVAEV5_11_PartialFreeze
   latent_dim: 16
   hidden_dim: 64
   max_radius: 0.95
   curvature: 1.0
-
-  use_controller: true
-  use_dual_projection: true
   learnable_curvature: true
-  manifold_aware: true
 
   projection_layers: 2
   projection_dropout: 0.1
@@ -49,8 +45,8 @@ option_c:
   encoder_b_lr_scale: 0.1
   encoder_a_lr_scale: 0.05
 
-# Frozen Checkpoint (REQUIRED for V5.11+ architecture to achieve 100% coverage)
-frozen_checkpoint:
+# Anchor Checkpoint (pre-trained weights to start from for coverage preservation)
+anchor_checkpoint:
   path: models/checkpoints/v5_12/v5_12_4/best_Q.pt  # Use compatible V5.12.4 checkpoint
   encoder_to_load: both  # Load both encoders for coverage preservation
   decoder_to_load: decoder_A  # Load decoder for reconstruction
@@ -58,8 +54,8 @@ frozen_checkpoint:
 # StateNet Control (Enhanced for extended training)
 statenet:
   enabled: true
-  coverage_freeze_threshold: 0.995
-  coverage_unfreeze_threshold: 1.0
+  coverage_fix_threshold: 0.995     # Fix encoder when coverage drops below this
+  coverage_train_threshold: 1.0     # Allow training when coverage is above this
   coverage_floor: 0.95
   warmup_epochs: 10  # Longer warmup for stability
   hysteresis_epochs: 5  # More conservative state changes

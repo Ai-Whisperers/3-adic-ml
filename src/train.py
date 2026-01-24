@@ -14,7 +14,7 @@ Features:
     - Config-driven: Loads any YAML config from src/presets/
     - Reproducible: Deterministic seeding for all random sources
     - Audited: Data integrity and model health checks before training
-    - StateNet: Adaptive freeze/unfreeze controller
+    - StateNet: Adaptive trainability controller
     - Combined Loss: Config-driven loss composition
     - Metrics: Coverage, hierarchy, Q metric, grokking detection
 
@@ -68,7 +68,6 @@ from src.core import TERNARY
 from src.geometry import poincare_distance, get_riemannian_optimizer
 from src.losses import CombinedLoss
 from src.models import StateNet, compute_Q, TernaryVAEV5_11_PartialFreeze
-from src.models.vae import map_v5_5_keys
 from src.utils.checkpoint import load_checkpoint_compat, get_model_state_dict
 
 
@@ -209,33 +208,16 @@ class ModelAuditor:
         encoder_type = model_cfg.get('encoder_type', 'improved')
         decoder_type = model_cfg.get('decoder_type', 'improved')
 
-        # Validate: v5.5 checkpoints require standard architecture (no silent override)
-        frozen_cfg = self.config.get('frozen_checkpoint', {})
-        ckpt_path_str = frozen_cfg.get('path')
-
-        if ckpt_path_str and ckpt_path_str != 'null':
-            ckpt_path = PROJECT_ROOT / ckpt_path_str
-            is_v5_5_checkpoint = ckpt_path.exists() and 'v5_5' in str(ckpt_path)
-
-            if is_v5_5_checkpoint and encoder_type != 'standard':
-                raise ValueError(
-                    f"Config mismatch: v5.5 checkpoint requires encoder_type='standard', "
-                    f"but config specifies '{encoder_type}'. "
-                    f"Update your preset to set encoder_type: standard and decoder_type: standard"
-                )
-
         # Instantiate model
         model = TernaryVAEV5_11_PartialFreeze(
             latent_dim=model_cfg.get('latent_dim', 16),
             hidden_dim=model_cfg.get('hidden_dim', 64),
             max_radius=model_cfg.get('max_radius', 0.95),
             curvature=model_cfg.get('curvature', 1.0),
-            use_controller=model_cfg.get('use_controller', True),
-            use_dual_projection=model_cfg.get('use_dual_projection', True),
             n_projection_layers=model_cfg.get('projection_layers', 2),
             projection_dropout=model_cfg.get('projection_dropout', 0.1),
             learnable_curvature=model_cfg.get('learnable_curvature', False),
-            freeze_encoder_b=False,
+            encoder_b_trainable=True,
             encoder_type=encoder_type,
             decoder_type=decoder_type,
         ).to(self.device)
@@ -245,9 +227,9 @@ class ModelAuditor:
         print(f"  [OK] Model created: {model_name}")
         print(f"       Parameters: {n_params:,} total, {n_trainable:,} trainable")
 
-        # Load frozen checkpoint if specified
-        frozen_cfg = self.config.get('frozen_checkpoint', {})
-        ckpt_path_str = frozen_cfg.get('path')
+        # Load anchor checkpoint if specified
+        anchor_cfg = self.config.get('anchor_checkpoint', {})
+        ckpt_path_str = anchor_cfg.get('path')
 
         if ckpt_path_str and ckpt_path_str != 'null':
             ckpt_path = PROJECT_ROOT / ckpt_path_str
@@ -256,14 +238,6 @@ class ModelAuditor:
                     ckpt = load_checkpoint_compat(ckpt_path, map_location=self.device)
                     state_dict = get_model_state_dict(ckpt)
 
-                    # Detect v5.5 checkpoint (has encoder_A.encoder.X keys)
-                    is_v5_5 = any(k.startswith('encoder_A.encoder.') for k in state_dict.keys())
-
-                    if is_v5_5:
-                        # Map v5.5 keys to V5.11 format
-                        state_dict = map_v5_5_keys(state_dict)
-                        print(f"  [OK] Detected v5.5 checkpoint, applied key mapping")
-
                     # Load with strict=False (projections may not match)
                     missing, unexpected = model.load_state_dict(state_dict, strict=False)
                     print(f"  [OK] Loaded checkpoint: {ckpt_path.name}")
@@ -271,7 +245,6 @@ class ModelAuditor:
 
                     self.audit_log['checkpoint_loaded'] = True
                     self.audit_log['checkpoint_path'] = str(ckpt_path)
-                    self.audit_log['checkpoint_is_v5_5'] = is_v5_5
 
                 except Exception as e:
                     print(f"  [WARN] Checkpoint load failed: {e}")
@@ -284,7 +257,7 @@ class ModelAuditor:
                 if not force:
                     raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
         else:
-            print("  [INFO] No frozen checkpoint specified (training from scratch)")
+            print("  [INFO] No anchor checkpoint specified (training from scratch)")
             self.audit_log['checkpoint_loaded'] = False
 
         # Gradient flow check
@@ -292,7 +265,7 @@ class ModelAuditor:
         dummy_input = torch.randint(-1, 2, (32, 9)).float().to(self.device)
 
         try:
-            out = model(dummy_input, compute_control=False)
+            out = model(dummy_input)
             logits = out.get('logits_A', out.get('logits'))
 
             # Simple forward check
@@ -630,8 +603,8 @@ def train(
     statenet = None
     if statenet_cfg.get('enabled', False):
         statenet = StateNet(
-            coverage_freeze_threshold=statenet_cfg.get('coverage_freeze_threshold', 0.995),
-            coverage_unfreeze_threshold=statenet_cfg.get('coverage_unfreeze_threshold', 0.999),
+            coverage_fix_threshold=statenet_cfg.get('coverage_fix_threshold', 0.995),
+            coverage_train_threshold=statenet_cfg.get('coverage_train_threshold', 0.999),
             coverage_floor=statenet_cfg.get('coverage_floor', 0.95),
             warmup_epochs=statenet_cfg.get('warmup_epochs', 10),
             hysteresis_epochs=statenet_cfg.get('hysteresis_epochs', 5),
@@ -714,7 +687,7 @@ def train(
             optimizer.zero_grad()
 
             with torch.amp.autocast('cuda', enabled=use_amp):
-                out = model(batch_ops, compute_control=False)
+                out = model(batch_ops)
                 z_hyp = out.get('z_A_hyp', out.get('z_B_hyp'))
                 logits = out.get('logits_A', out.get('logits'))
 
@@ -751,7 +724,7 @@ def train(
                     batch_ops = batch_ops.to(device)
                     batch_idx = batch_idx.to(device)
 
-                    out = model(batch_ops, compute_control=False)
+                    out = model(batch_ops)
                     logits = out.get('logits_A', out.get('logits'))
 
                     val_acc_sum += compute_accuracy(logits, batch_ops)
@@ -783,9 +756,9 @@ def train(
                     dist_corr_A=hier_metrics_A['dist_corr'],
                 )
                 model.apply_statenet_state(statenet_state)
-                freeze_summary = model.get_freeze_state_summary()
+                train_summary = model.get_trainability_summary()
             else:
-                freeze_summary = "N/A"
+                train_summary = "N/A"
 
             # Grokking detection
             grok_state = grokking_detector.update(epoch, avg_train_loss, avg_train_acc, avg_val_acc)
@@ -836,7 +809,7 @@ def train(
                     f"Cov {avg_val_coverage:.3f} | "
                     f"Hier A/B {hier_metrics_A['hierarchy']:.3f}/{hier_metrics_B['hierarchy']:.3f} | "
                     f"Q {hier_metrics_A['Q']:.3f} | "
-                    f"Freeze {freeze_summary} | "
+                    f"State {train_summary} | "
                     f"{dt:.1f}s"
                 )
 

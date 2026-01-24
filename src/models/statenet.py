@@ -8,14 +8,14 @@
 """Hierarchical StateNet Controller for V5.11.8.
 
 Implements complementary learning systems theory with Q-gated annealing:
-- Slow components (encoders): consolidate, freeze when objective met
+- Slow components (encoders): consolidate, fix when objective met
 - Fast components (projections, controller): continuously adapt
 - Q-gated annealing: thresholds relax only when Q improves
 
-Each component has its own freeze trigger:
-- encoder_A: coverage-gated (freeze on drop, unfreeze on recovery + hierarchy stall)
-- encoder_B: hierarchy-gated (freeze when VAE-B hierarchy plateaus)
-- controller: gradient-gated (freeze when weights stabilize)
+Each component has its own trainability trigger:
+- encoder_A: coverage-gated (fix on drop, make trainable on recovery + hierarchy stall)
+- encoder_B: hierarchy-gated (fix when VAE-B hierarchy plateaus)
+- controller: gradient-gated (fix when weights stabilize)
 - projections: always trainable (fast adaptation layer)
 
 V5.11.8: Q-gated annealing progressively relaxes thresholds when Q improves,
@@ -31,8 +31,8 @@ from src.config.constants import (
     STATENET_CONTROLLER_GRAD_THRESHOLD,
     STATENET_CONTROLLER_PATIENCE_CEILING,
     STATENET_COVERAGE_FLOOR,
-    STATENET_COVERAGE_FREEZE_THRESHOLD,
-    STATENET_COVERAGE_UNFREEZE_THRESHOLD,
+    STATENET_COVERAGE_FIX_THRESHOLD,
+    STATENET_COVERAGE_TRAIN_THRESHOLD,
     STATENET_HIERARCHY_PATIENCE_CEILING,
     STATENET_HIERARCHY_PLATEAU_PATIENCE,
     STATENET_HIERARCHY_PLATEAU_THRESHOLD,
@@ -53,10 +53,10 @@ def compute_Q(dist_corr: float, hierarchy: float) -> float:
 
 
 class StateNet:
-    """Hierarchical statenet freeze/unfreeze controller with Q-gated annealing.
+    """Hierarchical controller for component trainability with Q-gated annealing.
 
-    Monitors training metrics and dynamically adjusts component freeze states
-    to balance coverage preservation with geometric structure learning.
+    Monitors training metrics and dynamically adjusts which components are
+    trainable vs fixed, balancing coverage preservation with geometric structure.
 
     V5.11.8: Thresholds anneal (relax) only when Q improves after a cycle,
     and tighten when Q decreases. This creates a reversible ratchet.
@@ -65,8 +65,8 @@ class StateNet:
     def __init__(
         self,
         # Coverage thresholds for encoder_A (from constants.py)
-        coverage_freeze_threshold: float = STATENET_COVERAGE_FREEZE_THRESHOLD,
-        coverage_unfreeze_threshold: float = STATENET_COVERAGE_UNFREEZE_THRESHOLD,
+        coverage_fix_threshold: float = STATENET_COVERAGE_FIX_THRESHOLD,
+        coverage_train_threshold: float = STATENET_COVERAGE_TRAIN_THRESHOLD,
         # Hierarchy thresholds for encoder_B (from constants.py)
         hierarchy_plateau_threshold: float = STATENET_HIERARCHY_PLATEAU_THRESHOLD,
         hierarchy_plateau_patience: int = STATENET_HIERARCHY_PLATEAU_PATIENCE,
@@ -85,16 +85,16 @@ class StateNet:
         controller_patience_ceiling: int = STATENET_CONTROLLER_PATIENCE_CEILING,
     ):
         # Initial thresholds (can be annealed)
-        self.coverage_freeze_threshold = coverage_freeze_threshold
-        self.coverage_unfreeze_threshold = coverage_unfreeze_threshold
+        self.coverage_fix_threshold = coverage_fix_threshold
+        self.coverage_train_threshold = coverage_train_threshold
         self.hierarchy_plateau_threshold = hierarchy_plateau_threshold
         self.hierarchy_plateau_patience = hierarchy_plateau_patience
         self.controller_grad_threshold = controller_grad_threshold
         self.controller_grad_patience = controller_grad_patience
 
         # Store initial values for reference
-        self._initial_coverage_freeze = coverage_freeze_threshold
-        self._initial_coverage_unfreeze = coverage_unfreeze_threshold
+        self._initial_coverage_fix = coverage_fix_threshold
+        self._initial_coverage_train = coverage_train_threshold
         self._initial_hierarchy_patience = hierarchy_plateau_patience
         self._initial_controller_patience = controller_grad_patience
 
@@ -116,10 +116,10 @@ class StateNet:
         self.controller_grad_history: deque[float] = deque(maxlen=window_size)
         self.Q_history: deque[float] = deque(maxlen=window_size * 2)  # Longer window for Q
 
-        # Freeze states
-        self.encoder_a_frozen = True  # Starts frozen
-        self.encoder_b_frozen = False  # Starts trainable (Option C)
-        self.controller_frozen = False  # Starts trainable
+        # Trainability states (True = parameters update, False = parameters fixed)
+        self.encoder_a_trainable = False  # Starts fixed (coverage anchor)
+        self.encoder_b_trainable = True   # Starts trainable (hierarchy learner)
+        self.controller_trainable = True  # Starts trainable
 
         # Last state change epoch (for hysteresis)
         self.encoder_a_last_change = -hysteresis_epochs
@@ -130,16 +130,16 @@ class StateNet:
         self.hierarchy_b_plateau_count = 0
         self.controller_low_grad_count = 0
 
-        # Unfreeze conditions for encoder_A
+        # Conditions to make encoder_A trainable
         self.hierarchy_a_stalled = False
         self.hierarchy_a_stall_count = 0
         self.hierarchy_stall_patience = 5
 
         # Q-gated annealing state
         # Initialize cycle start Q for ALL components
-        # - encoder_a: starts frozen, will be set when it unfreezes
-        # - encoder_b: starts unfrozen, needs initial Q=0 for first cycle
-        # - controller: starts unfrozen, needs initial Q=0 for first cycle
+        # - encoder_a: starts fixed, will be set when it becomes trainable
+        # - encoder_b: starts trainable, needs initial Q=0 for first cycle
+        # - controller: starts trainable, needs initial Q=0 for first cycle
         self.Q_at_cycle_start = {
             "encoder_a": 0.0,
             "encoder_b": 0.0,
@@ -168,7 +168,7 @@ class StateNet:
             controller_grad_norm: Optional gradient norm of controller params
 
         Returns:
-            Dict with freeze states and any triggered events
+            Dict with trainability states and any triggered events
         """
         # Compute current Q
         current_Q = compute_Q(dist_corr_A, hierarchy_A)
@@ -190,9 +190,9 @@ class StateNet:
         # Skip statenet during warmup
         if epoch < self.warmup_epochs:
             return {
-                "encoder_a_frozen": self.encoder_a_frozen,
-                "encoder_b_frozen": self.encoder_b_frozen,
-                "controller_frozen": self.controller_frozen,
+                "encoder_a_trainable": self.encoder_a_trainable,
+                "encoder_b_trainable": self.encoder_b_trainable,
+                "controller_trainable": self.controller_trainable,
                 "current_Q": current_Q,
                 "best_Q": self.best_Q,
                 "events": ["warmup"],
@@ -200,49 +200,49 @@ class StateNet:
 
         # === Encoder A: Coverage-gated ===
         if self._can_change_state(epoch, self.encoder_a_last_change):
-            encoder_a_decision = self._decide_encoder_a(coverage)
+            encoder_a_decision = self._decide_encoder_a_trainable(coverage)
             if encoder_a_decision is not None:
-                was_frozen = self.encoder_a_frozen
-                self.encoder_a_frozen = encoder_a_decision
+                was_trainable = self.encoder_a_trainable
+                self.encoder_a_trainable = encoder_a_decision
                 self.encoder_a_last_change = epoch
-                events.append(f"encoder_A {'frozen' if encoder_a_decision else 'unfrozen'}")
+                events.append(f"encoder_A {'trainable' if encoder_a_decision else 'fixed'}")
 
                 # Q-gated annealing: check cycle completion
                 if self.enable_annealing:
-                    anneal_event = self._handle_cycle("encoder_a", was_frozen, encoder_a_decision, current_Q)
+                    anneal_event = self._handle_cycle("encoder_a", was_trainable, encoder_a_decision, current_Q)
                     if anneal_event:
                         events.append(anneal_event)
 
         # === Encoder B: Hierarchy-gated ===
         if self._can_change_state(epoch, self.encoder_b_last_change):
-            encoder_b_decision = self._decide_encoder_b()
+            encoder_b_decision = self._decide_encoder_b_trainable()
             if encoder_b_decision is not None:
-                was_frozen = self.encoder_b_frozen
-                self.encoder_b_frozen = encoder_b_decision
+                was_trainable = self.encoder_b_trainable
+                self.encoder_b_trainable = encoder_b_decision
                 self.encoder_b_last_change = epoch
-                events.append(f"encoder_B {'frozen' if encoder_b_decision else 'unfrozen'}")
+                events.append(f"encoder_B {'trainable' if encoder_b_decision else 'fixed'}")
 
                 # Q-gated annealing
                 if self.enable_annealing:
-                    anneal_event = self._handle_cycle("encoder_b", was_frozen, encoder_b_decision, current_Q)
+                    anneal_event = self._handle_cycle("encoder_b", was_trainable, encoder_b_decision, current_Q)
                     if anneal_event:
                         events.append(anneal_event)
 
         # === Controller: Gradient-gated ===
         if controller_grad_norm is not None:
             if self._can_change_state(epoch, self.controller_last_change):
-                controller_decision = self._decide_controller()
+                controller_decision = self._decide_controller_trainable()
                 if controller_decision is not None:
-                    was_frozen = self.controller_frozen
-                    self.controller_frozen = controller_decision
+                    was_trainable = self.controller_trainable
+                    self.controller_trainable = controller_decision
                     self.controller_last_change = epoch
-                    events.append(f"controller {'frozen' if controller_decision else 'unfrozen'}")
+                    events.append(f"controller {'trainable' if controller_decision else 'fixed'}")
 
                     # Q-gated annealing
                     if self.enable_annealing:
                         anneal_event = self._handle_cycle(
                             "controller",
-                            was_frozen,
+                            was_trainable,
                             controller_decision,
                             current_Q,
                         )
@@ -250,9 +250,9 @@ class StateNet:
                             events.append(anneal_event)
 
         return {
-            "encoder_a_frozen": self.encoder_a_frozen,
-            "encoder_b_frozen": self.encoder_b_frozen,
-            "controller_frozen": self.controller_frozen,
+            "encoder_a_trainable": self.encoder_a_trainable,
+            "encoder_b_trainable": self.encoder_b_trainable,
+            "controller_trainable": self.controller_trainable,
             "current_Q": current_Q,
             "best_Q": self.best_Q,
             "events": events,
@@ -261,30 +261,30 @@ class StateNet:
     def _handle_cycle(
         self,
         component: str,
-        was_frozen: bool,
-        now_frozen: bool,
+        was_trainable: bool,
+        now_trainable: bool,
         current_Q: float,
     ) -> Optional[str]:
         """Handle Q-gated annealing when a cycle completes.
 
-        A cycle is: unfrozen -> frozen (component adapted then consolidated)
+        A cycle is: trainable -> fixed (component adapted then consolidated)
 
         Args:
             component: 'encoder_a', 'encoder_b', or 'controller'
-            was_frozen: Previous freeze state
-            now_frozen: New freeze state
+            was_trainable: Previous trainability state
+            now_trainable: New trainability state
             current_Q: Current Q value
 
         Returns:
             Event string if annealing occurred, None otherwise
         """
-        # Cycle start: frozen -> unfrozen
-        if was_frozen and not now_frozen:
+        # Cycle start: fixed -> trainable
+        if not was_trainable and now_trainable:
             self.Q_at_cycle_start[component] = current_Q
             return None
 
-        # Cycle end: unfrozen -> frozen
-        if not was_frozen and now_frozen:
+        # Cycle end: trainable -> fixed
+        if was_trainable and not now_trainable:
             self.cycle_count[component] += 1
             start_Q = self.Q_at_cycle_start.get(component, current_Q)
             Q_delta = current_Q - start_Q
@@ -313,20 +313,20 @@ class StateNet:
         step = self.annealing_step if relax else -self.annealing_step
 
         if component == "encoder_a":
-            # Relax coverage thresholds (lower freeze, lower unfreeze)
-            new_freeze = self.coverage_freeze_threshold - step
-            new_unfreeze = self.coverage_unfreeze_threshold - step
+            # Relax coverage thresholds (lower fix, lower train)
+            new_fix = self.coverage_fix_threshold - step
+            new_train = self.coverage_train_threshold - step
 
             # Enforce floor
-            if new_freeze >= self.coverage_floor:
-                self.coverage_freeze_threshold = new_freeze
-                self.coverage_unfreeze_threshold = max(new_unfreeze, new_freeze + 0.005)
-                return f"encoder_A thresholds {direction} (freeze={self.coverage_freeze_threshold:.3f}, unfreeze={self.coverage_unfreeze_threshold:.3f}, Q_delta={Q_delta:+.3f})"
+            if new_fix >= self.coverage_floor:
+                self.coverage_fix_threshold = new_fix
+                self.coverage_train_threshold = max(new_train, new_fix + 0.005)
+                return f"encoder_A thresholds {direction} (fix={self.coverage_fix_threshold:.3f}, train={self.coverage_train_threshold:.3f}, Q_delta={Q_delta:+.3f})"
             else:
                 return f"encoder_A at floor (coverage_floor={self.coverage_floor})"
 
         elif component == "encoder_b":
-            # Relax hierarchy patience (more epochs before freeze)
+            # Relax hierarchy patience (more epochs before fixing)
             new_patience = self.hierarchy_plateau_patience + (1 if relax else -1)
 
             if relax and new_patience <= self.hierarchy_patience_ceiling:
@@ -359,26 +359,26 @@ class StateNet:
         """Check if enough epochs have passed since last state change (hysteresis)."""
         return epoch - last_change >= self.hysteresis_epochs
 
-    def _decide_encoder_a(self, coverage: float) -> Optional[bool]:
-        """Decide encoder_A freeze state based on coverage.
+    def _decide_encoder_a_trainable(self, coverage: float) -> Optional[bool]:
+        """Decide encoder_A trainability based on coverage.
 
         Logic:
-        - If unfrozen and coverage drops below threshold -> FREEZE
-        - If frozen and coverage=100% AND hierarchy stalled -> UNFREEZE
+        - If trainable and coverage drops below threshold -> make FIXED
+        - If fixed and coverage=100% AND hierarchy stalled -> make TRAINABLE
 
         Returns:
-            True to freeze, False to unfreeze, None for no change
+            True to make trainable, False to make fixed, None for no change
         """
-        if not self.encoder_a_frozen:
-            # Currently unfrozen - check if should freeze
-            if coverage < self.coverage_freeze_threshold:
-                return True  # Freeze to protect coverage
+        if self.encoder_a_trainable:
+            # Currently trainable - check if should fix
+            if coverage < self.coverage_fix_threshold:
+                return False  # Fix to protect coverage
         else:
-            # Currently frozen - check if should unfreeze
-            if coverage >= self.coverage_unfreeze_threshold:
+            # Currently fixed - check if should make trainable
+            if coverage >= self.coverage_train_threshold:
                 # Coverage is good, check if hierarchy is stalled
                 if self._is_hierarchy_a_stalled():
-                    return False  # Unfreeze to escape plateau
+                    return True  # Make trainable to escape plateau
 
         return None  # No change
 
@@ -399,20 +399,20 @@ class StateNet:
 
         return self.hierarchy_a_stall_count >= self.hierarchy_stall_patience
 
-    def _decide_encoder_b(self) -> Optional[bool]:
-        """Decide encoder_B freeze state based on VAE-B hierarchy.
+    def _decide_encoder_b_trainable(self) -> Optional[bool]:
+        """Decide encoder_B trainability based on VAE-B hierarchy.
 
         Logic:
-        - If unfrozen and hierarchy plateaus for patience epochs -> FREEZE
-        - If frozen and hierarchy is not at target -> UNFREEZE
+        - If trainable and hierarchy plateaus for patience epochs -> make FIXED
+        - If fixed and hierarchy is degrading -> make TRAINABLE
 
         Returns:
-            True to freeze, False to unfreeze, None for no change
+            True to make trainable, False to make fixed, None for no change
         """
         if len(self.hierarchy_B_history) < 2:
             return None
 
-        if not self.encoder_b_frozen:
+        if self.encoder_b_trainable:
             # Check for plateau
             recent = list(self.hierarchy_B_history)
             improvement = abs(recent[-1]) - abs(recent[0])
@@ -423,54 +423,54 @@ class StateNet:
                 self.hierarchy_b_plateau_count = 0
 
             if self.hierarchy_b_plateau_count >= self.hierarchy_plateau_patience:
-                return True  # Freeze - hierarchy plateaued
+                return False  # Fix - hierarchy plateaued
         else:
-            # Currently frozen - unfreeze if hierarchy degraded
+            # Currently fixed - make trainable if hierarchy degraded
             if len(self.hierarchy_B_history) >= 2:
                 if abs(self.hierarchy_B_history[-1]) < abs(self.hierarchy_B_history[-2]) - 0.01:
                     self.hierarchy_b_plateau_count = 0
-                    return False  # Unfreeze - hierarchy degraded
+                    return True  # Make trainable - hierarchy degraded
 
         return None
 
-    def _decide_controller(self) -> Optional[bool]:
-        """Decide controller freeze state based on gradient norm.
+    def _decide_controller_trainable(self) -> Optional[bool]:
+        """Decide controller trainability based on gradient norm.
 
         Logic:
-        - If unfrozen and grad norm low for patience epochs -> FREEZE
-        - If frozen and grad norm spikes -> UNFREEZE
+        - If trainable and grad norm low for patience epochs -> make FIXED
+        - If fixed and grad norm spikes -> make TRAINABLE
 
         Returns:
-            True to freeze, False to unfreeze, None for no change
+            True to make trainable, False to make fixed, None for no change
         """
         if len(self.controller_grad_history) < 2:
             return None
 
         current_grad = self.controller_grad_history[-1]
 
-        if not self.controller_frozen:
+        if self.controller_trainable:
             if current_grad < self.controller_grad_threshold:
                 self.controller_low_grad_count += 1
             else:
                 self.controller_low_grad_count = 0
 
             if self.controller_low_grad_count >= self.controller_grad_patience:
-                return True  # Freeze - controller stabilized
+                return False  # Fix - controller stabilized
         else:
             # Check for gradient spike (need to adapt again)
             avg_grad = sum(self.controller_grad_history) / len(self.controller_grad_history)
             if current_grad > avg_grad * 2:  # Spike = 2x average
                 self.controller_low_grad_count = 0
-                return False  # Unfreeze
+                return True  # Make trainable
 
         return None
 
     def get_state_summary(self) -> str:
-        """Get human-readable summary of current freeze states and Q."""
+        """Get human-readable summary of current trainability states and Q."""
         states = []
-        states.append(f"enc_A:{'F' if self.encoder_a_frozen else 'T'}")
-        states.append(f"enc_B:{'F' if self.encoder_b_frozen else 'T'}")
-        states.append(f"ctrl:{'F' if self.controller_frozen else 'T'}")
+        states.append(f"enc_A:{'train' if self.encoder_a_trainable else 'fixed'}")
+        states.append(f"enc_B:{'train' if self.encoder_b_trainable else 'fixed'}")
+        states.append(f"ctrl:{'train' if self.controller_trainable else 'fixed'}")
         if self.Q_history:
             states.append(f"Q:{self.Q_history[-1]:.2f}")
         return " ".join(states)
@@ -478,8 +478,8 @@ class StateNet:
     def get_annealing_summary(self) -> str:
         """Get summary of current annealing state."""
         parts = []
-        parts.append(f"cov_freeze={self.coverage_freeze_threshold:.3f}")
-        parts.append(f"cov_unfreeze={self.coverage_unfreeze_threshold:.3f}")
+        parts.append(f"cov_fix={self.coverage_fix_threshold:.3f}")
+        parts.append(f"cov_train={self.coverage_train_threshold:.3f}")
         parts.append(f"hier_pat={self.hierarchy_plateau_patience}")
         parts.append(f"ctrl_pat={self.controller_grad_patience}")
         parts.append(f"cycles={sum(self.cycle_count.values())}")
@@ -494,9 +494,9 @@ class StateNet:
         self.controller_grad_history.clear()
         self.Q_history.clear()
 
-        self.encoder_a_frozen = True
-        self.encoder_b_frozen = False
-        self.controller_frozen = False
+        self.encoder_a_trainable = False
+        self.encoder_b_trainable = True
+        self.controller_trainable = True
 
         self.encoder_a_last_change = -self.hysteresis_epochs
         self.encoder_b_last_change = -self.hysteresis_epochs
@@ -516,8 +516,8 @@ class StateNet:
         self.best_Q = 0.0
 
         # Reset thresholds to initial values
-        self.coverage_freeze_threshold = self._initial_coverage_freeze
-        self.coverage_unfreeze_threshold = self._initial_coverage_unfreeze
+        self.coverage_fix_threshold = self._initial_coverage_fix
+        self.coverage_train_threshold = self._initial_coverage_train
         self.hierarchy_plateau_patience = self._initial_hierarchy_patience
         self.controller_grad_patience = self._initial_controller_patience
 

@@ -23,53 +23,13 @@ Reference:
     Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
 """
 
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 
 import torch
 import torch.nn as nn
 
 from src.geometry import log_map_zero
 from src.models.hyperbolic_projection import DualHyperbolicProjection
-
-
-# =============================================================================
-# Key Mapping: V5.5 → V5.11
-# =============================================================================
-
-V5_5_TO_V5_11_KEY_MAP = {
-    # Encoder A
-    "encoder_A.encoder.": "encoder_A.",
-    "encoder_A.fc_mu.": "fc_mu_A.",
-    "encoder_A.fc_logvar.": "fc_logvar_A.",
-    # Encoder B
-    "encoder_B.encoder.": "encoder_B.",
-    "encoder_B.fc_mu.": "fc_mu_B.",
-    "encoder_B.fc_logvar.": "fc_logvar_B.",
-    # Decoder A
-    "decoder_A.decoder.": "decoder_A.",
-    # Decoder B (v5.5 has different structure, skip)
-}
-
-
-def map_v5_5_keys(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-    """Map v5.5 checkpoint keys to V5.11 format.
-
-    Args:
-        state_dict: V5.5 checkpoint state dict
-
-    Returns:
-        State dict with V5.11 compatible keys
-    """
-    mapped = {}
-    for key, value in state_dict.items():
-        new_key = key
-        for old_prefix, new_prefix in V5_5_TO_V5_11_KEY_MAP.items():
-            if key.startswith(old_prefix):
-                new_key = new_prefix + key[len(old_prefix):]
-                break
-        mapped[new_key] = value
-    return mapped
 
 
 # =============================================================================
@@ -81,7 +41,7 @@ def build_encoder(hidden_dim: int, encoder_type: str = "improved") -> nn.Sequent
 
     Args:
         hidden_dim: Hidden dimension (64 recommended)
-        encoder_type: "improved" (SiLU+LayerNorm) or "standard" (ReLU, v5.5 compat)
+        encoder_type: "improved" (SiLU+LayerNorm) or "standard" (ReLU)
 
     Returns:
         Encoder sequential module (9 → hidden_dim output)
@@ -114,7 +74,7 @@ def build_decoder(latent_dim: int, hidden_dim: int, decoder_type: str = "improve
     Args:
         latent_dim: Latent dimension (16 recommended)
         hidden_dim: Hidden dimension (64 recommended)
-        decoder_type: "improved" (SiLU+LayerNorm) or "standard" (ReLU, v5.5 compat)
+        decoder_type: "improved" (SiLU+LayerNorm) or "standard" (ReLU)
 
     Returns:
         Decoder sequential module (latent_dim → 27 output)
@@ -178,13 +138,6 @@ class TernaryVAEV5_11(nn.Module):
         n_projection_layers: int = 1,
         projection_dropout: float = 0.0,
         learnable_curvature: bool = False,
-        # Unused kwargs for compatibility
-        use_controller: bool = True,
-        use_dual_projection: bool = True,
-        manifold_aware: bool = False,
-        use_decoder_mapping: bool = False,  # Deprecated, kept for compat
-        mapping_hidden_dim: int = 32,  # Deprecated, kept for compat
-        **kwargs,
     ):
         super().__init__()
         self.latent_dim = latent_dim
@@ -243,12 +196,11 @@ class TernaryVAEV5_11(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(self, x: torch.Tensor, compute_control: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Forward pass through both VAEs.
 
         Args:
             x: Input ternary operations (B, 9) with values in {-1, 0, 1}
-            compute_control: Unused, kept for API compatibility
 
         Returns:
             Dict with logits, latents, and hyperbolic projections
@@ -277,55 +229,15 @@ class TernaryVAEV5_11(nn.Module):
             "logvar_A": logvar_A,
             "mu_B": mu_B,
             "logvar_B": logvar_B,
-            "z_A_tangent": z_A_tangent,  # Tangent space samples
+            "z_A_tangent": z_A_tangent,
             "z_B_tangent": z_B_tangent,
-            "z_A_hyp": z_A_hyp,  # Manifold points
+            "z_A_hyp": z_A_hyp,
             "z_B_hyp": z_B_hyp,
-            # Backward compat aliases
-            "z_A_euc": z_A_tangent,
-            "z_B_euc": z_B_tangent,
         }
 
     def get_param_groups(self, base_lr: float) -> List[Dict[str, Any]]:
         """Return parameter groups for optimizer."""
         return [{"params": self.parameters(), "lr": base_lr}]
-
-    @classmethod
-    def from_v5_5_checkpoint(
-        cls,
-        checkpoint_path: Union[str, Path],
-        device: torch.device = torch.device("cpu"),
-        **model_kwargs,
-    ) -> "TernaryVAEV5_11":
-        """Create model and load v5.5 checkpoint with key mapping.
-
-        Args:
-            checkpoint_path: Path to v5.5 .pt file
-            device: Device to load model to
-            **model_kwargs: Override default model parameters
-
-        Returns:
-            Model with v5.5 weights loaded
-        """
-        # Force standard type for v5.5 compatibility
-        model_kwargs.setdefault("encoder_type", "standard")
-        model_kwargs.setdefault("decoder_type", "standard")
-        model_kwargs.setdefault("latent_dim", 16)
-        model_kwargs.setdefault("hidden_dim", 64)
-
-        model = cls(**model_kwargs).to(device)
-
-        # Load checkpoint
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        state_dict = checkpoint.get("model", checkpoint)
-
-        # Map keys
-        mapped_state = map_v5_5_keys(state_dict)
-
-        # Load with strict=False (projections won't match)
-        missing, unexpected = model.load_state_dict(mapped_state, strict=False)
-
-        return model
 
 
 # =============================================================================
@@ -333,68 +245,68 @@ class TernaryVAEV5_11(nn.Module):
 # =============================================================================
 
 class TernaryVAEV5_11_PartialFreeze(TernaryVAEV5_11):
-    """V5.11 VAE with partial freezing for StateNet control.
+    """V5.11 VAE with dynamic trainability control for StateNet.
 
     Supports:
-        - Independent freeze/unfreeze of encoder A and B
+        - Independent trainability control of encoder A and B
         - Differential learning rates per component
         - StateNet state application
 
     Additional Args:
         encoder_a_lr_scale: LR multiplier for encoder A (default: 0.05)
         encoder_b_lr_scale: LR multiplier for encoder B (default: 0.1)
-        freeze_encoder_b: Initial freeze state for encoder B (default: False)
+        encoder_b_trainable: Initial trainability for encoder B (default: True)
     """
 
     def __init__(
         self,
         encoder_a_lr_scale: float = 0.05,
         encoder_b_lr_scale: float = 0.1,
-        freeze_encoder_b: bool = False,
+        encoder_b_trainable: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.encoder_a_lr_scale = encoder_a_lr_scale
         self.encoder_b_lr_scale = encoder_b_lr_scale
 
-        # Freeze state tracking
-        self._encoder_a_frozen = False
-        self._encoder_b_frozen = False
+        # Trainability state tracking
+        self._encoder_a_trainable = True
+        self._encoder_b_trainable = True
 
-        if freeze_encoder_b:
-            self.set_encoder_b_frozen(True)
+        if not encoder_b_trainable:
+            self.set_encoder_b_trainable(False)
 
-    def set_encoder_a_frozen(self, frozen: bool):
-        """Freeze/unfreeze encoder A."""
-        self._encoder_a_frozen = frozen
+    def set_encoder_a_trainable(self, trainable: bool):
+        """Set encoder A trainability (True = parameters update)."""
+        self._encoder_a_trainable = trainable
         for p in self.encoder_A.parameters():
-            p.requires_grad = not frozen
+            p.requires_grad = trainable
         for p in self.fc_mu_A.parameters():
-            p.requires_grad = not frozen
+            p.requires_grad = trainable
         for p in self.fc_logvar_A.parameters():
-            p.requires_grad = not frozen
+            p.requires_grad = trainable
 
-    def set_encoder_b_frozen(self, frozen: bool):
-        """Freeze/unfreeze encoder B."""
-        self._encoder_b_frozen = frozen
+    def set_encoder_b_trainable(self, trainable: bool):
+        """Set encoder B trainability (True = parameters update)."""
+        self._encoder_b_trainable = trainable
         for p in self.encoder_B.parameters():
-            p.requires_grad = not frozen
+            p.requires_grad = trainable
         for p in self.fc_mu_B.parameters():
-            p.requires_grad = not frozen
+            p.requires_grad = trainable
         for p in self.fc_logvar_B.parameters():
-            p.requires_grad = not frozen
+            p.requires_grad = trainable
 
     def apply_statenet_state(self, state: Dict[str, Any]):
-        """Apply freeze states from StateNet controller."""
-        if "encoder_a_frozen" in state:
-            self.set_encoder_a_frozen(state["encoder_a_frozen"])
-        if "encoder_b_frozen" in state:
-            self.set_encoder_b_frozen(state["encoder_b_frozen"])
+        """Apply trainability states from StateNet controller."""
+        if "encoder_a_trainable" in state:
+            self.set_encoder_a_trainable(state["encoder_a_trainable"])
+        if "encoder_b_trainable" in state:
+            self.set_encoder_b_trainable(state["encoder_b_trainable"])
 
-    def get_freeze_state_summary(self) -> str:
-        """Get human-readable freeze state."""
-        a = "F" if self._encoder_a_frozen else "T"
-        b = "F" if self._encoder_b_frozen else "T"
+    def get_trainability_summary(self) -> str:
+        """Get human-readable trainability state."""
+        a = "train" if self._encoder_a_trainable else "fixed"
+        b = "train" if self._encoder_b_trainable else "fixed"
         return f"A:{a} B:{b}"
 
     def get_param_groups(self, base_lr: float) -> List[Dict[str, Any]]:
@@ -444,31 +356,8 @@ class TernaryVAEV5_11_PartialFreeze(TernaryVAEV5_11):
 
         return groups
 
-    @classmethod
-    def from_v5_5_checkpoint(
-        cls,
-        checkpoint_path: Union[str, Path],
-        device: torch.device = torch.device("cpu"),
-        **model_kwargs,
-    ) -> "TernaryVAEV5_11_PartialFreeze":
-        """Create model and load v5.5 checkpoint with key mapping."""
-        model_kwargs.setdefault("encoder_type", "standard")
-        model_kwargs.setdefault("decoder_type", "standard")
-        model_kwargs.setdefault("latent_dim", 16)
-        model_kwargs.setdefault("hidden_dim", 64)
-
-        model = cls(**model_kwargs).to(device)
-
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        state_dict = checkpoint.get("model", checkpoint)
-        mapped_state = map_v5_5_keys(state_dict)
-        model.load_state_dict(mapped_state, strict=False)
-
-        return model
-
 
 __all__ = [
     "TernaryVAEV5_11",
     "TernaryVAEV5_11_PartialFreeze",
-    "map_v5_5_keys",
 ]
