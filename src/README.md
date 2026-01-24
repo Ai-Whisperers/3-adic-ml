@@ -272,12 +272,50 @@ logits_B = self.decoder_B(z_B_euc)
 | **B** | Direct `z_hyp` → decoder | Simple | Breaks norm assumptions |
 | **C** | Learnable mapping layer | Gradual transition | Adds parameters |
 
-**Recommended (Option A):**
+**Option A: log_map_zero (Geometric)**
 ```python
 from src.geometry import log_map_zero
 z_A_tangent = log_map_zero(z_A_hyp, c=curvature)
 logits_A = self.decoder_A(z_A_tangent)
 ```
+
+**Option C: Learnable Mapping (Recommended)**
+```python
+class DecoderMappingLayer(nn.Module):
+    """Residual mapping: starts as identity, learns corrections."""
+    def __init__(self, latent_dim=16, hidden_dim=32):
+        super().__init__()
+        self.fc1 = nn.Linear(latent_dim, hidden_dim)
+        self.act = nn.SiLU()
+        self.fc2 = nn.Linear(hidden_dim, latent_dim)
+        # Initialize as identity
+        with torch.no_grad():
+            self.fc2.weight.zero_()
+            self.fc2.bias.zero_()
+
+    def forward(self, z_hyp):
+        return z_hyp + self.fc2(self.act(self.fc1(z_hyp)))
+```
+
+### Option Comparison
+
+| Aspect | Option A (log_map_zero) | Option C (Learnable) |
+|--------|-------------------------|----------------------|
+| Information preservation | Fixed transform, some loss | Learns optimal mapping |
+| Distribution match | Poor (not Gaussian) | Adapts to decoder needs |
+| Gradient flow | Can be unstable near boundary | Smooth (residual architecture) |
+| Checkpoint compatibility | Works | Works (new params init as identity) |
+| Ablation/rollback | Change 1 line | Toggle config flag |
+| Parameters added | 0 | ~5K (negligible) |
+
+**Why Option C is preferred:**
+1. **Starts as identity** - no immediate performance regression
+2. **Self-adapting** - learns what decoder actually needs
+3. **Handles distribution shift** - z_hyp changes during training as hierarchy loss shapes it
+4. **Codebase precedent** - HyperbolicProjection already uses residual architecture
+5. **Easier debugging** - can log mapping outputs, freeze layer, etc.
+
+**Mathematical insight:** The decoder was trained on `z_euc ~ N(μ, σ²)`, but `log_map_zero(z_hyp)` is NOT Gaussian. A learnable layer can adapt to match the actual decoder expectations.
 
 ---
 
