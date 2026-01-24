@@ -174,23 +174,65 @@ loss:
 
 ### src/models/ - VAE Architectures
 
-**Key Files:** `vae.py`, `hyperbolic_projection.py`
+**Key Files:** `vae.py`, `hyperbolic_projection.py`, `statenet.py`
 
 #### Model Variants (V6.0)
 
-| Model | Description | Anchor Checkpoint |
-|-------|-------------|-------------------|
-| `TernaryVAEV6` | Dual VAE with true hyperbolic geometry | Recommended |
-| `TernaryVAEV6Controllable` | Dual VAE + StateNet trainability control | Recommended |
+| Model | Description | Use Case |
+|-------|-------------|----------|
+| `TernaryVAEV6` | Dual VAE with true hyperbolic geometry | Base architecture |
+| `TernaryVAEV6Controllable` | Dual VAE + StateNet trainability control | Production training |
 
-#### Architecture Components
+#### Modular Architecture (V6.0)
 
-1. **Encoder**: Input → hidden → (μ, log_σ)
-2. **Reparameterization**: z_euc = μ + σ * ε (Euclidean)
-3. **Hyperbolic Projection**: z_hyp = project(z_euc) → Poincare ball
-4. **Decoder**: z → hidden → logits (9×3 for ternary)
+```
+TernaryVAEV6Controllable
+├── head_A: EncoderHead              ← encoder_a_trainable (slow learner)
+│   ├── backbone (9→128→128→64)
+│   ├── fc_mu (64→16)
+│   └── fc_logvar (64→16)
+│
+├── head_B: EncoderHead              ← encoder_b_trainable (medium learner)
+│   ├── backbone (9→128→128→64)
+│   ├── fc_mu (64→16)
+│   └── fc_logvar (64→16)
+│
+├── projections: DualHyperbolicProjection  ← controller_trainable (fast adapter)
+│   ├── proj_A.tangent_net + expmap0
+│   └── proj_B.tangent_net + expmap0
+│
+├── decoder_A (16→64→128→27)         ← always trainable
+└── decoder_B (16→64→128→27)         ← always trainable
+```
 
-**Known Issue:** Decoder currently uses z_euc, not z_hyp. See Architecture Issues below.
+#### EncoderHead Class
+
+The `EncoderHead` class bundles encoder backbone + mu/logvar heads with trainability control:
+
+```python
+from src.models import EncoderHead
+
+head = EncoderHead(hidden_dim=64, latent_dim=16, encoder_type="improved")
+mu, logvar = head(x)           # Forward pass
+head.set_trainable(False)      # Freeze all parameters
+params = head.get_trainable_params()  # Get trainable params for optimizer
+```
+
+#### StateNet → VAE Mapping
+
+| StateNet State | VAE Component | Learning Rate | Description |
+|----------------|---------------|---------------|-------------|
+| `encoder_a_trainable` | `head_A` | 0.05× base | Coverage encoder (slowest) |
+| `encoder_b_trainable` | `head_B` | 0.1× base | Hierarchy encoder (medium) |
+| `controller_trainable` | `projections` | 1.0× base | Tangent transform (fastest) |
+
+#### Data Flow
+
+1. **EncoderHeads**: Input → backbone → (μ, log_σ) in tangent space T₀M
+2. **Reparameterization**: z_tangent = μ + σ * ε (Euclidean - tangent space IS Euclidean)
+3. **Projections**: z_hyp = expmap0(transform(z_tangent)) → Poincaré manifold
+4. **Losses**: Operate on z_hyp using true hyperbolic distances
+5. **Decoder**: logmap0(z_hyp) → logits (9×3 for ternary)
 
 ---
 
@@ -343,7 +385,7 @@ All stochastic operations use seeded `torch.Generator`:
 
 ---
 
-## Architecture (V6.0 - True Hyperbolic)
+## Architecture (V6.0 - True Hyperbolic + Modular)
 
 All architectural issues have been resolved with proper geoopt integration:
 
@@ -352,14 +394,23 @@ All architectural issues have been resolved with proper geoopt integration:
 | **Decoder uses z_euc** | ✅ Fixed | Decoder receives `logmap0(z_hyp)` |
 | **Euclidean reparameterization** | ✅ Fixed | Sample in tangent space (which IS Euclidean) |
 | **Euclidean projection math** | ✅ Fixed | Use `expmap0` instead of direction × radius |
+| **controller_trainable unused** | ✅ Fixed | Wired to `projections` component |
+| **Encoder duplication** | ✅ Fixed | Modularized into `EncoderHead` class |
 
 ### How It Works
 
-1. **Encoder** outputs μ, logvar in tangent space T₀M at origin
+1. **EncoderHeads** output μ, logvar in tangent space T₀M at origin
 2. **Reparameterization**: `z_tangent = μ + ε * σ` (valid - tangent space is Euclidean)
-3. **Projection**: `z_hyp = expmap0(transform(z_tangent))` (true hyperbolic)
+3. **Projections**: `z_hyp = expmap0(transform(z_tangent))` (true hyperbolic)
 4. **Losses**: Operate on `z_hyp` using `poincare_distance`
 5. **Decoder**: Receives `logmap0(z_hyp)` (back to tangent space)
+
+### Complementary Learning Systems
+
+The architecture implements CLS theory via StateNet:
+- **Slow pathway** (encoders): Consolidate learned representations, fix when objectives met
+- **Fast pathway** (projections): Continuously adapt to geometric structure
+- **Q-metric**: `Q = dist_corr + 1.5 × |hierarchy|` guides threshold annealing
 
 ### Key Insight
 
@@ -370,9 +421,12 @@ The tangent space at the origin T₀M **IS** Euclidean ℝⁿ. This means:
 
 ### Implementation Files
 
-- `src/models/hyperbolic_projection.py`: Uses `expmap0` for projection
-- `src/models/vae.py`: Uses `logmap0` for decoder input
-- `src/geometry/poincare.py`: Provides `exp_map_zero`, `log_map_zero` via geoopt
+| File | Purpose |
+|------|---------|
+| `src/models/vae.py` | `EncoderHead`, `TernaryVAEV6`, `TernaryVAEV6Controllable` |
+| `src/models/hyperbolic_projection.py` | `HyperbolicProjection`, `DualHyperbolicProjection` (expmap0) |
+| `src/models/statenet.py` | `StateNet` trainability controller |
+| `src/geometry/poincare.py` | `exp_map_zero`, `log_map_zero` via geoopt |
 
 ---
 

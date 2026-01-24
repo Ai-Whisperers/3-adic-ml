@@ -83,12 +83,13 @@ precision:
   # - src/geometry/poincare.py (geoopt operations)
 
 # =============================================================================
-# Differential Learning Rates
+# Differential Learning Rates (Complementary Learning Systems)
 # =============================================================================
 option_c:
   enabled: true
-  encoder_b_lr_scale: 0.1   # Hierarchy encoder: slower learning
-  encoder_a_lr_scale: 0.05  # Coverage encoder: slowest (preserve reconstruction)
+  encoder_a_lr_scale: 0.05    # Coverage encoder: slowest (preserve reconstruction)
+  encoder_b_lr_scale: 0.1     # Hierarchy encoder: slower learning
+  projections_lr_scale: 1.0   # Projections/Controller: fastest (continuous adaptation)
 
 # =============================================================================
 # Anchor Checkpoint (Optional: Start from Pre-trained Weights)
@@ -103,7 +104,13 @@ anchor_checkpoint:
 # =============================================================================
 statenet:
   enabled: true
-  # Trainability thresholds (V6.0 terminology)
+
+  # Initial trainability states (before StateNet takes over)
+  encoder_a_trainable: false      # Start fixed (coverage anchor)
+  encoder_b_trainable: true       # Start trainable (hierarchy learner)
+  projections_trainable: true     # Start trainable (fast adapter)
+
+  # Coverage thresholds (encoder_a control)
   coverage_fix_threshold: 0.995    # Fix encoder when coverage drops below
   coverage_train_threshold: 1.0    # Allow training when coverage above
   coverage_floor: 0.95
@@ -112,18 +119,19 @@ statenet:
   warmup_epochs: 10
   hysteresis_epochs: 5
 
-  # Threshold annealing
+  # Threshold annealing (Q-gated)
   enable_annealing: true
   annealing_step: 0.002
 
-  # Hierarchy plateau detection
+  # Hierarchy plateau detection (encoder_b control)
   hierarchy_plateau_threshold: 0.0005
   hierarchy_plateau_patience: 10
   hierarchy_patience_ceiling: 25
 
-  # Controller gradient monitoring
+  # Controller/Projections gradient monitoring
   controller_grad_threshold: 0.005
   controller_grad_patience: 5
+  controller_patience_ceiling: 20
 
 # =============================================================================
 # Loss Configuration
@@ -271,9 +279,9 @@ early_stopping:
 # Version Tracking
 # =============================================================================
 version:
-  model: "6.0"
-  config: "v6_hyperbolic"
-  date: "2025-01-24"
+  model: "6.1"
+  config: "v6_hyperbolic_modular"
+  date: "2026-01-24"
   changes:
     - "True hyperbolic geometry via geoopt expmap0/logmap0"
     - "Decoder uses logmap0(z_hyp) instead of z_euc"
@@ -284,3 +292,7 @@ version:
     - "TernaryVAEV6Controllable class"
     - "Float64 precision for all geometry/loss computations"
     - "HyperbolicKLDivergence loss available"
+    - "EncoderHead modular class (backbone + mu/logvar + trainability)"
+    - "controller_trainable now wired to projections component"
+    - "Full Complementary Learning Systems: slow (encoders) + fast (projections)"
+    - "projections_lr_scale configurable (default: 1.0)"
