@@ -140,8 +140,8 @@ class PAdicGeodesicLoss(nn.Module):
                 corr = torch.tensor(0.0, device=device)
 
             # Mean distances by valuation level
-            mean_d_low_v = d_actual[valuation < 2].mean() if (valuation < 2).any() else torch.tensor(0.0)
-            mean_d_high_v = d_actual[valuation >= 4].mean() if (valuation >= 4).any() else torch.tensor(0.0)
+            mean_d_low_v = d_actual[valuation < 2].mean() if (valuation < 2).any() else torch.tensor(0.0, device=device)
+            mean_d_high_v = d_actual[valuation >= 4].mean() if (valuation >= 4).any() else torch.tensor(0.0, device=device)
 
         metrics = {
             "n_pairs": n_pairs,
@@ -177,6 +177,8 @@ class RadialHierarchyLoss(nn.Module):
         use_margin_loss: bool = True,
         curvature: float = 1.0,
         seed: int = 42,
+        valuation_weight_exponent: float = 0.25,
+        margin_step_factor: float = 0.5,
     ):
         """Initialize RadialHierarchyLoss.
 
@@ -189,6 +191,12 @@ class RadialHierarchyLoss(nn.Module):
             use_margin_loss: Enable pairwise margin loss for radial separation
             curvature: Hyperbolic curvature for poincare_distance (V5.12.2)
             seed: Random seed for reproducible pair sampling
+            valuation_weight_exponent: Exponent for valuation-based sample weighting.
+                Higher values weight rare high-valuation samples more heavily.
+                Default 0.25 provides stable gradients. Range: [0.1, 0.5]
+            margin_step_factor: Factor applied to radius_step for margin computation.
+                Controls tightness of hierarchical separation. Default 0.5 means
+                margins are half the per-level radius step. Range: [0.3, 1.0]
         """
         super().__init__()
         self.inner_radius = inner_radius
@@ -198,6 +206,8 @@ class RadialHierarchyLoss(nn.Module):
         self.margin_weight = margin_weight
         self.use_margin_loss = use_margin_loss
         self.curvature = curvature
+        self.valuation_weight_exponent = valuation_weight_exponent
+        self.margin_step_factor = margin_step_factor
         self.generator = torch.Generator()
         self.generator.manual_seed(seed)
 
@@ -234,7 +244,7 @@ class RadialHierarchyLoss(nn.Module):
             # V5.12.3: Clamped exponential weighting for gradient stability
             # v=0: weight=1, v=4: weight~3, v=9: weight=10 (clamped)
             # Softer than v5.11.2 to prevent gradient instability on rare samples
-            raw_weights = 1.0 + torch.exp(valuations * 0.25)  # Reduced from 0.4
+            raw_weights = 1.0 + torch.exp(valuations * self.valuation_weight_exponent)
             weights = torch.clamp(raw_weights, min=1.0, max=10.0)
         else:
             weights = torch.ones_like(normalized_v)
@@ -266,7 +276,7 @@ class RadialHierarchyLoss(nn.Module):
             if higher_v_mask.any():
                 # Expected margin: proportional to valuation difference
                 v_diff = v_i[higher_v_mask] - v_j[higher_v_mask]
-                expected_margin = v_diff * self.radius_step * 0.5  # Half step as margin
+                expected_margin = v_diff * self.radius_step * self.margin_step_factor
 
                 # Actual difference: r_j - r_i (should be positive)
                 actual_diff = r_j[higher_v_mask] - r_i[higher_v_mask]
@@ -526,6 +536,7 @@ class MonotonicRadialLoss(nn.Module):
         use_soft_margin: bool = True,
         temperature: float = 0.05,
         curvature: float = 1.0,
+        target_loss_weight: float = 0.5,
     ):
         """Initialize MonotonicRadialLoss.
 
@@ -538,6 +549,9 @@ class MonotonicRadialLoss(nn.Module):
             use_soft_margin: Use soft hinge loss (differentiable)
             temperature: Softness for soft margin (lower = sharper)
             curvature: Hyperbolic curvature for poincare_distance (V5.12.2)
+            target_loss_weight: Weight for target radius MSE relative to margin loss.
+                Controls balance between ordinal constraints and absolute positioning.
+                Default 0.5 gives equal importance. Range: [0.0, 1.0]
         """
         super().__init__()
         self.inner_radius = inner_radius
@@ -548,6 +562,7 @@ class MonotonicRadialLoss(nn.Module):
         self.margin_scale = margin_scale
         self.use_soft_margin = use_soft_margin
         self.temperature = temperature
+        self.target_loss_weight = target_loss_weight
 
         # Compute target radius per level
         self.radius_range = outer_radius - inner_radius
@@ -632,7 +647,7 @@ class MonotonicRadialLoss(nn.Module):
         target_loss = F.mse_loss(level_means, target_radii)
 
         # Combined loss: margin enforcement + target guidance
-        total_loss = loss + 0.5 * target_loss
+        total_loss = loss + self.target_loss_weight * target_loss
 
         # Metrics
         with torch.no_grad():
@@ -667,11 +682,21 @@ class RichHierarchyLoss(nn.Module):
     Refactored to use pure Hyperbolic distance for radii.
     """
 
-    def __init__(self, inner_radius=0.1, outer_radius=0.85, curvature=1.0):
+    def __init__(self, inner_radius=0.1, outer_radius=0.85, curvature=1.0, separation_margin=0.01):
+        """Initialize RichHierarchyLoss.
+
+        Args:
+            inner_radius: Target radius for highest valuation (v=9)
+            outer_radius: Target radius for lowest valuation (v=0)
+            curvature: Hyperbolic curvature for poincare_distance
+            separation_margin: Minimum margin enforced between adjacent valuation levels.
+                Prevents level collapse. Default 0.01 in normalized ball [0,1]. Range: [0.005, 0.05]
+        """
         super().__init__()
         self.inner_radius = inner_radius
         self.outer_radius = outer_radius
         self.curvature = curvature
+        self.separation_margin = separation_margin
         # Precompute target radii for valuations 0..9
         target_radii = torch.tensor([
             outer_radius - (v / 9) * (outer_radius - inner_radius)
@@ -742,7 +767,7 @@ class RichHierarchyLoss(nn.Module):
         # So mean_radii[i+1] - mean_radii[i] should be negative.
         # If it's positive, inner is larger than outer -> violation.
         for i in range(len(mean_radii) - 1):
-            violation = F.relu(mean_radii[i + 1] - mean_radii[i] + 0.01)
+            violation = F.relu(mean_radii[i + 1] - mean_radii[i] + self.separation_margin)
             separation_loss = separation_loss + violation
 
         # Return raw components - CombinedLoss applies weights from config

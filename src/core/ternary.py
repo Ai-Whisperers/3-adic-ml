@@ -52,6 +52,14 @@ class TernarySpace:
     - Base-3 weights for fast conversion
 
     All operations are O(1) lookups after initialization.
+
+    Thread Safety:
+        The device cache is not thread-safe. In multi-threaded scenarios,
+        concurrent first-access to a new device may cause redundant copies.
+        This is benign (no corruption) but slightly wasteful.
+
+    Memory Usage:
+        ~865 KB per device (valuation LUT + ternary LUT + weights)
     """
 
     # Class constants - canonical values
@@ -62,8 +70,6 @@ class TernarySpace:
 
     def __init__(self):
         """Initialize precomputed lookup tables."""
-        self._device = "cpu"
-
         # Precompute valuation LUT: index -> v_3(index)
         # Memory: 19,683 * 8 bytes = ~157 KB
         self._valuation_lut = self._build_valuation_lut()
@@ -130,6 +136,10 @@ class TernarySpace:
 
         Returns:
             Tensor of valuations (long), same shape as input
+
+        Note:
+            Indices outside [0, N_OPERATIONS-1] are clamped to valid range.
+            Use is_valid_index() first if you need to detect invalid inputs.
         """
         device = indices.device
         lut = self._get_cached_lut("valuation", self._valuation_lut, device)
@@ -225,17 +235,23 @@ class TernarySpace:
         """Check if ternary representation is valid."""
         return ((ternary == -1) | (ternary == 0) | (ternary == 1)).all(dim=-1)
 
-    def sample_indices(self, n: int, device: Optional[torch.device] = None) -> torch.Tensor:
+    def sample_indices(
+        self,
+        n: int,
+        device: Optional[torch.device] = None,
+        generator: Optional[torch.Generator] = None,
+    ) -> torch.Tensor:
         """Sample random operation indices.
 
         Args:
             n: Number of indices to sample
             device: Device to create tensor on
+            generator: Optional torch.Generator for reproducible sampling
 
         Returns:
             Tensor of random indices, shape (n,)
         """
-        return torch.randint(0, self.N_OPERATIONS, (n,), device=device)
+        return torch.randint(0, self.N_OPERATIONS, (n,), device=device, generator=generator)
 
     def all_indices(self, device: Optional[torch.device] = None) -> torch.Tensor:
         """Get tensor of all valid indices [0, 1, ..., N_OPERATIONS-1]."""
@@ -254,11 +270,13 @@ class TernarySpace:
             device: Device to place tensor on
 
         Returns:
-            Tensor of shape (19683, 9) with all ternary representations
+            Tensor of shape (19683, 9) with all ternary representations.
+            Always returns a clone to prevent accidental mutation of cached data.
         """
         if device is None:
             return self._ternary_lut.clone()
-        return self._get_cached_lut("ternary", self._ternary_lut, device)
+        # Return clone of cached tensor to prevent mutation
+        return self._get_cached_lut("ternary", self._ternary_lut, device).clone()
 
     def prefix(self, indices: torch.Tensor, level: int) -> torch.Tensor:
         """Compute tree prefix for given level (vectorized).

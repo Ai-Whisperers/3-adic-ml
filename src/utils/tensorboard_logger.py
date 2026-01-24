@@ -21,11 +21,17 @@ import random
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
-import numpy as np
 import torch
 
 from src.core import TERNARY
 from src.geometry import poincare_distance
+
+# Default model forward pass parameters for embedding visualization
+# These match the standard TernaryVAE interface: model(x, temp_A, temp_B, beta_A, beta_B)
+DEFAULT_TEMP_A = 1.0
+DEFAULT_TEMP_B = 1.0
+DEFAULT_BETA_A = 0.5
+DEFAULT_BETA_B = 0.5
 
 # TensorBoard integration (optional)
 try:
@@ -423,6 +429,7 @@ class TensorBoardLogger:
         device: str,
         n_samples: int = 5000,
         include_all: bool = False,
+        seed: int = 42,
     ) -> None:
         """Log latent embeddings for 3D visualization.
 
@@ -435,6 +442,7 @@ class TensorBoardLogger:
             device: Device to run inference on
             n_samples: Number of samples to embed
             include_all: If True, embed all 19,683 operations
+            seed: Random seed for reproducible sampling
         """
         if self.writer is None:
             return
@@ -445,16 +453,18 @@ class TensorBoardLogger:
         all_operations = TERNARY.all_ternary()
         total_ops = len(all_operations)
 
-        # Sample or use all
+        # Sample or use all (reproducible via seeded RNG)
         if include_all or n_samples >= total_ops:
             indices = list(range(total_ops))
         else:
-            indices = sorted(random.sample(range(total_ops), n_samples))
+            rng = random.Random(seed)
+            indices = sorted(rng.sample(range(total_ops), n_samples))
 
         x = all_operations[indices].to(device)
 
         with torch.no_grad():
-            outputs = model(x, 1.0, 1.0, 0.5, 0.5)
+            # Use default parameters for embedding visualization
+            outputs = model(x, DEFAULT_TEMP_A, DEFAULT_TEMP_B, DEFAULT_BETA_A, DEFAULT_BETA_B)
             z_A = outputs["z_A"]
             z_B = outputs["z_B"]
 
@@ -548,14 +558,8 @@ class TensorBoardLogger:
         Returns:
             3-adic valuation (depth in tree)
         """
-        if n == 0:
-            return 9
-
-        depth = 0
-        while n % 3 == 0:
-            depth += 1
-            n //= 3
-        return depth
+        # Delegate to canonical implementation in TERNARY singleton
+        return TERNARY.valuation(torch.tensor([n])).item()
 
     def flush(self) -> None:
         """Flush pending TensorBoard events."""

@@ -95,6 +95,7 @@ class CombinedLoss(nn.Module):
                 inner_radius=rich_cfg.get('inner_radius', 0.1),
                 outer_radius=rich_cfg.get('outer_radius', 0.85),
                 curvature=self.curvature,
+                separation_margin=rich_cfg.get('separation_margin', 0.01),
             )
             self.rich_hierarchy_weights = {
                 'hierarchy': rich_cfg.get('hierarchy_weight', 5.0),
@@ -112,6 +113,8 @@ class CombinedLoss(nn.Module):
                 outer_radius=radial_cfg.get('outer_radius', 0.85),
                 margin_weight=radial_cfg.get('margin_weight', 1.0),
                 curvature=self.curvature,
+                valuation_weight_exponent=radial_cfg.get('valuation_weight_exponent', 0.25),
+                margin_step_factor=radial_cfg.get('margin_step_factor', 0.5),
             )
             self.radial_weight = radial_cfg.get('weight', 1.0)
         else:
@@ -155,6 +158,7 @@ class CombinedLoss(nn.Module):
                 outer_radius=monotonic_cfg.get('outer_radius', 0.85),
                 min_margin=monotonic_cfg.get('min_margin', 0.02),
                 curvature=self.curvature,
+                target_loss_weight=monotonic_cfg.get('target_loss_weight', 0.5),
             )
             self.monotonic_weight = monotonic_cfg.get('weight', 1.0)
         else:

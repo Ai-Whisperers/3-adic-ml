@@ -1,6 +1,6 @@
 # Audit Index: p-adic-vaes
 
-**Last Updated**: 2025-01-23
+**Last Updated**: 2025-01-24
 **Auditor**: Claude Opus 4.5
 
 ---
@@ -90,16 +90,26 @@ Older audits retained for reference. Some findings may be outdated.
 
 ### Code Quality Issues (Found on Re-review)
 
-| Issue | Severity | Module | Description |
-|-------|----------|--------|-------------|
-| **Device mismatch in losses** | 🟠 Medium | losses | `torch.tensor(0.0)` creates CPU tensors in GPU context |
-| **Silent error masking** | 🟠 Medium | core | `torch.clamp` silently masks invalid inputs |
-| **KeyError risks** | 🟠 Medium | utils | Direct dict access without `.get()` defaults |
-| **Dead code/imports** | 🟡 Low | core, utils | `self._device` unused, `numpy` imported but never used |
-| **Race conditions** | 🟡 Low | core | Cache not thread-safe |
-| **Hardcoded magic numbers** | 🟡 Low | losses | 0.25, 0.5, 0.01 scattered throughout |
-| **Non-reproducible sampling** | 🟡 Low | utils | `random.sample` not seeded in TensorBoard logger |
-| **Fragile model signatures** | 🟡 Low | utils | `model(x, 1.0, 1.0, 0.5, 0.5)` hardcoded |
+| Issue | Severity | Module | Status | Description |
+|-------|----------|--------|--------|-------------|
+| **Device mismatch in losses** | 🟠 Medium | losses | ✅ Fixed | `torch.tensor(0.0)` creates CPU tensors in GPU context |
+| **Silent error masking** | 🟠 Medium | core | ⚠️ Open | `torch.clamp` silently masks invalid inputs |
+| **KeyError risks** | 🟠 Medium | utils | ⚠️ Open | Direct dict access without `.get()` defaults |
+| **Dead code/imports** | 🟡 Low | core, utils | ✅ Fixed | `self._device` unused, `numpy` imported but never used |
+| **Race conditions** | 🟡 Low | core | 📝 Documented | Cache not thread-safe (benign) |
+| **Hardcoded magic numbers** | 🟡 Low | losses | ✅ Fixed | Now configurable via YAML with sensible defaults |
+| **Non-reproducible sampling** | 🟡 Low | utils | ✅ Fixed | `random.sample` now seeded in TensorBoard logger |
+| **Fragile model signatures** | 🟡 Low | utils | ✅ Fixed | Model params now use named constants |
+
+#### Fix Details (2025-01-24)
+
+**Magic numbers → YAML configurable (Option B):**
+- `valuation_weight_exponent` (0.25) → `RadialHierarchyLoss.__init__`, wired via `CombinedLoss`
+- `margin_step_factor` (0.5) → `RadialHierarchyLoss.__init__`, wired via `CombinedLoss`
+- `target_loss_weight` (0.5) → `MonotonicRadialLoss.__init__`, wired via `CombinedLoss`
+- `separation_margin` (0.01) → `RichHierarchyLoss.__init__`, wired via `CombinedLoss`
+
+Parameters use current values as defaults; YAML override is optional but available.
 
 ### Positive Findings
 
