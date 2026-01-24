@@ -66,6 +66,81 @@ def map_v5_5_keys(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor
 
 
 # =============================================================================
+# Decoder Mapping Layer (Option C: Learnable z_hyp → decoder bridge)
+# =============================================================================
+
+
+class DecoderMappingLayer(nn.Module):
+    """Learnable mapping from hyperbolic latent (z_hyp) to decoder input space.
+
+    Bridges the geometric gap between:
+    - z_hyp: Bounded in Poincaré ball (||z|| < max_radius), shaped by hierarchy loss
+    - Decoder expectation: Originally trained on unbounded Gaussian z_euc
+
+    Architecture:
+        Residual MLP that starts as identity and learns corrections.
+        z_mapped = z_hyp + MLP(z_hyp)
+
+    Why residual?
+        1. Initializes as identity (no regression at training start)
+        2. Gradients flow directly through skip connection
+        3. Network learns corrections, not full transform
+        4. Matches HyperbolicProjection precedent in codebase
+
+    Why SiLU activation?
+        - Smooth (better gradients than ReLU)
+        - Self-gated (natural gradient scaling)
+        - No dead neurons
+
+    Args:
+        latent_dim: Dimension of latent space (default: 16)
+        hidden_dim: Hidden layer dimension (default: 32)
+
+    Example:
+        >>> mapping = DecoderMappingLayer(latent_dim=16)
+        >>> z_hyp = torch.randn(32, 16).clamp(-0.95, 0.95)  # Bounded
+        >>> z_mapped = mapping(z_hyp)  # Initially ≈ z_hyp
+    """
+
+    def __init__(self, latent_dim: int = 16, hidden_dim: int = 32):
+        super().__init__()
+        self.latent_dim = latent_dim
+        self.hidden_dim = hidden_dim
+
+        # Two-layer MLP with SiLU activation
+        self.fc1 = nn.Linear(latent_dim, hidden_dim)
+        self.act = nn.SiLU()
+        self.fc2 = nn.Linear(hidden_dim, latent_dim)
+
+        # Initialize as identity: fc2 outputs zero initially
+        # So z_mapped = z_hyp + 0 = z_hyp at start
+        self._init_as_identity()
+
+    def _init_as_identity(self):
+        """Initialize output layer to zero for identity behavior."""
+        with torch.no_grad():
+            self.fc2.weight.zero_()
+            self.fc2.bias.zero_()
+            # fc1 uses default init (small random) - that's fine
+
+    def forward(self, z_hyp: torch.Tensor) -> torch.Tensor:
+        """Map z_hyp to decoder input space.
+
+        Args:
+            z_hyp: Hyperbolic latent (B, latent_dim), bounded in Poincaré ball
+
+        Returns:
+            z_mapped: Decoder input (B, latent_dim), adapted for reconstruction
+        """
+        # Residual: preserve z_hyp, add learned correction
+        correction = self.fc2(self.act(self.fc1(z_hyp)))
+        return z_hyp + correction
+
+    def extra_repr(self) -> str:
+        return f"latent_dim={self.latent_dim}, hidden_dim={self.hidden_dim}"
+
+
+# =============================================================================
 # Encoder/Decoder Builders
 # =============================================================================
 
@@ -152,6 +227,10 @@ class TernaryVAEV5_11(nn.Module):
         n_projection_layers: Projection network depth (default: 1)
         projection_dropout: Dropout in projection networks (default: 0.0)
         learnable_curvature: Allow curvature to be learned (default: False)
+        use_decoder_mapping: Use learnable z_hyp → decoder mapping (default: False)
+            When True, decoder receives mapped z_hyp instead of z_euc.
+            This creates geometric coherence: both losses and decoder use hyperbolic latent.
+        mapping_hidden_dim: Hidden dimension for decoder mapping layer (default: 32)
     """
 
     def __init__(
@@ -165,6 +244,8 @@ class TernaryVAEV5_11(nn.Module):
         n_projection_layers: int = 1,
         projection_dropout: float = 0.0,
         learnable_curvature: bool = False,
+        use_decoder_mapping: bool = False,
+        mapping_hidden_dim: int = 32,
         # Unused kwargs for compatibility
         use_controller: bool = True,
         use_dual_projection: bool = True,
@@ -176,6 +257,7 @@ class TernaryVAEV5_11(nn.Module):
         self.hidden_dim = hidden_dim
         self.encoder_type = encoder_type
         self.decoder_type = decoder_type
+        self.use_decoder_mapping = use_decoder_mapping
 
         # Encoder output dim depends on type
         enc_out_dim = hidden_dim if encoder_type == "improved" else 64
@@ -204,6 +286,15 @@ class TernaryVAEV5_11(nn.Module):
         # Decoders (both output 27 logits for 9 positions × 3 classes)
         self.decoder_A = build_decoder(latent_dim, hidden_dim, decoder_type)
         self.decoder_B = build_decoder(latent_dim, hidden_dim, decoder_type)
+
+        # Decoder mapping layers (Option C: z_hyp → decoder input)
+        # When enabled, decoder receives mapped z_hyp instead of z_euc
+        if use_decoder_mapping:
+            self.decoder_mapping_A = DecoderMappingLayer(latent_dim, mapping_hidden_dim)
+            self.decoder_mapping_B = DecoderMappingLayer(latent_dim, mapping_hidden_dim)
+        else:
+            self.decoder_mapping_A = None
+            self.decoder_mapping_B = None
 
     def encode(self, x: torch.Tensor) -> tuple:
         """Encode input to latent parameters."""
@@ -242,9 +333,18 @@ class TernaryVAEV5_11(nn.Module):
         # Project to Poincaré ball
         z_A_hyp, z_B_hyp = self.projections(z_A_euc, z_B_euc)
 
-        # Decode from Euclidean latents
-        logits_A = self.decoder_A(z_A_euc)
-        logits_B = self.decoder_B(z_B_euc)
+        # Decode: use mapped z_hyp if enabled, otherwise z_euc (legacy)
+        if self.use_decoder_mapping and self.decoder_mapping_A is not None:
+            # Option C: Map z_hyp to decoder input space
+            z_A_dec = self.decoder_mapping_A(z_A_hyp)
+            z_B_dec = self.decoder_mapping_B(z_B_hyp)
+        else:
+            # Legacy: decode from Euclidean latents (geometric inconsistency)
+            z_A_dec = z_A_euc
+            z_B_dec = z_B_euc
+
+        logits_A = self.decoder_A(z_A_dec)
+        logits_B = self.decoder_B(z_B_dec)
 
         return {
             "logits": logits_A,
@@ -416,6 +516,17 @@ class TernaryVAEV5_11_PartialFreeze(TernaryVAEV5_11):
                 "name": "decoders",
             })
 
+        # Decoder mappings (full LR) - Option C bridge layers
+        if self.decoder_mapping_A is not None:
+            mapping_params = [p for p in self.decoder_mapping_A.parameters() if p.requires_grad]
+            mapping_params += [p for p in self.decoder_mapping_B.parameters() if p.requires_grad]
+            if mapping_params:
+                groups.append({
+                    "params": mapping_params,
+                    "lr": base_lr,
+                    "name": "decoder_mappings",
+                })
+
         return groups
 
     @classmethod
@@ -439,3 +550,11 @@ class TernaryVAEV5_11_PartialFreeze(TernaryVAEV5_11):
         model.load_state_dict(mapped_state, strict=False)
 
         return model
+
+
+__all__ = [
+    "DecoderMappingLayer",
+    "TernaryVAEV5_11",
+    "TernaryVAEV5_11_PartialFreeze",
+    "map_v5_5_keys",
+]

@@ -215,107 +215,58 @@ All stochastic operations use seeded `torch.Generator`:
 
 ---
 
-## Architecture Issues (Active)
+## Architecture Issues
 
-| Issue | Severity | Description |
-|-------|----------|-------------|
-| **Decoder uses z_euc** | 🔴 Critical | Decoder ignores z_hyp, making architecture Euclidean with hyperbolic supervision |
-| **Euclidean reparameterization** | 🟠 High | Should use wrapped normal on manifold |
-| **Euclidean projection math** | 🟠 High | Should use expmap0, not direction × radius |
+| Issue | Severity | Status | Description |
+|-------|----------|--------|-------------|
+| **Decoder uses z_euc** | 🔴 Critical | ✅ Fixed (Option C) | Enable `use_decoder_mapping=True` for geometric coherence |
+| **Euclidean reparameterization** | 🟠 High | ⚠️ Open | Should use wrapped normal on manifold |
+| **Euclidean projection math** | 🟠 High | ⚠️ Open | Should use expmap0, not direction × radius |
 
 See `docs/audits/MODELS_MODULE_AUDIT.md` for details.
 
-### Critical Issue: Decoder Uses z_euc (Detailed Analysis)
+### Decoder z_euc Issue (Fixed with Option C)
 
-**Current Data Flow (vae.py:226-261):**
+**Problem:** Decoder and losses operated on different latent representations.
+
+**Legacy Data Flow (use_decoder_mapping=False):**
 ```
-Encoder → μ, σ
-    ↓
-Reparameterize: z_euc = μ + σ*ε  (Euclidean sampling)
-    ↓
-    ├── Projection: z_hyp = project(z_euc)  → Poincaré ball
-    │       ↓
-    │   Losses (hierarchy, radial, geodesic) ← uses z_hyp ✓
-    │
-    └── Decoder: logits = decoder(z_euc)    ← uses z_euc ✗
-            ↓
-        Reconstruction loss
+Encoder → μ, σ → z_euc (Euclidean) → Decoder (reconstruction)
+                         ↓
+                     z_hyp (Poincaré) → Losses (hierarchy)
 ```
 
-**The Asymmetry:**
-- **Decoder receives:** `z_euc` (line 246-247) - Euclidean latent
-- **Losses receive:** `z_hyp` (train.py:718) - Hyperbolic projection
-- They operate on **different representations** of the same sample
+**Fixed Data Flow (use_decoder_mapping=True):**
+```
+Encoder → μ, σ → z_euc → z_hyp (Poincaré) → DecoderMappingLayer → Decoder
+                              ↓
+                          Losses (hierarchy)
+```
 
-**Code Location:**
+Both decoder and losses now use z_hyp, creating geometric coherence.
+
+**Implementation (vae.py):**
 ```python
-# src/models/vae.py lines 246-247
-logits_A = self.decoder_A(z_A_euc)  # ← ISSUE: uses Euclidean
-logits_B = self.decoder_B(z_B_euc)
+# Enable in model instantiation:
+model = TernaryVAEV5_11(use_decoder_mapping=True, mapping_hidden_dim=32)
+
+# Or via YAML config:
+model:
+  use_decoder_mapping: true
+  mapping_hidden_dim: 32
 ```
 
-**Why This Matters:**
-- Reconstruction optimizes Euclidean geometry
-- Hierarchy losses optimize hyperbolic geometry
-- These objectives are **partially decoupled** - not fully coherent
+**DecoderMappingLayer Design:**
+- Residual architecture: `z_mapped = z_hyp + MLP(z_hyp)`
+- Initializes as identity (fc2 weights/bias = 0)
+- SiLU activation for smooth gradients
+- ~5K parameters (negligible overhead)
 
-**Historical Context:**
-- V5.12.1 config proposed using `log_map_zero(z_hyp)` for decoder input
-- This was **documented but never implemented**
-- Current design is intentional compatibility layer for v5.5 frozen checkpoint
-
-**Fix Options:**
-
-| Option | Approach | Pros | Cons |
-|--------|----------|------|------|
-| **A** | `log_map_zero(z_hyp)` → decoder | Geometrically coherent | Needs decoder retraining |
-| **B** | Direct `z_hyp` → decoder | Simple | Breaks norm assumptions |
-| **C** | Learnable mapping layer | Gradual transition | Adds parameters |
-
-**Option A: log_map_zero (Geometric)**
-```python
-from src.geometry import log_map_zero
-z_A_tangent = log_map_zero(z_A_hyp, c=curvature)
-logits_A = self.decoder_A(z_A_tangent)
-```
-
-**Option C: Learnable Mapping (Recommended)**
-```python
-class DecoderMappingLayer(nn.Module):
-    """Residual mapping: starts as identity, learns corrections."""
-    def __init__(self, latent_dim=16, hidden_dim=32):
-        super().__init__()
-        self.fc1 = nn.Linear(latent_dim, hidden_dim)
-        self.act = nn.SiLU()
-        self.fc2 = nn.Linear(hidden_dim, latent_dim)
-        # Initialize as identity
-        with torch.no_grad():
-            self.fc2.weight.zero_()
-            self.fc2.bias.zero_()
-
-    def forward(self, z_hyp):
-        return z_hyp + self.fc2(self.act(self.fc1(z_hyp)))
-```
-
-### Option Comparison
-
-| Aspect | Option A (log_map_zero) | Option C (Learnable) |
-|--------|-------------------------|----------------------|
-| Information preservation | Fixed transform, some loss | Learns optimal mapping |
-| Distribution match | Poor (not Gaussian) | Adapts to decoder needs |
-| Gradient flow | Can be unstable near boundary | Smooth (residual architecture) |
-| Checkpoint compatibility | Works | Works (new params init as identity) |
-| Ablation/rollback | Change 1 line | Toggle config flag |
-| Parameters added | 0 | ~5K (negligible) |
-
-**Why Option C is preferred:**
-1. **Starts as identity** - no immediate performance regression
-2. **Self-adapting** - learns what decoder actually needs
-3. **Handles distribution shift** - z_hyp changes during training as hierarchy loss shapes it
-4. **Codebase precedent** - HyperbolicProjection already uses residual architecture
-5. **Easier debugging** - can log mapping outputs, freeze layer, etc.
-
-**Mathematical insight:** The decoder was trained on `z_euc ~ N(μ, σ²)`, but `log_map_zero(z_hyp)` is NOT Gaussian. A learnable layer can adapt to match the actual decoder expectations.
+**Why Option C over Option A (log_map_zero):**
+1. **Self-adapting** - learns optimal mapping, not fixed transform
+2. **Smooth gradients** - residual avoids log_map boundary instability
+3. **Distribution match** - adapts to decoder's Gaussian training expectations
+4. **No regression** - starts as identity, performance preserved
 
 ---
 

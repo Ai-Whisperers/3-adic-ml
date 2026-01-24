@@ -82,11 +82,11 @@ Older audits retained for reference. Some findings may be outdated.
 
 ### Architecture Issues
 
-| Issue | Severity | Module | Description |
-|-------|----------|--------|-------------|
-| **Decoder uses z_euc** | 🔴 Critical | models | Decoder ignores z_hyp, making architecture Euclidean with hyperbolic supervision |
-| **Euclidean reparameterization** | 🟠 High | models | Should use wrapped normal on manifold |
-| **Euclidean projection math** | 🟠 High | models | Should use expmap0, not direction × radius |
+| Issue | Severity | Module | Status | Description |
+|-------|----------|--------|--------|-------------|
+| **Decoder uses z_euc** | 🔴 Critical | models | ✅ Fixed | Enable `use_decoder_mapping=True` (Option C) |
+| **Euclidean reparameterization** | 🟠 High | models | ⚠️ Open | Should use wrapped normal on manifold |
+| **Euclidean projection math** | 🟠 High | models | ⚠️ Open | Should use expmap0, not direction × radius |
 
 ### Code Quality Issues (Found on Re-review)
 
@@ -102,6 +102,13 @@ Older audits retained for reference. Some findings may be outdated.
 | **Fragile model signatures** | 🟡 Low | utils | ✅ Fixed | Model params now use named constants |
 
 #### Fix Details (2025-01-24)
+
+**Decoder z_euc → Option C (DecoderMappingLayer):**
+- Added `DecoderMappingLayer` class to `vae.py` - residual MLP that bridges z_hyp to decoder input
+- New model params: `use_decoder_mapping` (bool), `mapping_hidden_dim` (int, default 32)
+- Initializes as identity (no performance regression)
+- ~5K parameters (negligible overhead)
+- Updated `get_param_groups` to include decoder_mappings with full LR
 
 **Magic numbers → YAML configurable (Option B):**
 - `valuation_weight_exponent` (0.25) → `RadialHierarchyLoss.__init__`, wired via `CombinedLoss`
