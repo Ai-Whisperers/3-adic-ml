@@ -71,6 +71,18 @@ geometry:
   geodesic_steps: 10  # Default steps for geodesic_interpolation
 
 # =============================================================================
+# Precision Settings (V6.0)
+# =============================================================================
+precision:
+  # All geometry and loss computations use float64 for numerical stability
+  # near the Poincaré ball boundary (radius → 1.0)
+  dtype: float64
+  # Modules using float64:
+  # - src/core/ternary.py (3-adic valuations and distances)
+  # - src/losses/*.py (loss computations)
+  # - src/geometry/poincare.py (geoopt operations)
+
+# =============================================================================
 # Differential Learning Rates
 # =============================================================================
 option_c:
@@ -157,10 +169,12 @@ loss:
     valuation_weight: 0.5
     sparsity_weight: 0.3
 
-  # Hyperbolic KL (optional, available in src/losses/hyperbolic_kl.py)
-  # hyperbolic_kl:
-  #   enabled: false
-  #   beta: 1.0
+  # Hyperbolic KL divergence (curvature-corrected, optional)
+  # Uses conformal factor λ(x) for proper Poincaré geometry
+  hyperbolic_kl:
+    enabled: false  # Enable for β-VAE style regularization
+    beta: 1.0       # KL weight (β > 1 for disentanglement)
+    free_bits: 0.0  # Minimum KL per dimension
 
 # =============================================================================
 # Training Configuration
@@ -268,3 +282,5 @@ version:
     - "Geodesic interpolation functions added"
     - "Trainable terminology (positive logic)"
     - "TernaryVAEV6Controllable class"
+    - "Float64 precision for all geometry/loss computations"
+    - "HyperbolicKLDivergence loss available"

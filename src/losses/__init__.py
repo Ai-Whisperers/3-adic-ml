@@ -7,3 +7,4 @@ from .padic_geodesic import (
     RichHierarchyLoss,
 )
 from .combined import CombinedLoss
+from .hyperbolic_kl import HyperbolicKLDivergence, StandardKLDivergence
