@@ -1,8 +1,8 @@
-# P-Adic VAE Architecture
+# P-Adic VAE Architecture (V6.0)
 
 ## Architecture Summary
 
-**Dual VAE + Hyperbolic Projection + StateNet Controller**
+**Dual VAE + True Hyperbolic Geometry + StateNet Controller**
 
 ### Core Components
 
@@ -10,17 +10,17 @@
 |-----------|-----------|---------|
 | **VAE-A** | Encoder 9→128→64, Decoder 16→64→27 | Coverage (reconstruction) |
 | **VAE-B** | Same structure, independent weights | Hierarchy learning |
-| **Hyperbolic Projection** | Direction net + Radius net → Poincare ball | Maps to hyperbolic geometry |
-| **StateNet** | Threshold-based freeze controller | Dynamic freeze/unfreeze |
+| **Hyperbolic Projection** | Tangent net + expmap0 → Poincaré ball | True hyperbolic mapping |
+| **StateNet** | Q-gated trainability controller | Dynamic component control |
 
 ### What Makes It "P-Adic"
 
 1. **Data**: All 19,683 ternary operations (3^9) with values {-1, 0, 1}
 2. **3-adic valuation**: v_3(n) measures divisibility by powers of 3
 3. **Geometric encoding**: High valuation → near origin, low valuation → near boundary
-4. **Loss aligns**: Poincare distances to 3-adic valuations (ultrametric → hyperbolic)
+4. **Loss aligns**: Poincaré distances to 3-adic valuations (ultrametric → hyperbolic)
 
-### Architecture Flow
+### Architecture Flow (V6.0 - True Hyperbolic)
 
 ```
 Input (9 values, {-1,0,1})
@@ -30,16 +30,18 @@ Input (9 values, {-1,0,1})
 |  mu_A, sig_A  |    |  mu_B, sig_B  |
 +------+--------+    +------+--------+
        |                    |
-   z_A (16-dim)         z_B (16-dim)     <- Euclidean latents
+   z_tangent (16-dim)   z_tangent        <- Tangent space at origin (Euclidean)
        |                    |
    +----------------------------+
    |  DualHyperbolicProjection  |
-   |  direction * radius        |
+   |  tangent_net + expmap0     |
    +----------------------------+
        |                    |
-   z_A_hyp              z_B_hyp          <- Poincare ball embeddings
-       |
-   Decoder A (16->64->27)
+   z_A_hyp              z_B_hyp          <- Poincaré manifold points
+       |                    |
+   logmap0              logmap0          <- Back to tangent space
+       |                    |
+   Decoder A            Decoder B
        |
    Reconstruction logits
 ```
@@ -49,63 +51,55 @@ Input (9 values, {-1,0,1})
 - **Coverage**: CrossEntropy reconstruction
 - **Hierarchy**: MSE(radius, target_radius) based on 3-adic valuation
 - **Separation**: Margin between valuation levels
-- **Geodesic**: Poincare distance alignment to p-adic metric
+- **Geodesic**: Poincaré distance alignment to p-adic metric
 - **Rank**: Soft ordering violations
+
+### StateNet Controller
+
+The StateNet manages component **trainability** (not "freeze" - we use positive logic):
+
+- `encoder_a_trainable`: Starts `False` (fixed), becomes `True` when hierarchy stalls
+- `encoder_b_trainable`: Starts `True`, becomes `False` when hierarchy plateaus
+- `controller_trainable`: Gradient-gated stability control
+
+**Q-Metric**: `Q = dist_corr + 1.5 × |hierarchy|` guides threshold annealing.
 
 ### Key Innovation
 
-**Decoupled direction/radius learning** in hyperbolic space with **p-adic structure as the organizing principle** - points divisible by high powers of 3 cluster near the origin, creating a natural tree-like hierarchy in the Poincare ball.
+**True hyperbolic geometry** via expmap0/logmap0 with **p-adic structure as the organizing principle** - points divisible by high powers of 3 cluster near the origin, creating a natural tree-like hierarchy in the Poincaré ball.
 
 ---
 
-## Project Context
+## Key Files
 
-1. First of all, our main goal is:
+| File | Purpose |
+|------|---------|
+| `src/models/vae.py` | TernaryVAEV5_11_PartialFreeze - main model |
+| `src/models/statenet.py` | Q-gated trainability controller |
+| `src/models/hyperbolic_projection.py` | expmap0/logmap0 projections |
+| `src/geometry/poincare.py` | Riemannian backend (geoopt) |
+| `src/core/ternary.py` | Immutable 3-adic field logic |
+| `src/losses/padic_geodesic.py` | Hierarchy enforcement |
+| `src/train.py` | Unified training entry point |
 
-* Analyze the current codebase and think about how to improve it (as a first "pre-audit.md", just by reading the codebase without context), because afterwards we will perform another reading but with more context.
+## Training
 
-2. Secondly:
+```bash
+python src/train.py --config src/presets/research_extended_grokking.yaml
+```
 
-* We must refine the codebase of training so the checkpoints reach improved states of quality and this become scientifically rigorous and financially marketable. On the following paragraphs you have a full overview of the isolated codebase that we must iteratively update:
+### Config Keys (V6.0)
 
-  src/models/statenet.py (formerly homeostasis.py)
-  "StateNet" logic inside it is the only thing preventing the manifold from collapsing during training.
-  [COMPLETED] File renamed from homeostasis.py to statenet.py
+- `anchor_checkpoint`: Pre-trained weights to start from
+- `coverage_fix_threshold`: Fix encoder when coverage drops below
+- `coverage_train_threshold`: Allow training when coverage above
 
-After the statenet updates we must review the imports and paths, update them to properly wire the components, but most importantly, we will perform surgical improvements and verifications of the codebase for example:
+## P-Adic VAEs
 
-  src/core/ternary.py
-  this is the immutable finite field logic.
-  [COMPLETED] All references updated to statenet.py
-
-  poincare.py
-  its the Riemannian backend, we need to make sure the system is indeed non-euclidean and try to enforce non-linearity through geometry, even if tensors are expected to be real numbers (floats) we can enforce p-adic behavior if we mantain the entire mathematical purity (riemannian hyperbolic geometrical topology of the embeddings through geoopt). After this verification we do the same thing, update the references and path
-
-  generation.py
-  absolute data source
-
-  padic_geodesic.py
-  it enforces the specific hierarchy target, ultrametrics and hierarchy are structurally tied to p-adic numbers and ternary through 3-adic geometry.
-
-- Final Additions (HIGHLY IMPORTANT!):
-
-   * Scientific Rigor: the "Audit-Then-Execute" protocol from
-     train_v5_12_7_scientific_rigor.py, enforces data integrity and model health before training starts.
-   * Manifold Targets: Confirm and analyze skeptically the explicit targets (Hierarchy < -0.80,
-     Richness > 0.008) and loss weights (Hierarchy=5.0) from valuation_optimal.yaml.
-   * Pure System Requirements: Identified the non-negotiable components for a
-     "pure" system (Non-euclidean geometry): Experiment Auditor, Q-Metric
-     optimization, and Stratified Sampling.
-   * Frozen v5.5 Anchor must be **NOT** enforced, as the 5.5 model enforces non-euclidean nature through **euclidean embeddings**.
-
-3. The final and meaningful goal for all of this analysis is creating the most rigorous, production-quality, empirically validated (no smoke tests) and reproducible training pipelines and codebase for:
-
-# P-Adic VAEs
-
-* **Core idea**: Ternary System of VAEs+Controller(s) where latent variables live in an **ultrametric p-adic space (p=3)** (embeddings are in floating point real numbers of course, but the dynamics are completely non-euclidean and non-arquimedian) inducing hierarchy by construction.
-* **Geometry**: Discrete → continuous bridge via **p-adic / ultrametric → hyperbolic projections** (Poincare/Lorentz).
-* **Dynamics**: Dual-VAE setup (explore/exploit) with controller logic; ELBO stability via geometry-aware optimization.
-* **Evidence**: Empirical correlations between ultrametric distance and semantic/functional similarity.
-* **Applications**: hierarchical AI, neurosymbolic AI, semantic compression, protein/codon pipelines, PTMs as operators, antigen discovery, geometric computation and physical simulations.
-* **Constraints**: Runs on **RTX 3050 6 GB**, aggressive memory discipline, iteration velocity over scale.
-* **Philosophy**: Meaning = geometry; hierarchy is not memorized, it **emerges structurally**, thus its learned.
+- **Core idea**: Dual VAE + Controller where latents live in **ultrametric p-adic space (p=3)**, inducing hierarchy by construction
+- **Geometry**: Discrete → continuous bridge via **p-adic → hyperbolic projections** (Poincaré ball with expmap0/logmap0)
+- **Dynamics**: Dual-VAE (coverage/hierarchy) with StateNet controller; ELBO stability via geometry-aware optimization
+- **Evidence**: Empirical correlations between ultrametric distance and semantic/functional similarity
+- **Applications**: Hierarchical AI, neurosymbolic AI, semantic compression, protein/codon pipelines
+- **Constraints**: RTX 3050 6GB compatible, aggressive memory discipline
+- **Philosophy**: Meaning = geometry; hierarchy **emerges structurally**, not memorized

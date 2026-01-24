@@ -1,8 +1,8 @@
-# P-Adic VAE Architecture
+# P-Adic VAE Architecture (V6.0)
 
 ## Architecture Summary
 
-**Dual VAE + Hyperbolic Projection + StateNet Controller**
+**Dual VAE + True Hyperbolic Geometry + StateNet Controller**
 
 ### Core Components
 
@@ -10,17 +10,17 @@
 |-----------|-----------|---------|
 | **VAE-A** | Encoder 9→128→64, Decoder 16→64→27 | Coverage (reconstruction) |
 | **VAE-B** | Same structure, independent weights | Hierarchy learning |
-| **Hyperbolic Projection** | Direction net + Radius net → Poincare ball | Maps to hyperbolic geometry |
-| **StateNet** | Threshold-based freeze controller | Dynamic freeze/unfreeze |
+| **Hyperbolic Projection** | Tangent net + expmap0 → Poincaré ball | True hyperbolic mapping |
+| **StateNet** | Q-gated trainability controller | Dynamic component control |
 
 ### What Makes It "P-Adic"
 
 1. **Data**: All 19,683 ternary operations (3^9) with values {-1, 0, 1}
 2. **3-adic valuation**: v_3(n) measures divisibility by powers of 3
 3. **Geometric encoding**: High valuation → near origin, low valuation → near boundary
-4. **Loss aligns**: Poincare distances to 3-adic valuations (ultrametric → hyperbolic)
+4. **Loss aligns**: Poincaré distances to 3-adic valuations (ultrametric → hyperbolic)
 
-### Architecture Flow
+### Architecture Flow (V6.0 - True Hyperbolic)
 
 ```
 Input (9 values, {-1,0,1})
@@ -30,16 +30,18 @@ Input (9 values, {-1,0,1})
 |  mu_A, sig_A  |    |  mu_B, sig_B  |
 +------+--------+    +------+--------+
        |                    |
-   z_A (16-dim)         z_B (16-dim)     <- Euclidean latents
+   z_tangent (16-dim)   z_tangent        <- Tangent space at origin (Euclidean)
        |                    |
    +----------------------------+
    |  DualHyperbolicProjection  |
-   |  direction * radius        |
+   |  tangent_net + expmap0     |
    +----------------------------+
        |                    |
-   z_A_hyp              z_B_hyp          <- Poincare ball embeddings
-       |
-   Decoder A (16->64->27)
+   z_A_hyp              z_B_hyp          <- Poincaré manifold points
+       |                    |
+   logmap0              logmap0          <- Back to tangent space
+       |                    |
+   Decoder A            Decoder B
        |
    Reconstruction logits
 ```
@@ -49,39 +51,54 @@ Input (9 values, {-1,0,1})
 - **Coverage**: CrossEntropy reconstruction
 - **Hierarchy**: MSE(radius, target_radius) based on 3-adic valuation
 - **Separation**: Margin between valuation levels
-- **Geodesic**: Poincare distance alignment to p-adic metric
+- **Geodesic**: Poincaré distance alignment to p-adic metric
 - **Rank**: Soft ordering violations
+
+### StateNet Controller
+
+The StateNet manages component **trainability** (not "freeze" - we use positive logic):
+
+- `encoder_a_trainable`: Starts `False` (fixed), becomes `True` when hierarchy stalls
+- `encoder_b_trainable`: Starts `True`, becomes `False` when hierarchy plateaus
+- `controller_trainable`: Gradient-gated stability control
+
+**Q-Metric**: `Q = dist_corr + 1.5 × |hierarchy|` guides threshold annealing.
 
 ### Key Innovation
 
-**Decoupled direction/radius learning** in hyperbolic space with **p-adic structure as the organizing principle** - points divisible by high powers of 3 cluster near the origin, creating a natural tree-like hierarchy in the Poincare ball.
+**True hyperbolic geometry** via expmap0/logmap0 with **p-adic structure as the organizing principle** - points divisible by high powers of 3 cluster near the origin, creating a natural tree-like hierarchy in the Poincaré ball.
 
 ---
 
-## Project Goals
+## Key Files
 
-1. **Pre-Audit Analysis**: Analyze codebase to identify improvements (see `docs/audits/`)
+| File | Purpose |
+|------|---------|
+| `src/models/vae.py` | TernaryVAEV5_11_PartialFreeze - main model |
+| `src/models/statenet.py` | Q-gated trainability controller |
+| `src/models/hyperbolic_projection.py` | expmap0/logmap0 projections |
+| `src/geometry/poincare.py` | Riemannian backend (geoopt) |
+| `src/core/ternary.py` | Immutable 3-adic field logic |
+| `src/losses/padic_geodesic.py` | Hierarchy enforcement |
+| `src/train.py` | Unified training entry point |
 
-2. **Training Refinement**: Achieve scientifically rigorous, reproducible checkpoints
+## Training
 
-   Key files:
-   - `src/models/statenet.py` - Prevents manifold collapse during training
-   - `src/core/ternary.py` - Immutable finite field logic
-   - `src/geometry/poincare.py` - Riemannian backend (geoopt)
-   - `src/data/generation.py` - Data source (19,683 operations)
-   - `src/losses/padic_geodesic.py` - Hierarchy enforcement via 3-adic geometry
+```bash
+python src/train.py --config src/presets/research_extended_grokking.yaml
+```
 
-3. **Scientific Rigor Requirements**:
-   - Audit-Then-Execute protocol (data integrity, model health)
-   - Explicit targets: Hierarchy < -0.80, Richness > 0.008
-   - Q-Metric optimization, Stratified Sampling
-   - v5.5 anchor uses Euclidean embeddings (standard architecture)
+### Config Keys (V6.0)
+
+- `anchor_checkpoint`: Pre-trained weights to start from
+- `coverage_fix_threshold`: Fix encoder when coverage drops below
+- `coverage_train_threshold`: Allow training when coverage above
 
 ## P-Adic VAEs
 
 - **Core idea**: Dual VAE + Controller where latents live in **ultrametric p-adic space (p=3)**, inducing hierarchy by construction
-- **Geometry**: Discrete → continuous bridge via **p-adic → hyperbolic projections** (Poincare ball)
-- **Dynamics**: Dual-VAE (explore/exploit) with StateNet controller; ELBO stability via geometry-aware optimization
+- **Geometry**: Discrete → continuous bridge via **p-adic → hyperbolic projections** (Poincaré ball with expmap0/logmap0)
+- **Dynamics**: Dual-VAE (coverage/hierarchy) with StateNet controller; ELBO stability via geometry-aware optimization
 - **Evidence**: Empirical correlations between ultrametric distance and semantic/functional similarity
 - **Applications**: Hierarchical AI, neurosymbolic AI, semantic compression, protein/codon pipelines
 - **Constraints**: RTX 3050 6GB compatible, aggressive memory discipline
