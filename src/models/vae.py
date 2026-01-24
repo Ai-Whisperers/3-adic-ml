@@ -36,9 +36,9 @@ Key Insight:
     The expmap0/logmap0 operations provide non-Euclidean structure.
 
 StateNet Integration (TernaryVAEV6Controllable):
-    - encoder_a_trainable: Coverage-gated (fix when coverage drops)
-    - encoder_b_trainable: Hierarchy-gated (fix when hierarchy plateaus)
-    - controller_trainable: Intended for projections (NOT YET WIRED)
+    - encoder_a_trainable: Coverage-gated (fix when coverage drops) → head_A
+    - encoder_b_trainable: Hierarchy-gated (fix when hierarchy plateaus) → head_B
+    - controller_trainable: Gradient-gated (fix when stable) → projections
 
 Reference:
     Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
@@ -54,14 +54,95 @@ from src.models.hyperbolic_projection import DualHyperbolicProjection
 
 
 # =============================================================================
+# EncoderHead: Modular encoder with trainability control
+# =============================================================================
+
+class EncoderHead(nn.Module):
+    """Encoder backbone + mu/logvar projection heads with trainability control.
+
+    Bundles the encoder MLP with its distribution parameter heads (mu, logvar).
+    Provides unified trainability control for StateNet integration.
+
+    Architecture:
+        x (B, 9) → backbone → h (B, hidden_dim)
+                           ├─► fc_mu → mu (B, latent_dim)
+                           └─► fc_logvar → logvar (B, latent_dim)
+
+    Args:
+        hidden_dim: Hidden dimension for backbone (64 recommended)
+        latent_dim: Output latent dimension (16 recommended)
+        encoder_type: "improved" (SiLU+LayerNorm) or "standard" (ReLU)
+    """
+
+    def __init__(
+        self,
+        hidden_dim: int = 64,
+        latent_dim: int = 16,
+        encoder_type: str = "improved",
+    ):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
+        self.encoder_type = encoder_type
+
+        # Backbone output dim depends on type
+        enc_out_dim = hidden_dim if encoder_type == "improved" else 64
+
+        # Build components
+        self.backbone = _build_encoder_backbone(hidden_dim, encoder_type)
+        self.fc_mu = nn.Linear(enc_out_dim, latent_dim)
+        self.fc_logvar = nn.Linear(enc_out_dim, latent_dim)
+
+        # Trainability state
+        self._trainable = True
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Encode input to latent distribution parameters.
+
+        Args:
+            x: Input tensor (B, 9)
+
+        Returns:
+            Tuple of (mu, logvar), each (B, latent_dim)
+        """
+        h = self.backbone(x)
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        return mu, logvar
+
+    def set_trainable(self, trainable: bool) -> None:
+        """Set trainability for all parameters in this head.
+
+        Args:
+            trainable: If True, parameters receive gradients. If False, frozen.
+        """
+        self._trainable = trainable
+        for p in self.parameters():
+            p.requires_grad = trainable
+
+    @property
+    def is_trainable(self) -> bool:
+        """Whether this encoder head is currently trainable."""
+        return self._trainable
+
+    def get_trainable_params(self) -> list:
+        """Get list of parameters that currently require gradients.
+
+        Returns:
+            List of parameters with requires_grad=True
+        """
+        return [p for p in self.parameters() if p.requires_grad]
+
+
+# =============================================================================
 # Encoder/Decoder Builders
 # =============================================================================
 
-def build_encoder(hidden_dim: int, encoder_type: str = "improved") -> nn.Sequential:
-    """Build encoder backbone network.
+def _build_encoder_backbone(hidden_dim: int, encoder_type: str = "improved") -> nn.Sequential:
+    """Build encoder backbone network (internal helper).
 
     Maps 9-dim ternary input to hidden representation. Does NOT include
-    the mu/logvar heads - those are separate nn.Linear layers.
+    the mu/logvar heads - those are in EncoderHead.
 
     Architecture (improved):
         9 → hidden_dim*2 → LayerNorm → SiLU
@@ -98,6 +179,10 @@ def build_encoder(hidden_dim: int, encoder_type: str = "improved") -> nn.Sequent
             nn.Linear(128, 64),
             nn.ReLU(),
         )
+
+
+# Backward compatibility alias
+build_encoder = _build_encoder_backbone
 
 
 def build_decoder(latent_dim: int, hidden_dim: int, decoder_type: str = "improved") -> nn.Sequential:
@@ -190,17 +275,9 @@ class TernaryVAEV6(nn.Module):
         self.encoder_type = encoder_type
         self.decoder_type = decoder_type
 
-        # Encoder output dim depends on type
-        enc_out_dim = hidden_dim if encoder_type == "improved" else 64
-
-        # Encoders (output to tangent space at origin)
-        self.encoder_A = build_encoder(hidden_dim, encoder_type)
-        self.fc_mu_A = nn.Linear(enc_out_dim, latent_dim)
-        self.fc_logvar_A = nn.Linear(enc_out_dim, latent_dim)
-
-        self.encoder_B = build_encoder(hidden_dim, encoder_type)
-        self.fc_mu_B = nn.Linear(enc_out_dim, latent_dim)
-        self.fc_logvar_B = nn.Linear(enc_out_dim, latent_dim)
+        # Encoder heads (backbone + mu/logvar projections)
+        self.head_A = EncoderHead(hidden_dim, latent_dim, encoder_type)
+        self.head_B = EncoderHead(hidden_dim, latent_dim, encoder_type)
 
         # Hyperbolic projections (tangent → manifold via expmap0)
         self.projections = DualHyperbolicProjection(
@@ -223,7 +300,7 @@ class TernaryVAEV6(nn.Module):
     def encode(self, x: torch.Tensor) -> tuple:
         """Encode input to latent distribution parameters for both VAEs.
 
-        Each encoder produces mu and logvar in tangent space at origin.
+        Each encoder head produces mu and logvar in tangent space at origin.
         These define the approximate posterior q(z|x) = N(mu, exp(logvar)).
 
         Args:
@@ -232,14 +309,8 @@ class TernaryVAEV6(nn.Module):
         Returns:
             Tuple of (mu_A, logvar_A, mu_B, logvar_B), each (B, latent_dim)
         """
-        h_A = self.encoder_A(x)
-        mu_A = self.fc_mu_A(h_A)
-        logvar_A = self.fc_logvar_A(h_A)
-
-        h_B = self.encoder_B(x)
-        mu_B = self.fc_mu_B(h_B)
-        logvar_B = self.fc_logvar_B(h_B)
-
+        mu_A, logvar_A = self.head_A(x)
+        mu_B, logvar_B = self.head_B(x)
         return mu_A, logvar_A, mu_B, logvar_B
 
     def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
@@ -315,78 +386,106 @@ class TernaryVAEV6(nn.Module):
 # =============================================================================
 
 class TernaryVAEV6Controllable(TernaryVAEV6):
-    """V5.11 VAE with dynamic trainability control for StateNet.
+    """VAE with dynamic trainability control for StateNet integration.
 
-    Supports:
-        - Independent trainability control of encoder A and B
-        - Differential learning rates per component
-        - StateNet state application
+    Implements Complementary Learning Systems theory:
+        - Slow pathway (encoders): Consolidate, fix when objectives met
+        - Fast pathway (projections/decoders): Continuously adapt
+
+    StateNet controls three component groups:
+        - encoder_a_trainable: Coverage-gated (fix when coverage drops)
+        - encoder_b_trainable: Hierarchy-gated (fix when hierarchy plateaus)
+        - controller_trainable: Gradient-gated (projections - fix when stable)
 
     Additional Args:
         encoder_a_lr_scale: LR multiplier for encoder A (default: 0.05)
         encoder_b_lr_scale: LR multiplier for encoder B (default: 0.1)
+        projections_lr_scale: LR multiplier for projections (default: 1.0)
+        encoder_a_trainable: Initial trainability for encoder A (default: False)
         encoder_b_trainable: Initial trainability for encoder B (default: True)
+        projections_trainable: Initial trainability for projections (default: True)
     """
 
     def __init__(
         self,
         encoder_a_lr_scale: float = 0.05,
         encoder_b_lr_scale: float = 0.1,
+        projections_lr_scale: float = 1.0,
+        encoder_a_trainable: bool = False,
         encoder_b_trainable: bool = True,
+        projections_trainable: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.encoder_a_lr_scale = encoder_a_lr_scale
         self.encoder_b_lr_scale = encoder_b_lr_scale
+        self.projections_lr_scale = projections_lr_scale
 
-        # Trainability state tracking
-        self._encoder_a_trainable = True
-        self._encoder_b_trainable = True
+        # Projections trainability state (encoders use head_A/head_B._trainable)
+        self._projections_trainable = True
 
-        if not encoder_b_trainable:
-            self.set_encoder_b_trainable(False)
+        # Apply initial trainability states
+        self.set_encoder_a_trainable(encoder_a_trainable)
+        self.set_encoder_b_trainable(encoder_b_trainable)
+        self.set_projections_trainable(projections_trainable)
 
-    def set_encoder_a_trainable(self, trainable: bool):
-        """Set encoder A trainability (True = parameters update)."""
-        self._encoder_a_trainable = trainable
-        for p in self.encoder_A.parameters():
-            p.requires_grad = trainable
-        for p in self.fc_mu_A.parameters():
-            p.requires_grad = trainable
-        for p in self.fc_logvar_A.parameters():
+    def set_encoder_a_trainable(self, trainable: bool) -> None:
+        """Set encoder A (head_A) trainability."""
+        self.head_A.set_trainable(trainable)
+
+    def set_encoder_b_trainable(self, trainable: bool) -> None:
+        """Set encoder B (head_B) trainability."""
+        self.head_B.set_trainable(trainable)
+
+    def set_projections_trainable(self, trainable: bool) -> None:
+        """Set projections (controller) trainability.
+
+        This is the 'controller' component that StateNet's controller_trainable
+        state controls. The projections transform tangent vectors before expmap0.
+        """
+        self._projections_trainable = trainable
+        for p in self.projections.parameters():
             p.requires_grad = trainable
 
-    def set_encoder_b_trainable(self, trainable: bool):
-        """Set encoder B trainability (True = parameters update)."""
-        self._encoder_b_trainable = trainable
-        for p in self.encoder_B.parameters():
-            p.requires_grad = trainable
-        for p in self.fc_mu_B.parameters():
-            p.requires_grad = trainable
-        for p in self.fc_logvar_B.parameters():
-            p.requires_grad = trainable
+    def apply_statenet_state(self, state: Dict[str, Any]) -> None:
+        """Apply trainability states from StateNet controller.
 
-    def apply_statenet_state(self, state: Dict[str, Any]):
-        """Apply trainability states from StateNet controller."""
+        Args:
+            state: Dict with trainability flags from StateNet.update()
+                - encoder_a_trainable: Controls head_A
+                - encoder_b_trainable: Controls head_B
+                - controller_trainable: Controls projections
+        """
         if "encoder_a_trainable" in state:
             self.set_encoder_a_trainable(state["encoder_a_trainable"])
         if "encoder_b_trainable" in state:
             self.set_encoder_b_trainable(state["encoder_b_trainable"])
+        if "controller_trainable" in state:
+            self.set_projections_trainable(state["controller_trainable"])
 
     def get_trainability_summary(self) -> str:
         """Get human-readable trainability state."""
-        a = "train" if self._encoder_a_trainable else "fixed"
-        b = "train" if self._encoder_b_trainable else "fixed"
-        return f"A:{a} B:{b}"
+        a = "train" if self.head_A.is_trainable else "fixed"
+        b = "train" if self.head_B.is_trainable else "fixed"
+        p = "train" if self._projections_trainable else "fixed"
+        return f"A:{a} B:{b} P:{p}"
 
     def get_param_groups(self, base_lr: float) -> List[Dict[str, Any]]:
-        """Return parameter groups with differential learning rates."""
+        """Return parameter groups with differential learning rates.
+
+        Only includes parameters that currently require gradients.
+        Groups are named for logging/debugging.
+
+        Args:
+            base_lr: Base learning rate to scale from
+
+        Returns:
+            List of param group dicts for optimizer
+        """
         groups = []
 
-        # Encoder A (scaled LR)
-        enc_a_params = [p for p in self.encoder_A.parameters() if p.requires_grad]
-        enc_a_params += [p for p in self.fc_mu_A.parameters() if p.requires_grad]
-        enc_a_params += [p for p in self.fc_logvar_A.parameters() if p.requires_grad]
+        # Encoder A (slow learner)
+        enc_a_params = self.head_A.get_trainable_params()
         if enc_a_params:
             groups.append({
                 "params": enc_a_params,
@@ -394,10 +493,8 @@ class TernaryVAEV6Controllable(TernaryVAEV6):
                 "name": "encoder_A",
             })
 
-        # Encoder B (scaled LR)
-        enc_b_params = [p for p in self.encoder_B.parameters() if p.requires_grad]
-        enc_b_params += [p for p in self.fc_mu_B.parameters() if p.requires_grad]
-        enc_b_params += [p for p in self.fc_logvar_B.parameters() if p.requires_grad]
+        # Encoder B (medium learner)
+        enc_b_params = self.head_B.get_trainable_params()
         if enc_b_params:
             groups.append({
                 "params": enc_b_params,
@@ -405,16 +502,16 @@ class TernaryVAEV6Controllable(TernaryVAEV6):
                 "name": "encoder_B",
             })
 
-        # Projections (full LR)
+        # Projections / Controller (fast adapter)
         proj_params = [p for p in self.projections.parameters() if p.requires_grad]
         if proj_params:
             groups.append({
                 "params": proj_params,
-                "lr": base_lr,
+                "lr": base_lr * self.projections_lr_scale,
                 "name": "projections",
             })
 
-        # Decoders (full LR)
+        # Decoders (always trainable, full LR)
         dec_params = [p for p in self.decoder_A.parameters() if p.requires_grad]
         dec_params += [p for p in self.decoder_B.parameters() if p.requires_grad]
         if dec_params:
@@ -428,6 +525,9 @@ class TernaryVAEV6Controllable(TernaryVAEV6):
 
 
 __all__ = [
+    "EncoderHead",
     "TernaryVAEV6",
     "TernaryVAEV6Controllable",
+    "build_encoder",  # Backward compatibility alias
+    "build_decoder",
 ]
