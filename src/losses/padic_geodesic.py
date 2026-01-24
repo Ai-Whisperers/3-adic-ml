@@ -703,11 +703,10 @@ class RichHierarchyLoss(nn.Module):
 
     def forward(self, z_hyp, indices_batch, logits, targets):
         device = z_hyp.device
-        
-        # FIX: Use Hyperbolic Distance to origin, not Euclidean norm
-        origin = torch.zeros_like(z_hyp)
-        radii = poincare_distance(z_hyp, origin, c=self.curvature)
-        
+
+        # Use hyperbolic radius (distance from origin), not Euclidean norm
+        radii = hyperbolic_radius(z_hyp, c=self.curvature)
+
         valuations = TERNARY.valuation(indices_batch).long().to(device)
 
         # 1. Hierarchy loss (MSE to target radius)

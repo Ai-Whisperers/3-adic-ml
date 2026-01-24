@@ -105,18 +105,33 @@ Each index has precomputed algebraic properties accessible via O(1) lookup:
 
 ### src/geometry/ - Hyperbolic Operations
 
-**Key File:** `hyperbolic.py`
+**Key File:** `poincare.py`
 
-Poincare ball operations with curvature c:
+Provides numerically stable Poincaré ball operations via geoopt backend.
+All functions automatically use the correct device based on input tensors.
 
-| Function | Formula | Usage |
-|----------|---------|-------|
-| `poincare_distance(x, y, c)` | 2/√c · artanh(√c · \|\|(-x)⊕y\|\|) | All radius computations |
-| `mobius_add(x, y, c)` | Mobius addition on manifold | Hyperbolic translation |
-| `expmap0(v, c)` | Projects tangent vector to manifold | Origin → ball |
-| `logmap0(y, c)` | Projects manifold point to tangent | Ball → origin |
+#### Actively Used Functions
 
-**Critical:** All losses use `poincare_distance` for radius computation (not Euclidean norm).
+| Function | Usage |
+|----------|-------|
+| `hyperbolic_radius(z, c)` | Distance from origin (used by all hierarchy losses) |
+| `poincare_distance(x, y, c)` | Distance between points (geodesic alignment) |
+| `exp_map_zero(v, c)` | Tangent space → manifold (HyperbolicProjection) |
+| `log_map_zero(z, c)` | Manifold → tangent space (VAE decoder) |
+| `lambda_x(x, c)` | Conformal factor (HyperbolicKLDivergence) |
+| `get_riemannian_optimizer()` | RiemannianAdam/SGD factory |
+
+#### Available Utilities
+
+| Function | Purpose |
+|----------|---------|
+| `mobius_add(x, y, c)` | Hyperbolic translation |
+| `geodesic(x, y, t, c)` | Interpolation along geodesic |
+| `parallel_transport(x, y, v, c)` | Transport tangent vectors |
+| `poincare_distance_matrix(z, c)` | All pairwise distances |
+
+**Important:** All losses use `hyperbolic_radius()` for radius computation (not Euclidean norm).
+This is the canonical way to compute distances from origin in hyperbolic space.
 
 ---
 
@@ -378,8 +393,9 @@ p = parent(indices)             # Parent in 3-adic tree
 props = TERNARY.properties(indices)  # Dict of all properties
 
 # Geometry
-from src.geometry import poincare_distance
-radii = poincare_distance(z, origin, c=1.0)
+from src.geometry import hyperbolic_radius, poincare_distance
+radii = hyperbolic_radius(z, c=1.0)  # Preferred for radius computation
+dist = poincare_distance(z1, z2, c=1.0)  # Distance between points
 
 # Losses
 from src.losses import CombinedLoss

@@ -5,19 +5,40 @@
 
 """Ternary VAE with True Hyperbolic Geometry.
 
-Architecture (V6.0):
-    Encoder → μ, logvar (tangent space T₀M at origin)
-        ↓
-    z_tangent = μ + ε * σ (sample in tangent space - Euclidean)
-        ↓
-    z_hyp = expmap0(transform(z_tangent)) (project to Poincaré manifold)
-        ↓
-    ├── Losses operate on z_hyp (true hyperbolic distances)
-    │
-    └── logmap0(z_hyp) → Decoder (back to tangent space)
+Architecture (V6.0 - Dual VAE):
+    Two parallel VAEs share input but learn complementary objectives:
+    - VAE-A: Coverage (reconstruction accuracy)
+    - VAE-B: Hierarchy (radial structure in Poincaré ball)
 
-Key insight: The tangent space at origin IS Euclidean, so standard MLPs work.
-The manifold operations (expmap0, logmap0) provide the non-Euclidean structure.
+Data Flow:
+    Input x (B, 9) ternary {-1, 0, 1}
+        │
+        ├─► encoder_A ─► fc_mu_A, fc_logvar_A ─► z_A_tangent
+        │                                            │
+        └─► encoder_B ─► fc_mu_B, fc_logvar_B ─► z_B_tangent
+                                                     │
+                              ┌──────────────────────┴──────────────────────┐
+                              ▼                                             ▼
+                    projections.proj_A                            projections.proj_B
+                    (tangent_net + expmap0)                       (tangent_net + expmap0)
+                              │                                             │
+                              ▼                                             ▼
+                         z_A_hyp ◄── Losses computed here ──► z_B_hyp
+                         (Poincaré)   (true hyperbolic)       (Poincaré)
+                              │                                             │
+                          logmap0                                       logmap0
+                              │                                             │
+                              ▼                                             ▼
+                         decoder_A ─► logits_A (27)              decoder_B ─► logits_B (27)
+
+Key Insight:
+    Tangent space at origin T₀M IS Euclidean, so standard MLPs work there.
+    The expmap0/logmap0 operations provide non-Euclidean structure.
+
+StateNet Integration (TernaryVAEV6Controllable):
+    - encoder_a_trainable: Coverage-gated (fix when coverage drops)
+    - encoder_b_trainable: Hierarchy-gated (fix when hierarchy plateaus)
+    - controller_trainable: Intended for projections (NOT YET WIRED)
 
 Reference:
     Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
@@ -37,14 +58,25 @@ from src.models.hyperbolic_projection import DualHyperbolicProjection
 # =============================================================================
 
 def build_encoder(hidden_dim: int, encoder_type: str = "improved") -> nn.Sequential:
-    """Build encoder network.
+    """Build encoder backbone network.
+
+    Maps 9-dim ternary input to hidden representation. Does NOT include
+    the mu/logvar heads - those are separate nn.Linear layers.
+
+    Architecture (improved):
+        9 → hidden_dim*2 → LayerNorm → SiLU
+          → hidden_dim*2 → LayerNorm → SiLU
+          → hidden_dim → SiLU
+
+    Architecture (standard):
+        9 → 256 → ReLU → 128 → ReLU → 64 → ReLU
 
     Args:
-        hidden_dim: Hidden dimension (64 recommended)
+        hidden_dim: Hidden dimension (64 recommended for improved type)
         encoder_type: "improved" (SiLU+LayerNorm) or "standard" (ReLU)
 
     Returns:
-        Encoder sequential module (9 → hidden_dim output)
+        Sequential module outputting (B, hidden_dim) or (B, 64) for standard
     """
     if encoder_type == "improved":
         return nn.Sequential(
@@ -71,13 +103,24 @@ def build_encoder(hidden_dim: int, encoder_type: str = "improved") -> nn.Sequent
 def build_decoder(latent_dim: int, hidden_dim: int, decoder_type: str = "improved") -> nn.Sequential:
     """Build decoder network.
 
+    Maps latent vector (from tangent space via logmap0) to reconstruction
+    logits. Output is 27 = 9 positions × 3 classes for ternary classification.
+
+    Architecture (improved):
+        latent_dim → hidden_dim → SiLU
+                   → hidden_dim*2 → LayerNorm → SiLU
+                   → 27 (raw logits)
+
+    Architecture (standard):
+        latent_dim → 32 → ReLU → 64 → ReLU → 27
+
     Args:
         latent_dim: Latent dimension (16 recommended)
         hidden_dim: Hidden dimension (64 recommended)
         decoder_type: "improved" (SiLU+LayerNorm) or "standard" (ReLU)
 
     Returns:
-        Decoder sequential module (latent_dim → 27 output)
+        Sequential module outputting (B, 27) logits
     """
     if decoder_type == "improved":
         return nn.Sequential(
@@ -178,7 +221,17 @@ class TernaryVAEV6(nn.Module):
         self.to(torch.float64)
 
     def encode(self, x: torch.Tensor) -> tuple:
-        """Encode input to latent parameters."""
+        """Encode input to latent distribution parameters for both VAEs.
+
+        Each encoder produces mu and logvar in tangent space at origin.
+        These define the approximate posterior q(z|x) = N(mu, exp(logvar)).
+
+        Args:
+            x: Input tensor (B, 9) with ternary values
+
+        Returns:
+            Tuple of (mu_A, logvar_A, mu_B, logvar_B), each (B, latent_dim)
+        """
         h_A = self.encoder_A(x)
         mu_A = self.fc_mu_A(h_A)
         logvar_A = self.fc_logvar_A(h_A)
@@ -190,10 +243,20 @@ class TernaryVAEV6(nn.Module):
         return mu_A, logvar_A, mu_B, logvar_B
 
     def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-        """Reparameterization trick - sample in tangent space.
+        """Reparameterization trick for differentiable sampling.
 
-        The tangent space at origin is Euclidean, so standard Gaussian sampling works.
-        The result will be projected to the manifold via expmap0 in the projection layer.
+        Samples z = mu + eps * std where eps ~ N(0, I). This allows gradients
+        to flow through the sampling operation.
+
+        Note: Sampling occurs in tangent space T₀M at origin, which IS Euclidean.
+        The non-Euclidean structure comes from expmap0 projection afterward.
+
+        Args:
+            mu: Mean of approximate posterior (B, latent_dim)
+            logvar: Log variance of approximate posterior (B, latent_dim)
+
+        Returns:
+            Sampled latent z_tangent (B, latent_dim) in tangent space
         """
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
