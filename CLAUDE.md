@@ -2,7 +2,7 @@
 
 ## Architecture Summary
 
-**Dual VAE + True Hyperbolic Geometry + StateNet Controller**
+**Dual VAE + True Hyperbolic Geometry + LR Controller**
 
 ### Core Components
 
@@ -11,7 +11,7 @@
 | **VAE-A** | Encoder 9→128→64, Decoder 16→64→27 | Coverage (reconstruction) |
 | **VAE-B** | Same structure, independent weights | Hierarchy learning |
 | **Hyperbolic Projection** | Tangent net + expmap0 → Poincaré ball | True hyperbolic mapping |
-| **StateNet** | Q-gated trainability controller | Dynamic component control |
+| **LR Controller** | MetricBasedLR with Q-gated thresholds | Dynamic LR scale control |
 
 ### What Makes It "P-Adic"
 
@@ -74,17 +74,19 @@ Input (9 values, {-1,0,1})
 
 ---
 
-## StateNet Controller
+## LR Controller (Option C)
 
-The StateNet manages component **trainability** (positive logic, not "freeze"):
+Training uses **continuous LR scales** via `MetricBasedLR` (not boolean freeze/unfreeze):
 
-| State | Initial | Trigger to Change |
-|-------|---------|-------------------|
-| `encoder_a_trainable` | `False` (fixed) | Hierarchy stalls at 100% coverage |
-| `encoder_b_trainable` | `True` | Hierarchy plateaus for patience epochs |
-| `controller_trainable` | `True` | Gradient norm stabilizes |
+| Component | LR Scale | Role |
+|-----------|----------|------|
+| `encoder_a` | 0.05× base | Coverage encoder (slowest learner) |
+| `encoder_b` | 0.1× base | Hierarchy encoder (medium learner) |
+| `projections` | 1.0× base | Hyperbolic projection (fastest adapter) |
 
 **Q-Metric**: `Q = dist_corr + 1.5 × |hierarchy|` guides threshold annealing.
+
+**How it works**: Each epoch, `MetricBasedLR.update(metrics)` returns LR scales, then `update_optimizer_lr_scales()` applies them to optimizer param groups. Setting LR=0 effectively freezes a component.
 
 ---
 
@@ -92,9 +94,10 @@ The StateNet manages component **trainability** (positive logic, not "freeze"):
 
 | File | Purpose |
 |------|---------|
-| `src/models/vae.py` | `TernaryVAEV6`, `TernaryVAEV6Controllable` |
-| `src/models/statenet.py` | Q-gated trainability controller |
+| `src/models/vae.py` | `TernaryVAEV6`, `TernaryVAEV6Controllable`, `EncoderHead` |
+| `src/models/lr_controller.py` | `MetricBasedLR`, `TrainingMetrics`, LR scale control |
 | `src/models/hyperbolic_projection.py` | expmap0/logmap0 projections |
+| `src/config/statenet_config.py` | `StateNetConfig` dataclass (configuration) |
 | `src/geometry/poincare.py` | Riemannian backend (geoopt) |
 | `src/core/ternary.py` | Immutable 3-adic field logic |
 | `src/losses/padic_geodesic.py` | All hierarchy/geodesic losses |
@@ -104,7 +107,7 @@ The StateNet manages component **trainability** (positive logic, not "freeze"):
 ## Training
 
 ```bash
-python src/train.py --config src/presets/5.12.4.yaml
+python src/train.py --config src/presets/v6.yaml
 ```
 
 ### Config Keys (V6.0)
@@ -112,9 +115,35 @@ python src/train.py --config src/presets/5.12.4.yaml
 | Key | Purpose |
 |-----|---------|
 | `anchor_checkpoint.path` | Pre-trained weights to start from |
-| `statenet.coverage_fix_threshold` | Fix encoder when coverage drops below |
-| `statenet.coverage_train_threshold` | Allow training when coverage above |
+| `option_c.encoder_a_lr_scale` | LR multiplier for coverage encoder (default: 0.05) |
+| `option_c.encoder_b_lr_scale` | LR multiplier for hierarchy encoder (default: 0.1) |
+| `option_c.projections_lr_scale` | LR multiplier for projections (default: 1.0) |
+| `statenet.initial.encoder_a_trainable` | Initial trainability for encoder A |
 | `model.name` | `TernaryVAEV6Controllable` |
+
+### Training Loop Algorithm
+
+```
+For each epoch:
+    1. Training phase:
+       - Forward: out = model(batch_ops)
+       - Loss: losses = loss_fn(z_hyp, batch_idx, logits, batch_ops, epoch)
+       - Backward + gradient clipping
+       - Optimizer step
+
+    2. Validation phase:
+       - Collect z_A_hyp, z_B_hyp from both VAEs
+       - Compute hierarchy metrics (Spearman correlation, Q metric)
+
+    3. LR Controller update:
+       - metrics = TrainingMetrics(coverage, hierarchy_a/b, dist_corr, q_value, grad_norm)
+       - controller_state = lr_controller.update(metrics)
+       - update_optimizer_lr_scales(optimizer, base_lr, lr_scales)
+
+    4. Checkpointing:
+       - Save best_Q.pt when Q improves
+       - Periodic checkpoints every save_every epochs
+```
 
 ---
 
@@ -122,8 +151,103 @@ python src/train.py --config src/presets/5.12.4.yaml
 
 - **Core idea**: Dual VAE + Controller where latents live in **ultrametric p-adic space (p=3)**, inducing hierarchy by construction
 - **Geometry**: Discrete → continuous bridge via **p-adic → hyperbolic projections** (Poincaré ball with expmap0/logmap0)
-- **Dynamics**: Dual-VAE (coverage/hierarchy) with StateNet controller; ELBO stability via geometry-aware optimization
+- **Dynamics**: Dual-VAE (coverage/hierarchy) with LR controller; ELBO stability via geometry-aware optimization
 - **Evidence**: Empirical correlations between ultrametric distance and semantic/functional similarity
 - **Applications**: Hierarchical AI, neurosymbolic AI, semantic compression, protein/codon pipelines
 - **Constraints**: RTX 3050 6GB compatible, aggressive memory discipline
 - **Philosophy**: Meaning = geometry; hierarchy **emerges structurally**, not memorized
+
+---
+
+## Configuration Details
+
+### Config Structure (Nested)
+
+The YAML config uses **nested structure** (not flat keys):
+
+```yaml
+statenet:
+  enabled: true
+  initial:
+    encoder_a_trainable: false  # Set to true for both VAEs trainable
+    encoder_b_trainable: true
+    projections_trainable: true
+  coverage:
+    fix_threshold: 0.995
+    train_threshold: 1.0
+  hierarchy:
+    plateau_patience: 10
+  timing:
+    warmup_epochs: 10
+
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.05
+  encoder_b_lr_scale: 0.1
+  projections_lr_scale: 1.0
+```
+
+### Making Both VAEs Trainable
+
+To train with BOTH encoders trainable from the start:
+
+1. Set `statenet.initial.encoder_a_trainable: true` in YAML
+2. Or programmatically:
+
+```python
+from src.config import StateNetConfig
+
+config = StateNetConfig.from_dict(yaml_cfg.get('statenet', {}))
+config.initial.encoder_a_trainable = True
+config.initial.encoder_b_trainable = True
+```
+
+### Integration Pattern (train.py)
+
+```python
+from src.config import StateNetConfig
+from src.models import (
+    TernaryVAEV6Controllable,
+    MetricBasedLR,
+    TrainingMetrics,
+    update_optimizer_lr_scales,
+)
+
+# 1. Load config
+sn_config = StateNetConfig.from_dict(config.get('statenet', {}))
+
+# 2. Create controller
+lr_controller = MetricBasedLR(sn_config)
+
+# 3. Create model
+model = TernaryVAEV6Controllable(
+    encoder_a_trainable=sn_config.initial.encoder_a_trainable,
+    encoder_b_trainable=sn_config.initial.encoder_b_trainable,
+    projections_trainable=sn_config.initial.projections_trainable,
+)
+
+# 4. In training loop
+metrics = TrainingMetrics(epoch=epoch, coverage=cov, hierarchy_a=h_a, ...)
+state = lr_controller.update(metrics)
+update_optimizer_lr_scales(optimizer, base_lr, state['lr_scales'])
+```
+
+### StateNetConfig Dataclass Structure
+
+```python
+@dataclass
+class StateNetConfig:
+    enabled: bool = True
+    coverage: CoverageThresholds      # fix_threshold, train_threshold, floor
+    hierarchy: HierarchyThresholds    # plateau_threshold, plateau_patience, ...
+    controller: ControllerThresholds  # grad_threshold, grad_patience, ...
+    annealing: AnnealingConfig        # enabled, step, q_decrease_threshold
+    timing: TimingConfig              # warmup_epochs, hysteresis_epochs, window_size
+    lr_scales: LRScales               # encoder_a, encoder_b, projections, decoders
+    initial: InitialStates            # encoder_a_trainable, encoder_b_trainable, ...
+```
+
+### See Also
+
+- `src/README.md` - Full integration guide with code examples
+- `src/presets/v6.yaml` - Reference V6.0 configuration

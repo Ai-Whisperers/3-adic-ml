@@ -1,6 +1,214 @@
 # src/ - P-Adic VAE Source Code
 
-**Last Updated**: 2026-01-24
+**Last Updated**: 2026-01-26
+
+---
+
+## CRITICAL: StateNet Integration Guide (V6.0)
+
+This section explains how to properly integrate the training controller with both VAEs trainable.
+
+### Architecture Overview (Corrected)
+
+**Important**: There is NO `src/models/statenet.py` file. The StateNet system is split across:
+
+| File | Purpose |
+|------|---------|
+| `src/config/statenet_config.py` | **StateNetConfig** dataclass (configuration only) |
+| `src/models/lr_controller.py` | **MetricBasedLR** class (decision logic) |
+| `src/models/vae.py` | **TernaryVAEV6Controllable** (trainability methods) |
+| `src/train.py` | Integration point (wires everything together) |
+
+### Option C: LR-Based Trainability Control
+
+The system uses "Option C" - **all trainability control happens via LR scales**:
+- `LR = 0` → component is frozen (no gradient updates)
+- `LR > 0` → component is trainable (with differential rates)
+
+This is cleaner than setting `requires_grad=False` because:
+1. Single source of truth (optimizer param groups)
+2. Continuous control (soft freezing via small LR)
+3. Easy to log and monitor
+
+### How to Make Both VAEs Trainable
+
+To train with BOTH encoder_A and encoder_B trainable from the start:
+
+```yaml
+# In your preset YAML config
+statenet:
+  enabled: true
+  initial:
+    encoder_a_trainable: true    # ← Set to true (default is false)
+    encoder_b_trainable: true    # ← Already true by default
+    projections_trainable: true  # ← Already true by default
+
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.05      # Still use slower LR for encoder_A
+  encoder_b_lr_scale: 0.1       # Medium LR for encoder_B
+  projections_lr_scale: 1.0     # Full LR for projections
+```
+
+### Integration Code Flow
+
+```python
+# 1. Load config from YAML
+statenet_cfg = config.get('statenet', {})
+option_c_cfg = config.get('option_c', {})
+
+# 2. Create StateNetConfig from dict
+sn_config = StateNetConfig.from_dict(statenet_cfg)
+
+# 3. Merge option_c LR scales (if present)
+if option_c_cfg.get('enabled', True):
+    sn_config.lr_scales.encoder_a = option_c_cfg.get('encoder_a_lr_scale', 0.05)
+    sn_config.lr_scales.encoder_b = option_c_cfg.get('encoder_b_lr_scale', 0.1)
+    sn_config.lr_scales.projections = option_c_cfg.get('projections_lr_scale', 1.0)
+
+# 4. Create LRController
+lr_controller = MetricBasedLR(sn_config)
+
+# 5. Create model with initial trainability from config
+model = TernaryVAEV6Controllable(
+    encoder_a_trainable=sn_config.initial.encoder_a_trainable,
+    encoder_b_trainable=sn_config.initial.encoder_b_trainable,
+    projections_trainable=sn_config.initial.projections_trainable,
+    encoder_a_lr_scale=sn_config.lr_scales.encoder_a,
+    encoder_b_lr_scale=sn_config.lr_scales.encoder_b,
+    projections_lr_scale=sn_config.lr_scales.projections,
+    # ... other args
+)
+
+# 6. In training loop (per epoch):
+metrics = TrainingMetrics(
+    epoch=epoch,
+    coverage=avg_val_coverage,
+    hierarchy_a=hier_metrics_A['hierarchy'],
+    hierarchy_b=hier_metrics_B['hierarchy'],
+    dist_corr_a=hier_metrics_A['dist_corr'],
+    q_value=hier_metrics_A['Q'],
+    grad_norm_projections=controller_grad_norm,
+)
+controller_state = lr_controller.update(metrics)
+
+# 7. Apply LR scales to optimizer (THE KEY STEP)
+update_optimizer_lr_scales(optimizer, base_lr, controller_state['lr_scales'])
+```
+
+### Key Classes
+
+#### StateNetConfig (src/config/statenet_config.py)
+
+```python
+from src.config import StateNetConfig
+
+# From YAML
+config = StateNetConfig.from_dict(yaml_config.get('statenet', {}))
+
+# Access nested config
+print(config.initial.encoder_a_trainable)  # False by default
+print(config.lr_scales.encoder_a)          # 0.05 by default
+print(config.coverage.fix_threshold)       # 0.995 by default
+```
+
+#### MetricBasedLR (src/models/lr_controller.py)
+
+```python
+from src.models import MetricBasedLR, TrainingMetrics
+
+# Create controller
+controller = MetricBasedLR(sn_config)
+
+# Update and get LR scales
+metrics = TrainingMetrics(epoch=50, coverage=0.98, ...)
+state = controller.update(metrics)
+
+# state['lr_scales'] = {'encoder_a': 0.0, 'encoder_b': 0.1, 'projections': 1.0, 'decoders': 1.0}
+# state['events'] = ['encoder_a frozen (coverage drop)']
+```
+
+#### TernaryVAEV6Controllable (src/models/vae.py)
+
+```python
+from src.models import TernaryVAEV6Controllable
+
+model = TernaryVAEV6Controllable(
+    encoder_a_trainable=True,   # Start trainable
+    encoder_b_trainable=True,   # Start trainable
+    projections_trainable=True, # Start trainable
+)
+
+# Manual control (rarely needed - use LRController instead)
+model.set_encoder_a_trainable(False)
+model.set_encoder_b_trainable(True)
+model.set_projections_trainable(True)
+
+# Get param groups for optimizer (respects current trainability)
+param_groups = model.get_param_groups(base_lr=1e-3)
+```
+
+### StateNet Decision Logic
+
+The `MetricBasedLR` makes decisions based on:
+
+| Component | Frozen When | Unfrozen When |
+|-----------|-------------|---------------|
+| `encoder_a` | Coverage < 0.995 | Coverage ≥ 1.0 AND hierarchy_A stalled |
+| `encoder_b` | Hierarchy_B plateaus for `patience` epochs | Hierarchy_B degrades |
+| `projections` | Gradient norm < 0.005 for `patience` epochs | Gradient spike detected |
+
+### Warmup and Hysteresis
+
+- **Warmup**: During `timing.warmup_epochs`, no decisions are made (initial states preserved)
+- **Hysteresis**: At least `timing.hysteresis_epochs` must pass between state changes
+
+### Complete YAML Config Reference
+
+```yaml
+statenet:
+  enabled: true
+
+  initial:
+    encoder_a_trainable: false    # Start frozen (coverage anchor)
+    encoder_b_trainable: true     # Start trainable (hierarchy learner)
+    projections_trainable: true   # Start trainable (fast adapter)
+
+  coverage:
+    fix_threshold: 0.995          # Freeze encoder_A when coverage drops below
+    train_threshold: 1.0          # Unfreeze encoder_A when above (+ stall)
+    floor: 0.95                   # Minimum threshold (annealing limit)
+
+  hierarchy:
+    plateau_threshold: 0.0005     # Improvement below this = plateau
+    plateau_patience: 10          # Epochs before freezing encoder_B
+    patience_ceiling: 25          # Max patience (annealing)
+    stall_patience: 5             # For encoder_A stall detection
+
+  controller:
+    grad_threshold: 0.005         # Freeze projections when grad norm below
+    grad_patience: 5              # Epochs of low grad before freeze
+    patience_ceiling: 20          # Max patience (annealing)
+    spike_multiplier: 2.0         # Unfreeze when grad > avg * this
+
+  annealing:
+    enabled: true
+    step: 0.002                   # Threshold adjustment step
+    q_decrease_threshold: -0.05   # Q drop triggers tightening
+
+  timing:
+    warmup_epochs: 10             # Skip decisions during warmup
+    hysteresis_epochs: 5          # Min epochs between state changes
+    window_size: 10               # Moving window for metric history
+
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.05        # Coverage encoder: slowest
+  encoder_b_lr_scale: 0.1         # Hierarchy encoder: medium
+  projections_lr_scale: 1.0       # Projections: fastest
+```
+
+---
 
 ## Architecture Overview
 
@@ -174,7 +382,9 @@ loss:
 
 ### src/models/ - VAE Architectures
 
-**Key Files:** `vae.py`, `hyperbolic_projection.py`, `statenet.py`
+**Key Files:** `vae.py`, `hyperbolic_projection.py`, `lr_controller.py`
+
+> **Note**: There is NO `statenet.py` file. See the **StateNet Integration Guide** at the top of this document.
 
 #### Model Variants (V6.0)
 
@@ -251,7 +461,7 @@ params = head.get_trainable_params()  # Get trainable params for optimizer
 
 ### src/presets/ - YAML Configurations
 
-**File:** `5.12.4.yaml` (and other versioned configs)
+**File:** `v6.yaml` (and other versioned configs)
 
 Sections: device, model, loss, training, scheduler, targets, logging, checkpoints, statenet
 
@@ -425,7 +635,8 @@ The tangent space at the origin T₀M **IS** Euclidean ℝⁿ. This means:
 |------|---------|
 | `src/models/vae.py` | `EncoderHead`, `TernaryVAEV6`, `TernaryVAEV6Controllable` |
 | `src/models/hyperbolic_projection.py` | `HyperbolicProjection`, `DualHyperbolicProjection` (expmap0) |
-| `src/models/statenet.py` | `StateNet` trainability controller |
+| `src/models/lr_controller.py` | `MetricBasedLR`, `ScheduleBasedLR` (trainability controller) |
+| `src/config/statenet_config.py` | `StateNetConfig` dataclass (centralized config) |
 | `src/geometry/poincare.py` | `exp_map_zero`, `log_map_zero` via geoopt |
 
 ---
@@ -481,17 +692,17 @@ pip install tqdm psutil
 ### Running Training
 
 ```bash
-# Production training
-python src/train.py --config src/presets/5.12.4.yaml
+# Production training (V6.0 true hyperbolic)
+python src/train.py --config src/presets/v6.yaml
 
 # Validate config only (no training)
-python src/train.py --config src/presets/5.12.4.yaml --validate-only
+python src/train.py --config src/presets/v6.yaml --validate-only
 
 # With mixed precision (faster on compatible GPUs)
-python src/train.py --config src/presets/5.12.4.yaml --amp
+python src/train.py --config src/presets/v6.yaml --amp
 
 # Custom seed for reproducibility
-python src/train.py --config src/presets/5.12.4.yaml --seed 123
+python src/train.py --config src/presets/v6.yaml --seed 123
 ```
 
 ### CLI Options
