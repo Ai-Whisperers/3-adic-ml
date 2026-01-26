@@ -181,11 +181,7 @@ def _build_encoder_backbone(hidden_dim: int, encoder_type: str = "improved") -> 
         )
 
 
-# Backward compatibility alias
-build_encoder = _build_encoder_backbone
-
-
-def build_decoder(latent_dim: int, hidden_dim: int, decoder_type: str = "improved") -> nn.Sequential:
+def _build_decoder(latent_dim: int, hidden_dim: int, decoder_type: str = "improved") -> nn.Sequential:
     """Build decoder network.
 
     Maps latent vector (from tangent space via logmap0) to reconstruction
@@ -291,8 +287,8 @@ class TernaryVAEV6(nn.Module):
         )
 
         # Decoders (input from tangent space via logmap0)
-        self.decoder_A = build_decoder(latent_dim, hidden_dim, decoder_type)
-        self.decoder_B = build_decoder(latent_dim, hidden_dim, decoder_type)
+        self.decoder_A = _build_decoder(latent_dim, hidden_dim, decoder_type)
+        self.decoder_B = _build_decoder(latent_dim, hidden_dim, decoder_type)
 
         # Enforce float64 precision for numerical stability
         self.to(torch.float64)
@@ -528,6 +524,4 @@ __all__ = [
     "EncoderHead",
     "TernaryVAEV6",
     "TernaryVAEV6Controllable",
-    "build_encoder",  # Backward compatibility alias
-    "build_decoder",
 ]
