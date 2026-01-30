@@ -21,8 +21,7 @@ tqdm>=4.65.0
 # System Monitoring (optional)
 psutil>=5.9.0  # RAM monitoring for HardwareMonitor
 
-# Metrics and Analysis
-scikit-learn>=1.2.0  # For Spearman correlation in hierarchy metrics
+# Note: Spearman correlation comes from scipy.stats (already included above)
 
 # Testing
 pytest>=7.3.0
