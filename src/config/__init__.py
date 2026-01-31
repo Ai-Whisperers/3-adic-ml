@@ -17,7 +17,6 @@ from .statenet_config import (
     CoverageThresholds,
     HierarchyThresholds,
     ControllerThresholds,
-    AnnealingConfig,
     TimingConfig,
     LRScales,
     InitialStates,

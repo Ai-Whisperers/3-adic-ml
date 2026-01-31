@@ -8,12 +8,26 @@
 This module provides a CombinedLoss class that reads a config dictionary
 and instantiates/combines the appropriate loss functions.
 
+V6.1 Feature: Learnable Loss Weights (Uncertainty Weighting)
+    When `learnable_weights: true` in config, loss weights become trainable
+    nn.Parameters using homoscedastic uncertainty weighting (Kendall et al. 2018).
+
+    Instead of fixed weights, the network learns log-variance parameters:
+        effective_weight = 1 / (2 * exp(2 * log_sigma))
+        regularization = -log_sigma  (prevents weights going to zero)
+
+    This allows the model to automatically balance competing objectives
+    based on gradient flow, rather than relying on hand-tuned weights.
+
 Usage:
     from src.losses.combined import CombinedLoss
 
     loss_fn = CombinedLoss(config['loss'], curvature=1.0)
     losses = loss_fn(z_hyp, indices, logits, targets, epoch=10)
     total_loss = losses['total']
+
+    # With learnable weights:
+    # loss_fn.get_learned_weights()  # returns current effective weights
 """
 
 from typing import Any, Dict, Optional
@@ -82,8 +96,15 @@ class CombinedLoss(nn.Module):
         self.curvature = curvature
         self.device = device
 
+        # Learnable weights configuration
+        self.use_learnable_weights = loss_config.get('learnable_weights', False)
+
         # Initialize enabled losses
         self._init_losses()
+
+        # Initialize learnable weight parameters (if enabled)
+        if self.use_learnable_weights:
+            self._init_learnable_weights()
 
     def _init_losses(self):
         """Initialize loss modules based on config."""
@@ -165,6 +186,93 @@ class CombinedLoss(nn.Module):
             self.monotonic_loss = None
             self.monotonic_weight = 0.0
 
+    def _init_learnable_weights(self):
+        """Initialize learnable log-sigma parameters for uncertainty weighting.
+
+        Uses homoscedastic uncertainty weighting (Kendall et al. 2018):
+            effective_weight = 1 / (2 * exp(2 * log_sigma))
+            loss_contribution = effective_weight * loss - log_sigma
+
+        The -log_sigma regularization prevents weights from collapsing to zero.
+        Initial log_sigma=0 gives effective_weight=0.5, which is a neutral starting point.
+        """
+        # Map from loss name to initial log_sigma (derived from config weights)
+        # log_sigma = -0.5 * log(2 * weight) so that 1/(2*exp(2*log_sigma)) = weight
+        import math
+
+        def weight_to_log_sigma(w: float) -> float:
+            """Convert fixed weight to initial log_sigma."""
+            # effective_weight = 1 / (2 * exp(2 * log_sigma))
+            # w = 1 / (2 * exp(2 * s))
+            # 2w = 1 / exp(2s)
+            # exp(2s) = 1 / (2w)
+            # 2s = -log(2w)
+            # s = -0.5 * log(2w)
+            return -0.5 * math.log(max(2 * w, 1e-6))
+
+        # RichHierarchy sub-components
+        if self.rich_hierarchy is not None:
+            self.log_sigma_hierarchy = nn.Parameter(
+                torch.tensor(weight_to_log_sigma(self.rich_hierarchy_weights['hierarchy']))
+            )
+            self.log_sigma_coverage = nn.Parameter(
+                torch.tensor(weight_to_log_sigma(self.rich_hierarchy_weights['coverage']))
+            )
+            self.log_sigma_separation = nn.Parameter(
+                torch.tensor(weight_to_log_sigma(self.rich_hierarchy_weights['separation']))
+            )
+
+        # Other losses
+        if self.radial_loss is not None:
+            self.log_sigma_radial = nn.Parameter(
+                torch.tensor(weight_to_log_sigma(self.radial_weight))
+            )
+
+        if self.geodesic_loss is not None:
+            self.log_sigma_geodesic = nn.Parameter(
+                torch.tensor(weight_to_log_sigma(self.geodesic_weight))
+            )
+
+        if self.rank_loss is not None:
+            self.log_sigma_rank = nn.Parameter(
+                torch.tensor(weight_to_log_sigma(self.rank_weight))
+            )
+
+        if self.monotonic_loss is not None:
+            self.log_sigma_monotonic = nn.Parameter(
+                torch.tensor(weight_to_log_sigma(self.monotonic_weight))
+            )
+
+    def _uncertainty_weight(self, log_sigma: nn.Parameter) -> torch.Tensor:
+        """Compute effective weight from log_sigma using uncertainty weighting.
+
+        Args:
+            log_sigma: Learnable log-variance parameter
+
+        Returns:
+            Effective weight = 1 / (2 * exp(2 * log_sigma))
+        """
+        return 0.5 * torch.exp(-2 * log_sigma)
+
+    def _weighted_loss(
+        self,
+        loss: torch.Tensor,
+        log_sigma: nn.Parameter,
+    ) -> torch.Tensor:
+        """Apply uncertainty weighting to a loss.
+
+        Args:
+            loss: Raw loss value
+            log_sigma: Learnable log-variance parameter
+
+        Returns:
+            Weighted loss with regularization: weight * loss - log_sigma
+        """
+        weight = self._uncertainty_weight(log_sigma)
+        # The -log_sigma term is regularization that prevents sigma from growing
+        # (which would make the weight go to zero)
+        return weight * loss - log_sigma
+
     def forward(
         self,
         z_hyp: torch.Tensor,
@@ -193,12 +301,20 @@ class CombinedLoss(nn.Module):
         if self.rich_hierarchy is not None:
             rich_out = self.rich_hierarchy(z_hyp, indices, logits, targets)
 
-            # Apply configured weights
-            weighted_rich = (
-                self.rich_hierarchy_weights['hierarchy'] * rich_out['hierarchy'] +
-                self.rich_hierarchy_weights['coverage'] * rich_out['coverage'] +
-                self.rich_hierarchy_weights['separation'] * rich_out['separation']
-            )
+            if self.use_learnable_weights:
+                # Learnable uncertainty weighting
+                weighted_rich = (
+                    self._weighted_loss(rich_out['hierarchy'], self.log_sigma_hierarchy) +
+                    self._weighted_loss(rich_out['coverage'], self.log_sigma_coverage) +
+                    self._weighted_loss(rich_out['separation'], self.log_sigma_separation)
+                )
+            else:
+                # Fixed weights from config
+                weighted_rich = (
+                    self.rich_hierarchy_weights['hierarchy'] * rich_out['hierarchy'] +
+                    self.rich_hierarchy_weights['coverage'] * rich_out['coverage'] +
+                    self.rich_hierarchy_weights['separation'] * rich_out['separation']
+                )
 
             losses['rich_hierarchy'] = weighted_rich
             losses['rich_hierarchy_detail'] = rich_out
@@ -209,28 +325,40 @@ class CombinedLoss(nn.Module):
             radial_out, radial_metrics = self.radial_loss(z_hyp, indices)
             losses['radial'] = radial_out
             losses['radial_metrics'] = radial_metrics
-            total = total + self.radial_weight * radial_out
+            if self.use_learnable_weights:
+                total = total + self._weighted_loss(radial_out, self.log_sigma_radial)
+            else:
+                total = total + self.radial_weight * radial_out
 
         # 3. PAdicGeodesicLoss (phase-gated)
         if self.geodesic_loss is not None and epoch >= self.geodesic_phase_start:
             geodesic_out, geodesic_metrics = self.geodesic_loss(z_hyp, indices)
             losses['geodesic'] = geodesic_out
             losses['geodesic_metrics'] = geodesic_metrics
-            total = total + self.geodesic_weight * geodesic_out
+            if self.use_learnable_weights:
+                total = total + self._weighted_loss(geodesic_out, self.log_sigma_geodesic)
+            else:
+                total = total + self.geodesic_weight * geodesic_out
 
         # 4. GlobalRankLoss (if enabled)
         if self.rank_loss is not None:
             rank_out, rank_metrics = self.rank_loss(z_hyp, indices)
             losses['rank'] = rank_out
             losses['rank_metrics'] = rank_metrics
-            total = total + self.rank_weight * rank_out
+            if self.use_learnable_weights:
+                total = total + self._weighted_loss(rank_out, self.log_sigma_rank)
+            else:
+                total = total + self.rank_weight * rank_out
 
         # 5. MonotonicRadialLoss (if enabled)
         if self.monotonic_loss is not None:
             monotonic_out, monotonic_metrics = self.monotonic_loss(z_hyp, indices)
             losses['monotonic'] = monotonic_out
             losses['monotonic_metrics'] = monotonic_metrics
-            total = total + self.monotonic_weight * monotonic_out
+            if self.use_learnable_weights:
+                total = total + self._weighted_loss(monotonic_out, self.log_sigma_monotonic)
+            else:
+                total = total + self.monotonic_weight * monotonic_out
 
         # 6. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:
@@ -292,9 +420,75 @@ class CombinedLoss(nn.Module):
             enabled.append('monotonic')
         return enabled
 
+    def get_learned_weights(self) -> Dict[str, float]:
+        """Return current effective weights (if using learnable weights).
+
+        Returns:
+            Dict mapping loss name to effective weight.
+            Returns config weights if not using learnable weights.
+        """
+        if not self.use_learnable_weights:
+            # Return fixed weights from config
+            weights = {}
+            if self.rich_hierarchy is not None:
+                weights.update(self.rich_hierarchy_weights)
+            if self.radial_loss is not None:
+                weights['radial'] = self.radial_weight
+            if self.geodesic_loss is not None:
+                weights['geodesic'] = self.geodesic_weight
+            if self.rank_loss is not None:
+                weights['rank'] = self.rank_weight
+            if self.monotonic_loss is not None:
+                weights['monotonic'] = self.monotonic_weight
+            return weights
+
+        # Compute effective weights from learnable log_sigma
+        weights = {}
+        with torch.no_grad():
+            if self.rich_hierarchy is not None:
+                weights['hierarchy'] = self._uncertainty_weight(self.log_sigma_hierarchy).item()
+                weights['coverage'] = self._uncertainty_weight(self.log_sigma_coverage).item()
+                weights['separation'] = self._uncertainty_weight(self.log_sigma_separation).item()
+            if self.radial_loss is not None:
+                weights['radial'] = self._uncertainty_weight(self.log_sigma_radial).item()
+            if self.geodesic_loss is not None:
+                weights['geodesic'] = self._uncertainty_weight(self.log_sigma_geodesic).item()
+            if self.rank_loss is not None:
+                weights['rank'] = self._uncertainty_weight(self.log_sigma_rank).item()
+            if self.monotonic_loss is not None:
+                weights['monotonic'] = self._uncertainty_weight(self.log_sigma_monotonic).item()
+        return weights
+
+    def get_log_sigmas(self) -> Dict[str, float]:
+        """Return raw log_sigma values for debugging/logging.
+
+        Returns:
+            Dict mapping loss name to log_sigma value.
+            Returns empty dict if not using learnable weights.
+        """
+        if not self.use_learnable_weights:
+            return {}
+
+        sigmas = {}
+        with torch.no_grad():
+            if self.rich_hierarchy is not None:
+                sigmas['hierarchy'] = self.log_sigma_hierarchy.item()
+                sigmas['coverage'] = self.log_sigma_coverage.item()
+                sigmas['separation'] = self.log_sigma_separation.item()
+            if self.radial_loss is not None:
+                sigmas['radial'] = self.log_sigma_radial.item()
+            if self.geodesic_loss is not None:
+                sigmas['geodesic'] = self.log_sigma_geodesic.item()
+            if self.rank_loss is not None:
+                sigmas['rank'] = self.log_sigma_rank.item()
+            if self.monotonic_loss is not None:
+                sigmas['monotonic'] = self.log_sigma_monotonic.item()
+        return sigmas
+
     def __repr__(self) -> str:
         enabled = self.get_enabled_losses()
-        return f"CombinedLoss(enabled={enabled})"
+        learnable = "learnable" if self.use_learnable_weights else "fixed"
+        return f"CombinedLoss(enabled={enabled}, weights={learnable})"
 
 
 __all__ = ["CombinedLoss"]

@@ -51,14 +51,6 @@ class ControllerThresholds:
 
 
 @dataclass
-class AnnealingConfig:
-    """Q-gated annealing configuration."""
-    enabled: bool = True
-    step: float = 0.002               # Threshold adjustment step
-    q_decrease_threshold: float = -0.05  # Q drop triggering tightening
-
-
-@dataclass
 class TimingConfig:
     """Timing and window configuration."""
     warmup_epochs: int = 10           # Skip StateNet decisions during warmup
@@ -109,9 +101,6 @@ class StateNetConfig:
     hierarchy: HierarchyThresholds = field(default_factory=HierarchyThresholds)
     controller: ControllerThresholds = field(default_factory=ControllerThresholds)
 
-    # Annealing
-    annealing: AnnealingConfig = field(default_factory=AnnealingConfig)
-
     # Timing
     timing: TimingConfig = field(default_factory=TimingConfig)
 
@@ -159,13 +148,6 @@ class StateNetConfig:
             config.controller.patience_ceiling = ctrl.get('patience_ceiling', config.controller.patience_ceiling)
             config.controller.spike_multiplier = ctrl.get('spike_multiplier', config.controller.spike_multiplier)
 
-        # Annealing
-        if 'annealing' in d and isinstance(d['annealing'], dict):
-            ann = d['annealing']
-            config.annealing.enabled = ann.get('enabled', config.annealing.enabled)
-            config.annealing.step = ann.get('step', config.annealing.step)
-            config.annealing.q_decrease_threshold = ann.get('q_decrease_threshold', config.annealing.q_decrease_threshold)
-
         # Timing
         if 'timing' in d and isinstance(d['timing'], dict):
             tim = d['timing']
@@ -211,11 +193,6 @@ class StateNetConfig:
                 'patience_ceiling': self.controller.patience_ceiling,
                 'spike_multiplier': self.controller.spike_multiplier,
             },
-            'annealing': {
-                'enabled': self.annealing.enabled,
-                'step': self.annealing.step,
-                'q_decrease_threshold': self.annealing.q_decrease_threshold,
-            },
             'timing': {
                 'warmup_epochs': self.timing.warmup_epochs,
                 'hysteresis_epochs': self.timing.hysteresis_epochs,
@@ -250,7 +227,6 @@ __all__ = [
     "CoverageThresholds",
     "HierarchyThresholds",
     "ControllerThresholds",
-    "AnnealingConfig",
     "TimingConfig",
     "LRScales",
     "InitialStates",

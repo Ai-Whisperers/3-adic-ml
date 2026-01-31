@@ -251,3 +251,117 @@ class StateNetConfig:
 
 - `src/README.md` - Full integration guide with code examples
 - `src/presets/v6.yaml` - Reference V6.0 configuration
+
+---
+
+## Codebase Review Summary (2026-01-26)
+
+### Architecture Verification
+
+The entire `src/` codebase (~5000 lines, 22 files) has been reviewed. Key findings:
+
+**Confirmed Working:**
+- Option C (LR-based trainability) is fully implemented
+- True hyperbolic geometry via geoopt expmap0/logmap0
+- StateNetConfig → MetricBasedLR → train.py integration is correct
+- All losses use proper hyperbolic distances
+- TernarySpace singleton is immutable and thread-safe
+
+**No statenet.py**: The "StateNet" system is distributed across:
+- `src/config/statenet_config.py` - Configuration dataclass
+- `src/models/lr_controller.py` - Decision logic (MetricBasedLR)
+- `src/models/vae.py` - Component trainability
+- `src/train.py` - Integration point
+
+### Dead Code Removed (2026-01-26)
+
+| Item | Reason |
+|------|--------|
+| `CheckpointCompatibilityError` | Never raised, validation not called |
+| `AnnealingConfig` | Heuristic meta-control, logic never implemented |
+
+### Design Decisions (Not Issues)
+
+| Item | Location | Rationale |
+|------|----------|-----------|
+| `proj_B.learnable_curvature=False` | `hyperbolic_projection.py:238` | Intentional - both projections share A's curvature |
+
+### New: Learnable Loss Weights (V6.1)
+
+Loss weights can now be **trainable** using homoscedastic uncertainty weighting (Kendall et al. 2018):
+
+```yaml
+loss:
+  learnable_weights: true  # Enable
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0   # Initial weight
+    coverage_weight: 1.0
+    separation_weight: 3.0
+```
+
+**How it works:**
+- Each loss gets `nn.Parameter` log_sigma (initialized from config weights)
+- Effective weight = `0.5 * exp(-2 * log_sigma)`
+- Regularization `-log_sigma` prevents collapse to zero
+- Gradients flow through → network learns optimal balance
+
+**Key difference from removed AnnealingConfig:**
+- AnnealingConfig was heuristic (adjusted thresholds based on Q metric)
+- Learnable weights are **trainable** (gradients flow, network learns)
+
+**Usage:**
+```python
+loss_fn = CombinedLoss(config['loss'], curvature=1.0)
+
+# Include loss_fn parameters in optimizer
+optimizer = torch.optim.Adam(
+    list(model.parameters()) + list(loss_fn.parameters()),
+    lr=base_lr
+)
+
+# Monitor learned weights
+print(loss_fn.get_learned_weights())  # {'hierarchy': 4.2, 'coverage': 1.8, ...}
+```
+
+**When to use:** Enable for long training runs or when exploring new loss combinations. The network will discover the optimal curriculum (e.g., coverage → hierarchy → separation).
+
+### Quick Reference
+
+```python
+# Core imports
+from src.core import TERNARY, valuation, distance, target_radius
+from src.geometry import hyperbolic_radius, poincare_distance, exp_map_zero
+from src.losses import CombinedLoss
+from src.models import TernaryVAEV6Controllable, MetricBasedLR, TrainingMetrics
+from src.config import StateNetConfig, N_TERNARY_OPERATIONS
+
+# Make both VAEs trainable
+sn_config = StateNetConfig.from_dict(yaml_cfg.get('statenet', {}))
+sn_config.initial.encoder_a_trainable = True  # Default is False
+sn_config.initial.encoder_b_trainable = True  # Default is True
+
+# Integration pattern
+model = TernaryVAEV6Controllable(
+    encoder_a_trainable=sn_config.initial.encoder_a_trainable,
+    encoder_b_trainable=sn_config.initial.encoder_b_trainable,
+    ...
+)
+controller = MetricBasedLR(sn_config)
+
+# Training loop
+state = controller.update(TrainingMetrics(...))
+update_optimizer_lr_scales(optimizer, base_lr, state['lr_scales'])
+```
+
+### File Map
+
+| Category | Files |
+|----------|-------|
+| **Entry** | `train.py` |
+| **Models** | `vae.py`, `hyperbolic_projection.py`, `lr_controller.py` |
+| **Config** | `config/statenet_config.py`, `config/constants.py` |
+| **Core** | `core/ternary.py` (TernarySpace singleton) |
+| **Geometry** | `geometry/poincare.py` (geoopt backend) |
+| **Losses** | `losses/combined.py`, `losses/padic_geodesic.py` |
+| **Utils** | `utils/checkpoint.py`, `utils/tensorboard_logger.py` |

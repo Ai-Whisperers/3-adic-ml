@@ -16,11 +16,6 @@ import torch
 import torch.nn as nn
 
 
-class CheckpointCompatibilityError(Exception):
-    """Raised when checkpoint is incompatible with model architecture."""
-    pass
-
-
 class CheckpointValidator:
     """Utility class for validating checkpoints and configurations."""
 

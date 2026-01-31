@@ -719,4 +719,215 @@ python src/train.py --config src/presets/v6.yaml --seed 123
 
 ---
 
+## Codebase Review Findings (2026-01-26)
+
+This section documents findings from a comprehensive review of the entire `src/` codebase.
+
+### Code Statistics
+
+| Module | Files | Lines (approx) | Purpose |
+|--------|-------|----------------|---------|
+| `src/config/` | 3 | ~350 | Constants, paths, StateNetConfig dataclass |
+| `src/core/` | 2 | ~550 | TernarySpace singleton, 3-adic operations |
+| `src/geometry/` | 2 | ~400 | Poincaré ball operations via geoopt |
+| `src/losses/` | 4 | ~800 | Hierarchy/geodesic losses, combined loss factory |
+| `src/models/` | 4 | ~1200 | VAE architectures, projections, LR controller |
+| `src/utils/` | 5 | ~600 | Checkpointing, logging, monitoring |
+| `src/metrics/` | 1 | ~150 | Hierarchy evaluation (Spearman, Q-metric) |
+| `src/train.py` | 1 | ~900 | Training entry point |
+
+**Total**: ~5000 lines across 22 files
+
+### Confirmed Working Patterns
+
+| Pattern | Location | Status |
+|---------|----------|--------|
+| Option C (LR-based trainability) | `train.py:636-651`, `lr_controller.py` | ✅ Implemented |
+| StateNetConfig → MetricBasedLR flow | `train.py:863-899` | ✅ Wired correctly |
+| True hyperbolic geometry | `vae.py`, `hyperbolic_projection.py` | ✅ Uses expmap0/logmap0 |
+| Config-driven loss composition | `combined.py` | ✅ Factory pattern |
+| Immutable TernarySpace singleton | `ternary.py` | ✅ Thread-safe LUTs |
+| Differential LR per component | `vae.py:get_param_groups()` | ✅ Named groups |
+| Riemannian optimizer support | `geometry/poincare.py` | ✅ geoopt integration |
+
+### Dead Code Removed (2026-01-26)
+
+The following dead code was removed after deep analysis:
+
+| Item | Was In | Reason Removed |
+|------|--------|----------------|
+| `CheckpointCompatibilityError` | `utils/checkpoint_validator.py` | Exception defined but never raised; validation not called from train.py |
+| `AnnealingConfig` | `config/statenet_config.py` | Config loaded but logic never implemented; heuristic meta-control deemed unnecessary |
+
+### Design Decisions (Not Dead Code)
+
+| Item | Location | Rationale |
+|------|----------|-----------|
+| `proj_B.learnable_curvature=False` | `hyperbolic_projection.py:238` | **Intentional**: Comment says "Share curvature with A" - both projections use same curvature |
+
+### Module Summaries
+
+#### src/config/
+
+- **`constants.py`**: Dataset constants (`N_TERNARY_OPERATIONS=19683`), StateNet thresholds
+- **`paths.py`**: `PROJECT_ROOT` auto-detection
+- **`statenet_config.py`**: 8 nested dataclasses for complete StateNet configuration
+
+#### src/core/
+
+- **`ternary.py`**: `TernarySpace` singleton with precomputed LUTs
+  - ~2.7 MB memory footprint per device
+  - All operations O(1) via tensor indexing
+  - Structured properties (digit_count, parent, level_rank, etc.)
+- **`__init__.py`**: Exports core functions as module-level convenience
+
+#### src/geometry/
+
+- **`poincare.py`**: geoopt-backed hyperbolic operations
+  - `exp_map_zero`, `log_map_zero` for manifold ↔ tangent
+  - `hyperbolic_radius`, `poincare_distance` for metrics
+  - `get_riemannian_optimizer()` factory
+- **`__init__.py`**: Clean exports of commonly used functions
+
+#### src/losses/
+
+- **`padic_geodesic.py`**:
+  - `RichHierarchyLoss` - unified hierarchy/coverage/separation
+  - `PAdicGeodesicLoss` - Poincaré distance alignment
+  - `RadialHierarchyLoss` - per-valuation radius targets
+  - `GlobalRankLoss` - soft ranking violations
+  - `MonotonicRadialLoss` - level-wise ordering
+  - `ZeroStructureLoss` - zero-valuation structure
+- **`combined.py`**: `CombinedLoss` factory reads YAML, instantiates enabled losses
+- **`hyperbolic_kl.py`**: `HyperbolicKLDivergence` with conformal factor correction
+
+#### src/models/
+
+- **`vae.py`**:
+  - `EncoderHead` - modular encoder backbone + mu/logvar
+  - `TernaryVAEV6` - dual VAE with true hyperbolic geometry
+  - `TernaryVAEV6Controllable` - adds LR-based trainability control
+- **`hyperbolic_projection.py`**:
+  - `HyperbolicProjection` - tangent_net + expmap0
+  - `DualHyperbolicProjection` - shared curvature, separate tangent_nets
+- **`lr_controller.py`**:
+  - `MetricBasedLR` - Q-gated threshold decisions
+  - `ScheduleBasedLR` - epoch-based scheduling
+  - `TrainingMetrics` dataclass
+  - `update_optimizer_lr_scales()` - applies scales to optimizer
+
+#### src/utils/
+
+- **`checkpoint.py`**: `safe_load_checkpoint()` with device handling
+- **`checkpoint_validator.py`**: Config/checkpoint validation utilities
+- **`coverage_evaluator.py`**: Coverage computation for reconstruction quality
+- **`tensorboard_logger.py`**: `TensorBoardLogger` with batch/epoch/histogram logging
+- **`hardware_monitor.py`**: `HardwareMonitor` for GPU/RAM tracking, OOM diagnostics
+
+#### src/metrics/
+
+- **`hierarchy.py`**:
+  - `compute_hierarchy_metrics()` - Spearman correlation, Q-metric
+  - `compute_manifold_geometry_metrics()` - distances, curvature analysis
+
+### New Feature: Learnable Loss Weights (V6.1)
+
+Added trainable loss weights using **homoscedastic uncertainty weighting** (Kendall et al. 2018).
+
+#### The Problem
+
+The system has multiple competing objectives (hierarchy, coverage, separation, geodesic, rank). Fixed weights are guesses that may not be optimal throughout training:
+- Early training: coverage matters more (establish reconstruction)
+- Mid training: hierarchy matters more (establish structure)
+- Late training: separation/geodesic matter more (refine distances)
+
+#### The Solution
+
+Instead of fixed weights, make them **trainable nn.Parameters**:
+
+```yaml
+loss:
+  learnable_weights: true  # Enable trainable weights
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0   # Used as initial weight
+    coverage_weight: 1.0
+    separation_weight: 3.0
+```
+
+#### Mathematical Formulation
+
+Each loss component `L_i` gets a learnable log-variance parameter `log_σ_i`:
+
+```
+effective_weight_i = 1 / (2 * exp(2 * log_σ_i))
+loss_contribution_i = effective_weight_i * L_i - log_σ_i
+```
+
+The `-log_σ_i` term is **regularization** that prevents weights from collapsing to zero (if σ grows, the regularization term becomes more negative, penalizing the total loss).
+
+#### Initialization
+
+Initial `log_σ` is derived from config weights so training starts at the configured balance:
+
+```
+log_σ = -0.5 * log(2 * weight)
+```
+
+Example: `hierarchy_weight: 5.0` → `log_σ = -1.15` → `effective_weight = 5.0`
+
+#### Why This Is Trainable (Not Heuristic)
+
+Unlike the removed `AnnealingConfig` which adjusted thresholds based on lagging metrics:
+- **Gradients flow through** the weight parameters
+- Weights respond to **embedding dynamics**, not computed metrics
+- Network **discovers** the optimal curriculum automatically
+- No heuristics - the balance emerges from training
+
+#### Integration with Training
+
+The `log_sigma` parameters are part of `CombinedLoss.parameters()`:
+
+```python
+# In train.py - loss_fn parameters are automatically included
+loss_fn = CombinedLoss(config['loss'], curvature=1.0)
+optimizer = torch.optim.Adam([
+    {'params': model.parameters()},
+    {'params': loss_fn.parameters(), 'lr': base_lr * 0.1},  # Optional: slower LR for weights
+])
+```
+
+Or simply let them train with the model:
+```python
+all_params = list(model.parameters()) + list(loss_fn.parameters())
+optimizer = torch.optim.Adam(all_params, lr=base_lr)
+```
+
+#### Monitoring
+
+```python
+# Current effective weights (what the network learned)
+loss_fn.get_learned_weights()
+# {'hierarchy': 4.2, 'coverage': 1.8, 'separation': 2.5}
+
+# Raw log_sigma values (for debugging)
+loss_fn.get_log_sigmas()
+# {'hierarchy': -1.07, 'coverage': -0.59, 'separation': -0.82}
+
+# Log to TensorBoard
+for name, weight in loss_fn.get_learned_weights().items():
+    writer.add_scalar(f'loss_weights/{name}', weight, epoch)
+```
+
+#### When to Use
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Exploring new loss combinations | **Enable** - let network find balance |
+| Reproducing known-good results | **Disable** - use validated fixed weights |
+| Long training runs | **Enable** - adapts to training phases |
+| Debugging loss interactions | **Enable** - watch weights evolve |
+
+---
+
 **Maintainer:** Claude Opus 4.5
