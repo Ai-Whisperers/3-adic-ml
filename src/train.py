@@ -397,6 +397,103 @@ def compute_coverage(logits: torch.Tensor, targets: torch.Tensor) -> float:
         return perfect
 
 
+def compute_tree_coherence(
+    z_hyp: torch.Tensor,
+    indices: torch.Tensor,
+    curvature: float = 1.0,
+    sample_size: int = 1000,
+) -> float:
+    """Compute tree coherence: mean geodesic distance between parent-child pairs.
+
+    In a well-structured embedding, children should be close to their parent
+    in hyperbolic space (preserving 3-adic tree structure).
+
+    Args:
+        z_hyp: Hyperbolic embeddings on Poincaré ball, shape (N, latent_dim)
+        indices: Operation indices, shape (N,)
+        curvature: Poincaré ball curvature
+        sample_size: Max pairs to sample (for efficiency)
+
+    Returns:
+        Mean parent-child geodesic distance (lower = better tree structure)
+    """
+    with torch.no_grad():
+        device = z_hyp.device
+        parent_indices = TERNARY.parent(indices)
+
+        # Create index mapping: index_value -> position in z_hyp
+        index_to_pos = {idx.item(): pos for pos, idx in enumerate(indices)}
+
+        # Collect valid parent-child pairs
+        child_positions = []
+        parent_positions = []
+
+        for pos, (idx, parent_idx) in enumerate(zip(indices, parent_indices)):
+            parent_val = parent_idx.item()
+            if parent_val < 0:  # Skip root
+                continue
+            if parent_val in index_to_pos:
+                child_positions.append(pos)
+                parent_positions.append(index_to_pos[parent_val])
+
+        if len(child_positions) == 0:
+            return 0.0
+
+        # Sample if too many pairs
+        if len(child_positions) > sample_size:
+            perm = torch.randperm(len(child_positions), device=device)[:sample_size]
+            child_positions = [child_positions[i] for i in perm.tolist()]
+            parent_positions = [parent_positions[i] for i in perm.tolist()]
+
+        child_pos_t = torch.tensor(child_positions, device=device, dtype=torch.long)
+        parent_pos_t = torch.tensor(parent_positions, device=device, dtype=torch.long)
+
+        z_children = z_hyp[child_pos_t]
+        z_parents = z_hyp[parent_pos_t]
+
+        distances = poincare_distance(z_children, z_parents, c=curvature)
+        return distances.mean().item()
+
+
+def compute_level_stratified_hierarchy(
+    z_hyp: torch.Tensor,
+    indices: torch.Tensor,
+    curvature: float = 1.0,
+) -> Dict[int, float]:
+    """Compute radial consistency per valuation level.
+
+    For each level, measures how consistent the radii are (lower std = better).
+    Returns a correlation-like metric: -1/(1+std) where -1 is perfect.
+
+    Args:
+        z_hyp: Hyperbolic embeddings on Poincaré ball, shape (N, latent_dim)
+        indices: Operation indices, shape (N,)
+        curvature: Poincaré ball curvature
+
+    Returns:
+        Dict mapping level (0-9) to consistency metric (more negative = better)
+    """
+    with torch.no_grad():
+        origin = torch.zeros_like(z_hyp)
+        radii = poincare_distance(z_hyp, origin, c=curvature)
+        valuations = TERNARY.valuation(indices)
+
+        correlations = {}
+        for level in range(TERNARY.MAX_VALUATION + 1):
+            mask = valuations == level
+            count = mask.sum().item()
+
+            if count < 2:
+                correlations[level] = float('nan')
+                continue
+
+            level_radii = radii[mask]
+            radius_std = level_radii.std().item()
+            correlations[level] = -1.0 / (1.0 + radius_std)
+
+        return correlations
+
+
 def compute_hierarchy_metrics(
     z_hyp: torch.Tensor,
     indices: torch.Tensor,
@@ -412,7 +509,7 @@ def compute_hierarchy_metrics(
         seed: Random seed for reproducible sampling
 
     Returns:
-        Dict with hierarchy, dist_corr, Q metrics
+        Dict with hierarchy, dist_corr, Q, tree_coherence, level metrics
     """
     with torch.no_grad():
         # Compute radii using hyperbolic distance
@@ -448,12 +545,25 @@ def compute_hierarchy_metrics(
 
         Q = compute_Q(dist_corr, hierarchy)
 
+        # Additional metrics: tree coherence and per-level hierarchy
+        tree_coh = compute_tree_coherence(z_hyp, indices, curvature)
+        level_hier = compute_level_stratified_hierarchy(z_hyp, indices, curvature)
+
+        # Compute worst level (least negative = worst performing)
+        valid_levels = {k: v for k, v in level_hier.items() if not np.isnan(v)}
+        worst_level = max(valid_levels.keys(), key=lambda k: valid_levels[k]) if valid_levels else 0
+        mean_level_hier = np.mean(list(valid_levels.values())) if valid_levels else 0.0
+
         return {
             'hierarchy': hierarchy,
             'dist_corr': dist_corr,
             'Q': Q,
             'mean_radius': float(radii.mean()),
             'std_radius': float(radii.std()),
+            'tree_coherence': tree_coh,
+            'level_hierarchy': level_hier,
+            'worst_level': worst_level,
+            'mean_level_hierarchy': mean_level_hier,
         }
 
 
@@ -921,6 +1031,16 @@ def train(
                     'VAE_A': hier_metrics_A['mean_radius'],
                     'VAE_B': hier_metrics_B['mean_radius'],
                 }, epoch)
+
+                # Tree coherence (lower = better tree structure)
+                tb_logger.writer.add_scalars('TreeCoherence', {
+                    'VAE_A': hier_metrics_A['tree_coherence'],
+                    'VAE_B': hier_metrics_B['tree_coherence'],
+                }, epoch)
+
+                # Per-level hierarchy (log worst and mean)
+                tb_logger.writer.add_scalar('LevelHierarchy/worst_level_A', hier_metrics_A['worst_level'], epoch)
+                tb_logger.writer.add_scalar('LevelHierarchy/mean_A', hier_metrics_A['mean_level_hierarchy'], epoch)
 
                 # Training controller metrics
                 if controller_state is not None:

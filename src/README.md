@@ -480,8 +480,7 @@ YAML loss.radial.valuation_weight_exponent: 0.3
 | File | Purpose |
 |------|---------|
 | `checkpoint.py` | Safe checkpoint loading |
-| `checkpoint_validator.py` | Config/checkpoint validation |
-| `coverage_evaluator.py` | VAE coverage evaluation |
+| `checkpoint_validator.py` | Training config validation |
 | `tensorboard_logger.py` | TensorBoard logging (batch/epoch metrics, histograms, embeddings) |
 | `hardware_monitor.py` | GPU/RAM monitoring, OOM diagnostics |
 
@@ -732,11 +731,10 @@ This section documents findings from a comprehensive review of the entire `src/`
 | `src/geometry/` | 2 | ~400 | Poincaré ball operations via geoopt |
 | `src/losses/` | 4 | ~800 | Hierarchy/geodesic losses, combined loss factory |
 | `src/models/` | 4 | ~1200 | VAE architectures, projections, LR controller |
-| `src/utils/` | 5 | ~600 | Checkpointing, logging, monitoring |
-| `src/metrics/` | 1 | ~150 | Hierarchy evaluation (Spearman, Q-metric) |
-| `src/train.py` | 1 | ~900 | Training entry point |
+| `src/utils/` | 4 | ~450 | Checkpointing, logging, monitoring, validation |
+| `src/train.py` | 1 | ~1000 | Training entry point (includes hierarchy metrics) |
 
-**Total**: ~5000 lines across 22 files
+**Total**: ~4500 lines across 19 files
 
 ### Confirmed Working Patterns
 
@@ -750,14 +748,19 @@ This section documents findings from a comprehensive review of the entire `src/`
 | Differential LR per component | `vae.py:get_param_groups()` | ✅ Named groups |
 | Riemannian optimizer support | `geometry/poincare.py` | ✅ geoopt integration |
 
-### Dead Code Removed (2026-01-26)
+### Dead Code Removed (2026-01-26, 2026-02-01)
 
 The following dead code was removed after deep analysis:
 
 | Item | Was In | Reason Removed |
 |------|--------|----------------|
-| `CheckpointCompatibilityError` | `utils/checkpoint_validator.py` | Exception defined but never raised; validation not called from train.py |
-| `AnnealingConfig` | `config/statenet_config.py` | Config loaded but logic never implemented; heuristic meta-control deemed unnecessary |
+| `CheckpointCompatibilityError` | `utils/checkpoint_validator.py` | Exception defined but never raised |
+| `AnnealingConfig` | `config/statenet_config.py` | Config loaded but logic never implemented |
+| `src/metrics/` module | Entire directory | Orphaned code; useful parts integrated into train.py |
+| `CoverageEvaluator` | `utils/coverage_evaluator.py` | Measured generative diversity, not training metric |
+| `CheckpointValidator` class | `utils/checkpoint_validator.py` | Duplicated by ModelAuditor in train.py |
+
+**Integrated into train.py:** `tree_coherence()` and `level_stratified_hierarchy()` metrics from the deleted metrics module are now computed inline in `compute_hierarchy_metrics()`.
 
 ### Design Decisions (Not Dead Code)
 
@@ -819,16 +822,9 @@ The following dead code was removed after deep analysis:
 #### src/utils/
 
 - **`checkpoint.py`**: `safe_load_checkpoint()` with device handling
-- **`checkpoint_validator.py`**: Config/checkpoint validation utilities
-- **`coverage_evaluator.py`**: Coverage computation for reconstruction quality
+- **`checkpoint_validator.py`**: `validate_training_config()` for config sanity checks
 - **`tensorboard_logger.py`**: `TensorBoardLogger` with batch/epoch/histogram logging
 - **`hardware_monitor.py`**: `HardwareMonitor` for GPU/RAM tracking, OOM diagnostics
-
-#### src/metrics/
-
-- **`hierarchy.py`**:
-  - `compute_hierarchy_metrics()` - Spearman correlation, Q-metric
-  - `compute_manifold_geometry_metrics()` - distances, curvature analysis
 
 ### New Feature: Learnable Loss Weights (V6.1)
 

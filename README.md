@@ -136,9 +136,8 @@ src/
 ├── models/         # VAE architectures (encoder/decoder/projection)
 ├── config/         # Constants, paths, StateNetConfig
 ├── presets/        # YAML experiment configurations
-├── utils/          # Checkpoints, coverage, TensorBoard, monitoring
-├── metrics/        # Hierarchy evaluation
-└── train.py        # Training entry point
+├── utils/          # Checkpoints, TensorBoard, hardware monitoring
+└── train.py        # Training entry point (includes hierarchy metrics)
 ```
 
 ### Key Files
