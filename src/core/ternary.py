@@ -235,7 +235,7 @@ class TernarySpace:
     # Core Operations - All O(1) lookups
     # =========================================================================
 
-    def valuation(self, indices: torch.Tensor) -> torch.Tensor:
+    def valuation(self, indices: torch.Tensor, strict: bool = False) -> torch.Tensor:
         """Compute 3-adic valuation for indices.
 
         v_3(n) = max k such that 3^k divides n
@@ -243,16 +243,30 @@ class TernarySpace:
 
         Args:
             indices: Tensor of indices in [0, N_OPERATIONS-1], any shape
+            strict: If True, raise ValueError for out-of-range indices.
+                    If False (default), clamp to valid range silently.
 
         Returns:
             Tensor of valuations (long), same shape as input
 
+        Raises:
+            ValueError: If strict=True and any index is outside [0, N_OPERATIONS-1]
+
         Note:
-            Indices outside [0, N_OPERATIONS-1] are clamped to valid range.
-            Use is_valid_index() first if you need to detect invalid inputs.
+            By default, indices outside [0, N_OPERATIONS-1] are clamped to valid range.
+            Use strict=True during debugging to catch data loading bugs early.
         """
         device = indices.device
         lut = self._get_cached_lut("valuation", self._valuation_lut, device)
+
+        if strict:
+            invalid = (indices < 0) | (indices >= self.N_OPERATIONS)
+            if invalid.any():
+                invalid_vals = indices[invalid]
+                raise ValueError(
+                    f"Invalid indices (outside [0, {self.N_OPERATIONS - 1}]): "
+                    f"{invalid_vals[:5].tolist()}{'...' if len(invalid_vals) > 5 else ''}"
+                )
 
         # Clamp to valid range
         indices = torch.clamp(indices.long(), 0, self.N_OPERATIONS - 1)

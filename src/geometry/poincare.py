@@ -59,7 +59,13 @@ def get_manifold(c: float = 1.0, device: torch.device | str | None = None) -> Ge
 
     Returns:
         geoopt.PoincareBall manifold with internal tensors on the specified device
+
+    Raises:
+        ValueError: If curvature c <= 0
     """
+    if c <= 0:
+        raise ValueError(f"Curvature must be positive for hyperbolic space, got c={c}")
+
     # Normalize device to string for cache key
     if device is None:
         device_str = "cpu"

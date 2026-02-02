@@ -630,4 +630,5 @@ __all__ = [
     "TrainingMetrics",
     "update_optimizer_lr_scales",
     "get_optimizer_grad_stats",
+    "compute_Q",
 ]
