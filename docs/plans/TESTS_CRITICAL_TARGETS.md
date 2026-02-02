@@ -162,7 +162,7 @@ These operations require tolerance-based assertions:
 
 ## Test File Structure
 
-### Implemented (113 tests)
+### Implemented (214 tests)
 
 ```
 tests/
@@ -203,24 +203,61 @@ tests/
 │   ├── TestNumericalStability (3 tests)
 │   └── TestDeviceConsistency (2 tests)
 │
-└── test_geometry_poincare_extended.py  # Tier 1: Utilities & formulas (27 tests)
-    ├── TestProjectToPoincare (3 tests)
-    ├── TestMobiusAdd (3 tests)
-    ├── TestParallelTransport (2 tests)
-    ├── TestGeodesic (3 tests)
-    ├── TestPoincareDistanceMatrix (4 tests)
-    ├── TestExpMapZeroFormula (4 tests)
-    ├── TestLogMapZeroFormula (2 tests)
-    ├── TestConformalFactorFormula (2 tests)
-    ├── TestHyperbolicRadiusFormula (2 tests)
-    └── TestCurvatureScaling (2 tests)
+├── test_geometry_poincare_extended.py  # Tier 1: Utilities & formulas (27 tests)
+│   ├── TestProjectToPoincare (3 tests)
+│   ├── TestMobiusAdd (3 tests)
+│   ├── TestParallelTransport (2 tests)
+│   ├── TestGeodesic (3 tests)
+│   ├── TestPoincareDistanceMatrix (4 tests)
+│   ├── TestExpMapZeroFormula (4 tests)
+│   ├── TestLogMapZeroFormula (2 tests)
+│   ├── TestConformalFactorFormula (2 tests)
+│   ├── TestHyperbolicRadiusFormula (2 tests)
+│   └── TestCurvatureScaling (2 tests)
+│
+├── test_losses.py                  # Tier 2: Loss correctness (64 tests)
+│   ├── TestGradientFlowPAdicGeodesic (3 tests)
+│   ├── TestGradientFlowRadialHierarchy (2 tests)
+│   ├── TestGradientFlowGlobalRank (2 tests)
+│   ├── TestGradientFlowMonotonicRadial (2 tests)
+│   ├── TestGradientFlowRichHierarchy (3 tests)
+│   ├── TestGradientFlowCombinedGeodesic (1 test)
+│   ├── TestLossNonNegativityPAdicGeodesic (8 tests)
+│   ├── TestLossNonNegativityRadialHierarchy (3 tests)
+│   ├── TestLossNonNegativityGlobalRank (3 tests)
+│   ├── TestLossNonNegativityMonotonicRadial (3 tests)
+│   ├── TestLossNonNegativityRichHierarchy (4 tests)
+│   ├── TestTargetDistanceMonotonicity (5 tests)
+│   ├── TestTargetRadiusMonotonicity (4 tests)
+│   ├── TestMetricBoundsPAdicGeodesic (4 tests)
+│   ├── TestMetricBoundsRadialHierarchy (2 tests)
+│   ├── TestMetricBoundsGlobalRank (2 tests)
+│   ├── TestMetricBoundsMonotonicRadial (3 tests)
+│   ├── TestEdgeCasesBatchSize (2 tests)
+│   ├── TestEdgeCasesSameValuation (2 tests)
+│   ├── TestEdgeCasesNearBoundary (2 tests)
+│   ├── TestConsistencyHyperbolicRadius (2 tests)
+│   └── TestReproducibility (2 tests)
+│
+└── test_losses_combined.py         # Tier 2: CombinedLoss & learnable weights (37 tests)
+    ├── TestCombinedLossInstantiation (4 tests)
+    ├── TestCombinedLossForward (3 tests)
+    ├── TestPhaseGating (4 tests)
+    ├── TestWeightToLogSigmaFormula (2 tests)
+    ├── TestUncertaintyWeightFormula (2 tests)
+    ├── TestWeightRoundTrip (2 tests)
+    ├── TestLearnableWeightsInitialization (3 tests)
+    ├── TestLearnableWeightsGradientFlow (3 tests)
+    ├── TestLearnableWeightsBehavior (3 tests)
+    ├── TestFixedVsLearnableWeights (5 tests)
+    ├── TestCombinedLossEdgeCases (4 tests)
+    └── TestCombinedLossRepr (2 tests)
 ```
 
 ### Not Yet Implemented
 
 ```
 tests/
-├── test_losses.py             # Tier 2: Loss correctness
 ├── test_lr_controller.py      # Tier 3: State machine
 ├── test_vae_trainability.py   # Tier 3: Model integration
 └── test_edge_cases.py         # Tier 4: Boundary conditions
@@ -230,11 +267,11 @@ tests/
 
 ## Priority Order for Implementation
 
-1. **`test_core_ternary.py`** - Foundation of everything; if wrong, all else fails
-2. **`test_geometry_poincare.py`** - Bridge to continuous geometry; numerical bugs hide here
-3. **`test_losses.py`** (gradient flow subset) - Verify training actually works
-4. **`test_lr_controller.py`** - Verify adaptation mechanism
-5. **`test_losses.py`** (remaining) - Full loss coverage
+1. ✅ **`test_core_ternary.py`** - Foundation of everything; if wrong, all else fails
+2. ✅ **`test_geometry_poincare.py`** - Bridge to continuous geometry; numerical bugs hide here
+3. ✅ **`test_losses.py`** - Verify training signal is mathematically correct
+4. ✅ **`test_losses_combined.py`** - Verify CombinedLoss and learnable weights
+5. **`test_lr_controller.py`** - Verify adaptation mechanism
 6. **`test_vae_trainability.py`** - Integration verification
 7. **`test_edge_cases.py`** - Production stability
 
