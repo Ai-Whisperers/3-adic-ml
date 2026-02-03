@@ -365,3 +365,59 @@ update_optimizer_lr_scales(optimizer, base_lr, state['lr_scales'])
 | **Geometry** | `geometry/poincare.py` (geoopt backend) |
 | **Losses** | `losses/combined.py`, `losses/padic_geodesic.py` |
 | **Utils** | `utils/checkpoint.py`, `utils/tensorboard_logger.py` |
+| **Tests** | `tests/` (214 tests across 6 files) |
+
+---
+
+## Test Suite (214 tests)
+
+Comprehensive test coverage following `docs/plans/TESTS_CRITICAL_TARGETS.md`.
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run by tier
+pytest tests/test_core_ternary.py tests/test_geometry_poincare.py -v  # Tier 1
+pytest tests/test_losses.py tests/test_losses_combined.py -v          # Tier 2
+
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html
+```
+
+### Test Structure
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `test_core_ternary.py` | 28 | Valuation formula, ultrametric inequality, round-trip |
+| `test_core_ternary_extended.py` | 29 | Distance formula, tree structure, level consistency |
+| `test_geometry_poincare.py` | 29 | exp/log composition, ball containment, triangle inequality |
+| `test_geometry_poincare_extended.py` | 27 | Möbius add, geodesics, distance matrix, formula verification |
+| `test_losses.py` | 64 | Gradient flow, non-negativity, monotonicity, edge cases |
+| `test_losses_combined.py` | 37 | CombinedLoss, phase gating, learnable weight formula |
+
+### What's Tested
+
+**Tier 1 - Mathematical Invariants (113 tests):**
+- 3-adic valuation: `v_3(0)=9, v_3(1)=0, v_3(3)=1, v_3(9)=2`
+- Ultrametric inequality: `d(a,c) ≤ max(d(a,b), d(b,c))`
+- exp/log composition: `log_map_zero(exp_map_zero(v)) ≈ v`
+- Ball containment: `||exp_map_zero(v)|| < 1`
+
+**Tier 2 - Loss Correctness (101 tests):**
+- Gradient flow through all 6 loss classes
+- Loss non-negativity (all losses ≥ 0)
+- Target distance monotonicity (`d(v) > d(v+1)`)
+- Learnable weight formula: `w = 0.5 * exp(-2 * log_sigma)`
+- Phase gating for geodesic loss
+
+### Test Philosophy
+
+Tests validate **mathematical invariants** and **actual computation**, not:
+- Shape assertions (PyTorch guarantees these)
+- Import success (Python handles this)
+- Constructor return values (can't be None)
+
+See `docs/plans/TESTS_CRITICAL_TARGETS.md` for full testing strategy.
