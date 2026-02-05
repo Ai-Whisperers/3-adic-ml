@@ -17,3 +17,23 @@ from .ternary import (
     parent,
     level_rank,
 )
+
+__all__ = [
+    # Core types
+    "TERNARY",
+    "TernarySpace",
+    # Basic operations
+    "valuation",
+    "distance", 
+    "distance_matrix",
+    "to_ternary",
+    "from_ternary",
+    "target_radius",
+    # Property accessors
+    "digit_count",
+    "digit_sum",
+    "first_nonzero",
+    "last_nonzero",
+    "parent",
+    "level_rank",
+]
