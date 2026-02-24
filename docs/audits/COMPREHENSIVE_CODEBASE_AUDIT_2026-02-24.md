@@ -1,182 +1,309 @@
 # Comprehensive Codebase Audit Report
 
 **Date**: 2026-02-24
-**Scope**: All source files in `src/` (22 files) and all test files in `tests/` (8 files)
-**Auditor**: Claude Opus 4.6 (automated code review)
-**Codebase**: P-Adic VAE V6.0/V6.1 at `/d1/VAEs/3-adic-ml`
+**Scope**: All source files in `src/` (22 files), all test files in `tests/` (8 files), and configuration in `src/presets/`
+**Auditor**: Claude Opus 4.6 (automated deep-read code review)
+**Codebase**: P-Adic VAE V6.0/V6.1 at commit `c71c2ef` → `e2b74b0`
 
 ---
 
 ## Executive Summary
 
-The codebase is architecturally sound with well-structured mathematical foundations. The core components (ternary.py, poincare.py, loss functions, and the training loop) are functional and consistent. However, the audit identified **2 CRITICAL**, **5 MODERATE**, **9 LOW**, and **6 INFO** issues. The most significant problems are in the TensorBoard logger, which contains stale V5.x API calls that would crash if invoked, and an unreachable checkpoint validator that contradicts the training loop's from-scratch support.
+The codebase is architecturally sound with well-structured mathematical foundations. Eight bugs (3 critical, 5 moderate) were identified and fixed during this audit session. The remaining issues are concentrated in the TensorBoard logger (stale V5.x code), dead code modules, and test coverage gaps.
 
-### Previously Fixed Bugs (Excluded)
+**Current state after fixes**: 214 tests passing, 5 files patched.
 
-The following bugs were confirmed as already fixed and are NOT reported below:
-- encoder_A/encoder_a case mismatch
-- Double gate computation in MetricBasedLR.update()
-- loss_fn.parameters() not added to optimizer
-- cudnn.benchmark overriding determinism
-- weight_decay not passed to RiemannianAdam
-- log_map_zero ignoring max_norm parameter
-- Scheduler vs LR controller using base_lr
-- log_sigma float32 in float64 codebase
+| Severity | Remaining | Fixed | Details |
+|----------|-----------|-------|---------|
+| CRITICAL | 2 | 3 | TensorBoard V5.x API crashes (remaining); LR controller + learnable weights (fixed) |
+| MODERATE | 5 | 5 | Validator, dead code, perf (remaining); determinism, weight_decay, logmap, scheduler, dtype (fixed) |
+| LOW | 10 | 0 | Unused imports, dead modules, config keys, test fixtures |
+| INFO | 6 | 0 | Test coverage gaps, design observations |
 
 ---
 
-## CRITICAL (2 issues)
+## FIXED BUGS (Commit `c71c2ef`)
 
-### C-1: TensorBoardLogger.log_manifold_embedding uses V5.x model API (will crash)
+These eight bugs were found during this audit and fixed in commit `c71c2ef`:
 
-**File**: `src/utils/tensorboard_logger.py`, lines 425-547
-**Type**: Stale reference / API mismatch
+### FIXED-1: Encoder LR scales silently never applied (was CRITICAL)
 
-The `log_manifold_embedding` method calls the model with the old V5.x 5-argument signature:
+**Files**: `src/models/vae.py:489,498` and `src/models/lr_controller.py:386-394`
 
+`get_param_groups()` created optimizer groups named `"encoder_A"` and `"encoder_B"` (uppercase), while `MetricBasedLR` returned scale keys `"encoder_a"` and `"encoder_b"` (lowercase). The `update_optimizer_lr_scales()` function compared with `if name in lr_scales` — the match always failed silently. The entire LR controller mechanism for encoders was non-functional; coverage-gating and hierarchy-gating decisions had zero effect on training.
+
+**Fix**: Renamed param group names to `"encoder_a"` / `"encoder_b"` in `vae.py`.
+
+### FIXED-2: Double gate computation corrupted controller state (was CRITICAL)
+
+**File**: `src/models/lr_controller.py:417-430`
+
+`MetricBasedLR.update()` called `_compute_coverage_gate()`, `_compute_hierarchy_gate()`, and `_compute_projections_gate()` on lines 418-420, then called `self.get_lr_scales(metrics)` on line 430 which invoked all three gate methods **again**. Each gate mutates `self._active`, `self._last_change`, `self._hierarchy_b_plateau_count`, `self._grad_low_count`, and `self._hierarchy_a_stall_count`. Plateau counters incremented twice per epoch — components froze in half the configured patience.
+
+**Fix**: Capture scale values from initial gate calls and build `lr_scales` dict directly instead of calling `get_lr_scales()`.
+
+### FIXED-3: Learnable loss weights never actually optimized (was CRITICAL)
+
+**File**: `src/train.py:741-773`
+
+When `learnable_weights: true`, `CombinedLoss` creates `nn.Parameter` objects (`log_sigma_hierarchy`, etc.). But the optimizer was built only from `model.get_param_groups()` — `loss_fn.parameters()` was never added. Gradients were computed during backward but never applied. The "learnable" weights were frozen at their initial values forever.
+
+**Fix**: Added `loss_fn.parameters()` as a `"loss_weights"` param group to both RiemannianAdam and AdamW paths.
+
+### FIXED-4: cudnn.benchmark silently overrode determinism (was MODERATE)
+
+**File**: `src/train.py:105-106` then `1237-1238`
+
+`set_determinism()` set `cudnn.benchmark = False`, then `main()` re-enabled it because `memory.cudnn_benchmark` defaults to `True` in v6.yaml.
+
+**Fix**: Added check `if not torch.backends.cudnn.deterministic` before enabling benchmark mode.
+
+### FIXED-5: weight_decay not passed to RiemannianAdam (was MODERATE)
+
+**File**: `src/train.py:764-768`
+
+The AdamW path passed `weight_decay`, but the Riemannian path (which v6.yaml defaults to) omitted it. Config specifies `weight_decay: 1e-4` but it was silently ignored.
+
+**Fix**: Added `weight_decay=weight_decay` to the `get_riemannian_optimizer()` call.
+
+### FIXED-6: log_map_zero() ignored its max_norm parameter (was MODERATE)
+
+**File**: `src/geometry/poincare.py:172-187`
+
+The function accepted `max_norm` but the body just delegated to `manifold.logmap(origin, z)` without any clamping. Callers like `vae.py:355` passed `max_norm=self.max_radius` expecting boundary clamping before arctanh, but it had no effect. Points near the Poincaré ball boundary could produce extreme tangent vectors.
+
+**Fix**: Added norm clamping before logmap. Default changed to `None` (auto-computes `ball_radius - 1e-5` from curvature). Also caps `max_norm` at `ball_radius - 1e-5` regardless of caller input.
+
+### FIXED-7: Scheduler and LR controller fought each other (was MODERATE)
+
+**File**: `src/train.py:926,1004`
+
+`CosineAnnealingWarmRestarts` adjusted LRs at line 926. Then on eval epochs, `update_optimizer_lr_scales()` overwrote them using constant `base_lr`, erasing the scheduler's cosine decay entirely.
+
+**Fix**: Changed to use `scheduler.get_last_lr()[0]` so controller scales compose multiplicatively with cosine annealing.
+
+### FIXED-8: log_sigma parameters were float32 in float64 codebase (was MODERATE)
+
+**File**: `src/losses/combined.py:215-243`
+
+All 7 `nn.Parameter(torch.tensor(value))` calls created float32 tensors by default. Every other tensor in the codebase is float64.
+
+**Fix**: Added `dtype=torch.float64` to all `torch.tensor()` calls.
+
+---
+
+## REMAINING: CRITICAL (2 issues)
+
+### C-1: TensorBoardLogger.log_manifold_embedding — crashes with V6 model
+
+**File**: `src/utils/tensorboard_logger.py`
+**Lines**: 425-547 (method), 29-34 (stale constants)
+**Severity**: CRITICAL (crash on invocation)
+
+The `log_manifold_embedding()` method contains three distinct V5.x incompatibilities:
+
+**Problem 1 — Wrong call signature (line 467):**
 ```python
-# Line 467 - V5.x API (5 args)
 outputs = model(x, DEFAULT_TEMP_A, DEFAULT_TEMP_B, DEFAULT_BETA_A, DEFAULT_BETA_B)
 ```
+V6 `TernaryVAEV6.forward()` signature is `forward(self, x)` — only one argument. This raises `TypeError: forward() takes 2 positional arguments but 6 were given`.
 
-The V6 model (`TernaryVAEV6.forward`) only accepts a single argument `x`. This call will raise a `TypeError` at runtime.
-
-Additionally, lines 468-469 access output keys that do not exist in V6:
+**Problem 2 — Wrong output dict keys (lines 468-469):**
 ```python
-z_A = outputs["z_A"]   # V6 key is "z_A_hyp"
-z_B = outputs["z_B"]   # V6 key is "z_B_hyp"
+z_A = outputs["z_A"]   # V6 uses "z_A_hyp"
+z_B = outputs["z_B"]   # V6 uses "z_B_hyp"
 ```
+V6 output dict keys: `logits`, `logits_A`, `logits_B`, `z_A_hyp`, `z_B_hyp`, `mu_A`, `mu_B`, `logvar_A`, `logvar_B`. Accessing `"z_A"` raises `KeyError`.
 
-Lines 471-476 also perform a manual Poincare projection (`z / (1 + norm) * 0.95`) which is redundant in V6 since the model already returns points on the Poincare ball via `expmap0`.
+**Problem 3 — Redundant manual Poincaré projection (lines 471-476):**
+```python
+z_A_euc_norm = torch.norm(z_A, dim=1, keepdim=True)
+z_A_poincare = z_A / (1 + z_A_euc_norm) * 0.95
+```
+In V6, `z_A_hyp` is already on the Poincaré manifold (via `expmap0`). This Euclidean heuristic projection is wrong for V6 — it would double-project already-valid manifold points.
 
-The stale constants at lines 29-34 are also V5.x artifacts:
+**Stale constants (lines 29-34):**
 ```python
 DEFAULT_TEMP_A = 1.0
 DEFAULT_TEMP_B = 1.0
 DEFAULT_BETA_A = 0.5
 DEFAULT_BETA_B = 0.5
 ```
+These V5.x temperature/beta scheduling constants have no counterpart in V6.
 
-**Impact**: Calling `log_manifold_embedding` will crash the training run. Currently this method is not called from `train.py`, so it is latent -- but it is a public API that could be invoked by users.
+**Current mitigation**: `train.py` never calls `log_manifold_embedding()`. The method is public API but unreachable in default training. However, if any user or script calls it, the training run will crash.
 
-**Recommendation**: Rewrite to use V6 model API: `outputs = model(x)`, access `outputs["z_A_hyp"]` and `outputs["z_B_hyp"]`, and remove the manual Poincare projection. Remove the stale `DEFAULT_TEMP_*` and `DEFAULT_BETA_*` constants.
+**Full method trace** (122 lines, lines 425-547):
+- Lines 425-446: Method signature and docstring (correct)
+- Lines 450-463: Operation sampling via `TERNARY.all_ternary()` (correct)
+- Line 467: **CRASH** — wrong model call signature
+- Lines 468-469: **CRASH** — wrong output keys
+- Lines 471-476: **WRONG** — redundant Euclidean projection
+- Lines 478-512: Metadata computation via `_compute_3adic_depth` (correct, uses TERNARY singleton)
+- Lines 514-544: TensorBoard `add_embedding` calls (correct API usage)
 
----
-
-### C-2: TensorBoardLogger.log_epoch expects V5.x loss dict keys (will crash)
-
-**File**: `src/utils/tensorboard_logger.py`, lines 247-360
-**Type**: Stale reference / API mismatch
-
-The `log_epoch` method accesses numerous loss dictionary keys from the V5.x era that are not produced by the V6 training loop:
-
-| Key accessed (V5.x) | Lines | V6 equivalent |
-|---------------------|-------|---------------|
-| `ce_A`, `ce_B` | 279, 286 | `cross_entropy` (single) |
-| `kl_A`, `kl_B` | 280, 287 | Not produced (KL is inline in train.py) |
-| `H_A`, `H_B` | 281, 288, 294-295 | Not produced |
-| `phase` | 305 | Not produced |
-| `rho` | 306 | Not produced |
-| `grad_ratio` | 307 | Not produced |
-| `ema_momentum` | 309 | Not produced |
-| `lambda1`, `lambda2`, `lambda3` | 316-318 | Replaced by learnable weights |
-| `temp_A`, `temp_B` | 326-327 | Not produced (no temperature scheduling in V6) |
-| `beta_A`, `beta_B` | 333-334 | Not produced |
-| `lr_scheduled` | 338 | Not produced |
-| `lr_corrected` | 339 | Not produced |
-
-Lines 218-245 (`log_hyperbolic_metrics`) also reference `v5.10`-tagged keys (`v5.10/HyperbolicKL`, `v5.10/StateNetSigma`, `v5.10/StateNetCurvature`).
-
-**Impact**: Calling `log_epoch` with V6 loss dictionaries will raise `KeyError` on the first missing key. The `log_hyperbolic_metrics` method uses `.get()` with defaults so it would silently log zeros rather than crash.
-
-**Recommendation**: Rewrite `log_epoch` to match the V6 loss dictionary structure produced by `CombinedLoss`. The V6 training loop in `train.py` uses a custom TensorBoard logging approach (lines 1050-1150) that bypasses `log_epoch` entirely, which is why this hasn't crashed in practice. Consider removing `log_epoch` or rewriting it to accept V6 keys.
+**To fix**: Replace line 467 with `outputs = model(x)`, lines 468-469 with `z_A = outputs["z_A_hyp"]` / `z_B = outputs["z_B_hyp"]`, remove lines 471-476 (use z_A/z_B directly as they're already on the manifold), and remove lines 29-34.
 
 ---
 
-## MODERATE (5 issues)
+### C-2: TensorBoardLogger.log_epoch — crashes with V6 loss dicts
 
-### M-1: checkpoint_validator contradicts train.py's from-scratch support
+**File**: `src/utils/tensorboard_logger.py`
+**Lines**: 247-360 (method), 362-407 (helper `_log_padic_losses`)
+**Severity**: CRITICAL (crash on invocation)
 
-**File**: `src/utils/checkpoint_validator.py`, lines 44-53
-**Type**: Inconsistency / misleading validation
+The `log_epoch()` method directly indexes into `train_losses` dict with V5.x keys using bracket notation `train_losses["key"]` (not `.get()`), so any missing key raises `KeyError`.
 
-`validate_training_config` treats a missing anchor checkpoint as an error for V6 models:
+**Full inventory of V5.x keys accessed (20 keys, all missing in V6):**
 
+| Line(s) | Key | Access pattern | V6 status |
+|---------|-----|---------------|-----------|
+| 274 | `train_losses["loss"]` | `[]` | Exists in V6 ✓ |
+| 279 | `train_losses["ce_A"]` | `[]` | **Missing** — V6 uses `"cross_entropy"` |
+| 280 | `train_losses["kl_A"]` | `[]` | **Missing** — no KL in loss dict |
+| 281 | `train_losses["H_A"]` | `[]` | **Missing** — entropy not tracked |
+| 286 | `train_losses["ce_B"]` | `[]` | **Missing** |
+| 287 | `train_losses["kl_B"]` | `[]` | **Missing** |
+| 288 | `train_losses["H_B"]` | `[]` | **Missing** |
+| 294-295 | `train_losses["H_A"]`, `["H_B"]` | `[]` | **Missing** (duplicate access) |
+| 305 | `train_losses["phase"]` | `[]` | **Missing** — no phase system in V6 |
+| 306 | `train_losses["rho"]` | `[]` | **Missing** |
+| 307 | `train_losses["grad_ratio"]` | `[]` | **Missing** |
+| 309 | `train_losses["ema_momentum"]` | `[]` | **Missing** |
+| 316-318 | `train_losses["lambda1/2/3"]` | `[]` | **Missing** — replaced by learnable weights |
+| 326-327 | `train_losses["temp_A/B"]` | `[]` | **Missing** — no temperature scheduling |
+| 333-334 | `train_losses["beta_A/B"]` | `[]` | **Missing** — no beta scheduling |
+| 338 | `train_losses["lr_scheduled"]` | `[]` | **Missing** |
+
+**The helper `_log_padic_losses` (lines 362-407)** uses `.get()` with defaults, so it wouldn't crash — but it logs V5.x keys (`padic_metric_A`, `padic_ranking_A`, `padic_norm_A`) that V6 never produces, resulting in silent zero-logging.
+
+**How train.py works around this**: The V6 training loop (lines 920-1104 of `train.py`) bypasses `log_epoch()` entirely. Instead, it writes directly to `tb_logger.writer.add_scalar()` for each metric individually. The only `TensorBoardLogger` methods actually called from `train.py` are:
+- `tb_logger.log_batch(global_step, loss.item())` — line 921 (works, but only logs `loss`; `ce_A`, `ce_B`, `kl_A`, `kl_B` params default to 0.0)
+- `tb_logger.log_histograms(epoch, model)` — line 1094 (works correctly)
+- `tb_logger.writer.add_scalar(...)` — used ~30 times directly
+- `tb_logger.flush()` — line 1089
+
+**Additional stale methods never called from train.py:**
+- `log_hyperbolic_batch()` (lines 119-145) — references `centroid_loss` which doesn't exist in V6
+- `log_hyperbolic_epoch()` (lines 147-245) — references `ranking_weight`, `centroid_loss`, V5.10 StateNet metrics
+- `log_epoch()` (lines 247-360) — the subject of this finding
+
+**To fix**: Either rewrite the stale methods to accept V6 metric structures, or remove them and consolidate all logging into `train.py`'s direct `writer.add_scalar()` pattern.
+
+---
+
+## REMAINING: MODERATE (5 issues)
+
+### M-1: checkpoint_validator.py contradicts train.py and is dead code
+
+**File**: `src/utils/checkpoint_validator.py` (94 lines)
+**Lines**: 44-53 (anchor checkpoint requirement), 78-89 (StateNet validation)
+
+**The contradiction (lines 44-53):**
 ```python
-if checkpoint_path is None or str(checkpoint_path).lower() == "null":
-    errors.append(
-        f"Model '{model_name}' requires an anchor checkpoint for proper initialization. "
-        f"Set 'anchor_checkpoint.path' to a valid checkpoint."
-    )
+if model_name in v6_models:
+    anchor_cfg = config.get("anchor_checkpoint", {})
+    checkpoint_path = anchor_cfg.get("path")
+    if checkpoint_path is None or str(checkpoint_path).lower() == "null":
+        errors.append(
+            f"Model '{model_name}' requires an anchor checkpoint for proper initialization. "
+            f"Set 'anchor_checkpoint.path' to a valid checkpoint."
+        )
 ```
 
-However, `train.py` explicitly supports training from scratch (line 292):
+But `train.py` `ModelAuditor.validate()` (approx line 292) explicitly supports from-scratch training:
 ```python
 print("[AUDIT] No anchor checkpoint specified (training from scratch)")
 ```
 
-**Mitigating factor**: `validate_training_config` is never called from `train.py` (confirmed via grep). It is dead code in the training path.
+**Dead code confirmation**: `validate_training_config` is:
+- Exported via `src/utils/__init__.py` line 4
+- Exported in `__all__` of `checkpoint_validator.py` line 94
+- **Never called** from `train.py` or any other `.py` file in `src/` (verified by grep for `validate_training_config`)
+- Never called from any test file
 
-**Impact**: If a user or CI script ever calls this validator before training, it will incorrectly reject valid from-scratch configurations.
+**The valid parts of the validator (lines 60-91):**
+- `training.epochs` must be positive integer — useful check
+- `training.learning_rate` must be positive — useful check (but note: v6.yaml uses `lr`, not `learning_rate`, so this check also wouldn't match)
+- StateNet `fix_threshold < train_threshold` — useful check
 
-**Recommendation**: Either remove the anchor checkpoint requirement from the validator, or add a `from_scratch: true` config key that the validator respects. Also consider either integrating the validator into `train.py` or removing it entirely.
-
----
-
-### M-2: ScheduleBasedLR._get_scale_at_epoch division by zero with duplicate epochs
-
-**File**: `src/models/lr_controller.py`, line 160
-**Type**: Potential runtime error
-
-```python
-t = (epoch - e1) / (e2 - e1)  # Division by zero if e1 == e2
-```
-
-`_validate_schedules` (line 139) sorts schedule points by epoch but does not check for or deduplicate entries with the same epoch. If a user provides `[(10, 0.5), (10, 1.0)]`, this produces a `ZeroDivisionError`.
-
-**Impact**: Only affects users of `ScheduleBasedLR` who provide duplicate epoch entries. `MetricBasedLR` (the default) is not affected.
-
-**Recommendation**: Add duplicate epoch detection in `_validate_schedules`:
-```python
-epochs = [e for e, _ in sorted_schedule]
-if len(epochs) != len(set(epochs)):
-    raise ValueError(f"Duplicate epochs in schedule for {name}")
-```
+**Config key mismatch**: The validator checks `training_cfg["learning_rate"]` (line 69) but v6.yaml uses `training.lr`. The check would never trigger even if the validator were called.
 
 ---
 
-### M-3: LearnableLRController creates float32 tensor in float64 codebase
+### M-2: ScheduleBasedLR division by zero with duplicate epochs
 
-**File**: `src/models/lr_controller.py`, lines 532-539
-**Type**: Dtype inconsistency
+**File**: `src/models/lr_controller.py`
+**Lines**: 139-164
 
+**The vulnerable code (line 160):**
+```python
+def _get_scale_at_epoch(self, schedule: List[Tuple[int, float]], epoch: int) -> float:
+    ...
+    for i in range(len(schedule) - 1):
+        e1, s1 = schedule[i]
+        e2, s2 = schedule[i + 1]
+        if e1 <= epoch < e2:
+            if self.interpolate:
+                t = (epoch - e1) / (e2 - e1)  # ZeroDivisionError if e1 == e2
+                return s1 + t * (s2 - s1)
+```
+
+**The validation that misses it (lines 139-145):**
+```python
+def _validate_schedules(self):
+    for name, schedule in self.schedules.items():
+        if not schedule:
+            raise ValueError(f"Schedule for {name} is empty")
+        sorted_schedule = sorted(schedule, key=lambda x: x[0])
+        self.schedules[name] = sorted_schedule
+    # No duplicate check!
+```
+
+**Impact**: `ScheduleBasedLR` is not the default controller (V6 uses `MetricBasedLR`), but it's a public class exported in `__all__` and documented in docstrings. Anyone using it with `[(10, 0.5), (10, 1.0)]` would get `ZeroDivisionError`.
+
+**Note**: The `e1 <= epoch < e2` condition with `e1 == e2` produces `e1 <= epoch < e1` which is always False, so the division would never actually execute for the *same* epoch value as the duplicate. However, after sorting, duplicates become adjacent and later schedule segments may be skipped entirely, producing incorrect interpolation.
+
+---
+
+### M-3: LearnableLRController creates float32 tensors in float64 codebase
+
+**File**: `src/models/lr_controller.py`
+**Lines**: 497-539
+
+**The dtype mismatch (line 532-539):**
 ```python
 metrics_tensor = torch.tensor([
     metrics.coverage,
     metrics.hierarchy_a,
-    metrics.hierarchy_b,
-    metrics.dist_corr_a,
-    metrics.q_value,
-    metrics.grad_norm_projections,
-], dtype=torch.float32)
+    ...
+], dtype=torch.float32)  # <-- float32 in a float64 codebase
 ```
 
-The rest of the codebase uses `float64` for numerical stability with geoopt. While this class is labeled "experimental", mixing dtypes can cause subtle precision issues or dtype mismatch errors if the MLP parameters are float64.
+**Also**: The MLP layers in `__init__` (lines 501-509) are created with default dtype. Since `set_determinism()` calls `torch.set_default_dtype(torch.float64)`, the MLP weights will be float64 but the input tensor is float32. PyTorch auto-casts, but:
+- The `sigmoid` output (line 527) returns float64 (promoted from MLP)
+- The `.item()` calls (line 545) are fine
+- But if someone tries to backprop through this (the whole point of "learnable"), the mixed dtypes could cause gradient precision issues
 
-**Impact**: Low in practice since `LearnableLRController` is not used in the default training configuration. Could cause issues if someone enables it.
-
-**Recommendation**: Change to `dtype=torch.float64` for consistency, or document the intentional dtype choice.
+**This entire class is dead code**: `LearnableLRController` is:
+- Defined at lines 473-556
+- Exported in `__all__` (line 638) and `models/__init__.py` (line 9)
+- **Never instantiated** by `train.py` or any other production code
+- Labeled "experimental" in its docstring
 
 ---
 
-### M-4: compute_tree_coherence uses Python loops for index mapping
+### M-4: compute_tree_coherence uses O(N) Python loop with .item() calls
 
-**File**: `src/train.py`, lines 425-437
-**Type**: Performance
+**File**: `src/train.py`
+**Lines**: 400-449
 
+**The slow path (lines 425-437):**
 ```python
+# Python dict comprehension: ~20K .item() calls
 index_to_pos = {idx.item(): pos for pos, idx in enumerate(indices)}
 
+# Python loop: ~20K iterations with .item() per iteration
 for pos, (idx, parent_idx) in enumerate(zip(indices, parent_indices)):
     parent_val = parent_idx.item()
     if parent_val < 0:
@@ -186,289 +313,288 @@ for pos, (idx, parent_idx) in enumerate(zip(indices, parent_indices)):
         parent_positions.append(index_to_pos[parent_val])
 ```
 
-This iterates over all indices in Python, calling `.item()` on each tensor element. For the full dataset (19,683 operations), this loop runs ~20K iterations in Python during every validation epoch.
+**When this runs**: Every validation epoch (every `eval_every=2` epochs), for the full dataset of 19,683 operations. The dict construction alone calls `.item()` 19,683 times, and the loop calls `.item()` another ~19,683 times.
 
-**Impact**: Slows validation by several seconds per epoch. Not a correctness issue.
-
-**Recommendation**: Vectorize using `torch.searchsorted` or a tensor-based hash map. Example:
+**After the loop (lines 448-449)**, the results are converted back to tensors:
 ```python
-sorted_indices, sort_perm = indices.sort()
-parent_pos = torch.searchsorted(sorted_indices, parent_indices)
-valid = (parent_pos < len(indices)) & (sorted_indices[parent_pos.clamp(max=len(indices)-1)] == parent_indices)
+child_pos_t = torch.tensor(child_positions, device=device, dtype=torch.long)
+parent_pos_t = torch.tensor(parent_positions, device=device, dtype=torch.long)
 ```
 
----
-
-### M-5: CombinedGeodesicLoss class is dead code
-
-**File**: `src/losses/padic_geodesic.py`, lines 312-387
-**Type**: Dead code
-
-`CombinedGeodesicLoss` (described as "for V5.11") wraps `PAdicGeodesicLoss` and `RadialHierarchyLoss` with curriculum-based blending. It is:
-- Never instantiated by `CombinedLoss` in `combined.py`
-- Never referenced in `train.py`
-- Not exported in `losses/__init__.py`
-
-The V6 architecture uses `CombinedLoss` which instantiates these losses individually with its own weight management.
-
-**Impact**: ~75 lines of unreachable code.
-
-**Recommendation**: Remove or move to an archive. If kept, add a deprecation notice.
+**Impact**: Adds ~2-5 seconds per validation epoch depending on hardware. Over 100 epochs with `eval_every=2`, that's 50 validations × ~3s = ~150s of unnecessary Python overhead.
 
 ---
 
-## LOW (9 issues)
+### M-5: CombinedGeodesicLoss is dead code (75 lines)
 
-### L-1: hyperbolic_kl.py is entirely unused
+**File**: `src/losses/padic_geodesic.py`
+**Lines**: 312-369
 
-**File**: `src/losses/hyperbolic_kl.py` (193 lines)
-**Type**: Dead code
+**Full class listing:**
+```python
+class CombinedGeodesicLoss(nn.Module):
+    """Combined Geodesic + Radial Loss for V5.11.
+    Wraps both losses with curriculum-based blending:
+    - Early: More radial loss (establish hierarchy)
+    - Late: More geodesic loss (refine correlation)
+    The tau parameter controls the blend (can be learned by controller).
+    """
+```
 
-`HyperbolicKLDivergence` and `StandardKLDivergence` are defined and exported via `__init__.py` but:
-- Never imported by `combined.py` or `train.py`
-- No test coverage
-- The V6 training loop computes KL divergence inline (standard Gaussian KL)
+**Dead code verification:**
+- `CombinedLoss` in `combined.py` instantiates `PAdicGeodesicLoss` and `RadialHierarchyLoss` directly (not via `CombinedGeodesicLoss`)
+- `train.py` never references it
+- It IS exported in `losses/__init__.py` line 4: `from .padic_geodesic import CombinedGeodesicLoss`
+- No test file imports it
 
-**Impact**: 193 lines of unused code. The `HyperbolicKLDivergence` class implements a curvature-corrected KL which could be mathematically valuable if the architecture evolves to use it.
-
-**Recommendation**: Either integrate into the loss system (as an option in `CombinedLoss`) or move to an `experimental/` directory. Add tests if keeping.
+**Its `tau` blending approach** (line 358: `total_loss = (1 - tau) * rad_loss + tau * geo_loss`) is superseded by `CombinedLoss`'s config-driven weight system and the learnable weights feature (V6.1).
 
 ---
 
-### L-2: Unused import: torch.nn.functional as F in train.py
+## REMAINING: LOW (10 issues)
+
+### L-1: hyperbolic_kl.py is entirely unused (193 lines)
+
+**File**: `src/losses/hyperbolic_kl.py` (193 lines, 2 classes)
+
+**Classes defined:**
+- `HyperbolicKLDivergence` (lines 33-120): Curvature-corrected KL using conformal factor `λ(x) = 2 / (1 - c||x||²)`. Mathematically correct implementation of Mathieu et al. (2019).
+- `StandardKLDivergence` (lines 123-186): Standard Gaussian KL with API-compatible signature (accepts and ignores `z_hyp`).
+
+**Usage trace:**
+- Imported by `losses/__init__.py` line 10
+- Exported in `__all__` of both `hyperbolic_kl.py` and `__init__.py`
+- v6.yaml line 188-189 has `hyperbolic_kl: enabled: false`
+- `CombinedLoss.__init__()` in `combined.py` **never reads** `loss.hyperbolic_kl` config — no code path instantiates either class
+- `train.py` does not import either class
+
+**The only consumer** of the `lambda_x` function from `src/geometry` is `HyperbolicKLDivergence` (line 88). If this module is removed, `lambda_x` also becomes dead code in practice (though it's still a valid geometric utility).
+
+---
+
+### L-2: Unused import `torch.nn.functional as F` in train.py
 
 **File**: `src/train.py`, line 48
-**Type**: Unused import
-
 ```python
 import torch.nn.functional as F
 ```
-
-`F` is never referenced anywhere in train.py (confirmed via grep for `\bF\.`).
-
-**Recommendation**: Remove the import.
+Grep for `\bF\.` in `src/train.py` returns zero matches. `F` is never used.
 
 ---
 
-### L-3: Unused import: poincare_distance in combined.py
+### L-3: Unused imports in combined.py
 
-**File**: `src/losses/combined.py`, line 40
-**Type**: Unused import
-
+**File**: `src/losses/combined.py`, lines 39-40
 ```python
-from src.geometry import poincare_distance
+from src.core import TERNARY        # line 39 — never used in file body
+from src.geometry import poincare_distance  # line 40 — never used in file body
 ```
 
-`poincare_distance` is not used directly in `combined.py`. The individual loss classes import it themselves.
-
-**Recommendation**: Remove the import.
+The individual loss classes (`PAdicGeodesicLoss`, etc.) import these themselves via `padic_geodesic.py`. `CombinedLoss` delegates to them and never uses `TERNARY` or `poincare_distance` directly.
 
 ---
 
-### L-4: PRESETS_DIR defined but not exported
+### L-4: Unused import `CHECKPOINTS_DIR` in train.py
 
-**File**: `src/config/paths.py`, line 7 and `src/config/__init__.py`, line 12
-**Type**: Dead code / inconsistency
-
-`paths.py` defines both `PRESETS_DIR` (project root `presets/`) and `SRC_PRESETS_DIR` (under `src/presets/`). Only `SRC_PRESETS_DIR` is exported via `__init__.py`.
-
+**File**: `src/train.py`, line 66
 ```python
-# paths.py
-PRESETS_DIR = PROJECT_ROOT / "presets"       # Not exported
-SRC_PRESETS_DIR = PROJECT_ROOT / "src" / "presets"  # Exported
+from src.config.paths import RUNS_DIR, CHECKPOINTS_DIR
 ```
 
-**Impact**: `PRESETS_DIR` is inaccessible to code importing from `src.config`.
-
-**Recommendation**: Either export `PRESETS_DIR` or remove it if unneeded.
+`RUNS_DIR` is used (line 814: `log_dir = RUNS_DIR / run_name`). `CHECKPOINTS_DIR` is never used — `train.py` creates its own checkpoint directory as `ckpt_dir = log_dir / 'checkpoints'`.
 
 ---
 
-### L-5: patience_ceiling config fields are never consumed
+### L-5: Unused import `Callable` in lr_controller.py
 
-**File**: `src/config/statenet_config.py`, lines 40 and 49
-**Type**: Dead code (config fields)
-
+**File**: `src/models/lr_controller.py`, line 39
 ```python
-# HierarchyThresholds
+from typing import Any, Callable, Dict, List, Optional, Tuple
+```
+
+`Callable` is never used in any type annotation in this file.
+
+---
+
+### L-6: `patience_ceiling` config fields never consumed
+
+**File**: `src/config/statenet_config.py`
+```python
+# Line 40 (HierarchyThresholds):
 patience_ceiling: int = 25  # "Max patience (annealing limit)"
 
-# ControllerThresholds
+# Line 49 (ControllerThresholds):
 patience_ceiling: int = 20  # "Max patience (annealing limit)"
 ```
 
-These fields are defined in the config dataclasses but `MetricBasedLR` never reads them. The `patience_ceiling` was part of the removed `AnnealingConfig` system.
+`MetricBasedLR` reads `config.hierarchy.plateau_patience` (line 323) and `config.controller.grad_patience` (line 358) but never reads `patience_ceiling` from either dataclass. The `patience_ceiling` was part of the removed `AnnealingConfig` system.
 
-**Impact**: Users can set these in YAML but they have no effect.
-
-**Recommendation**: Remove the fields or implement the ceiling logic in `MetricBasedLR`.
+**v6.yaml** also defines these (hierarchy line ~122: `patience_ceiling: 25`, controller line ~131: `patience_ceiling: 20`) and they're silently ignored.
 
 ---
 
-### L-6: checkpoint.py uses weights_only=False (security concern)
+### L-7: `PRESETS_DIR` and `MODELS_DIR` defined but never used
+
+**File**: `src/config/paths.py`, lines 5-7
+```python
+CHECKPOINTS_DIR = PROJECT_ROOT / "models" / "checkpoints"  # line 5
+MODELS_DIR = PROJECT_ROOT / "models"                        # line 6
+PRESETS_DIR = PROJECT_ROOT / "presets"                       # line 7
+```
+
+- `MODELS_DIR` is exported by `config/__init__.py` (line 12) but never imported by any source file
+- `PRESETS_DIR` is defined but NOT exported by `config/__init__.py`
+- `SRC_PRESETS_DIR` (line 8) is exported but also never imported by any source file
+
+---
+
+### L-8: checkpoint.py uses `weights_only=False`
 
 **File**: `src/utils/checkpoint.py`, line 36
-**Type**: Security / best practice
-
 ```python
 return torch.load(path, map_location=map_location, weights_only=False)
 ```
 
-`weights_only=False` enables arbitrary code execution via pickle deserialization. This is a known security risk when loading untrusted checkpoints.
+`weights_only=False` allows arbitrary code execution via pickle. This is a known PyTorch security concern (CVE-2025-32434). Low risk for a research codebase with self-generated checkpoints, but becomes relevant if checkpoints are ever shared or downloaded.
 
-**Impact**: Low for a research codebase where checkpoints are self-generated. Becomes a concern if checkpoints are ever shared or downloaded from external sources.
+---
 
-**Recommendation**: Use `weights_only=True` as default, with a fallback to `False` only for legacy checkpoints:
+### L-9: Test fixture `sample_z_hyp` creates points outside Poincaré ball
+
+**File**: `tests/conftest.py`, lines 34-37
 ```python
-try:
-    return torch.load(path, map_location=map_location, weights_only=True)
-except Exception:
-    return torch.load(path, map_location=map_location, weights_only=False)
+@pytest.fixture
+def sample_z_hyp():
+    """Sample hyperbolic embeddings (inside Poincaré ball)."""
+    z = torch.randn(50, 16, dtype=torch.float64) * 0.5
+    return z
+```
+
+**The math**: Each component is drawn from `N(0, 0.5²)`. For 16 dimensions, the expected norm is `0.5 * sqrt(16) = 2.0`. Empirically, all 50 samples have norms between 1.2 and 3.1 — **every point is outside the Poincaré ball** (radius 1.0 for curvature c=1).
+
+**The same issue** exists in `tests/test_losses.py` lines 48-49:
+```python
+z_raw = torch.randn(batch_size, latent_dim, dtype=torch.float64)
+z_hyp = 0.8 * torch.tanh(z_raw)  # Comment: "Keeps norm well inside ball"
+```
+Each component is bounded by 0.8, but 16-dim vectors have norms up to `0.8 * sqrt(16) = 3.2`.
+
+**Impact**: Tests pass because geoopt's distance functions internally project via `projx`. But tests aren't exercising the intended scenario (valid manifold points). Edge cases near the boundary are untested with proper inputs.
+
+**Correct fixture would be:**
+```python
+z = torch.randn(50, 16, dtype=torch.float64)
+z = 0.8 * z / z.norm(dim=-1, keepdim=True)  # norm = 0.8 for all points
 ```
 
 ---
 
-### L-7: DataAuditor.prepare_data accepts but ignores device parameter
+### L-10: ~20 v6.yaml config keys silently ignored by code
 
-**File**: `src/train.py`, `DataAuditor.prepare_data` method
-**Type**: Misleading API
+**File**: `src/presets/v6.yaml`
 
-The `DataAuditor` class accepts a `device` in `__init__` (stored as `self.device`) but `prepare_data` creates `TensorDataset` objects on CPU. Data is moved to GPU in the training loop via the DataLoader.
+These config keys are defined in v6.yaml but never read by any code in `src/`:
 
-This is actually correct behavior (keeping data on CPU for DataLoader is standard practice), but the `device` parameter on `DataAuditor.__init__` is misleading -- it suggests data will be placed on the specified device.
+| YAML key | Line | Why unused |
+|----------|------|-----------|
+| `device.pin_memory` | 28 | `train.py` hardcodes `pin_memory=torch.cuda.is_available()` |
+| `device.num_workers` | 29 | `train.py` reads from `training.num_workers`, not `device` |
+| `device.empty_cache_freq` | 30 | Read from `memory` section instead |
+| `model.encoder_dropout` | 50 | Not passed to `TernaryVAEV6Controllable` or `EncoderHead` |
+| `model.decoder_dropout` | 51 | Same — classes don't accept dropout config |
+| `model.logvar_min` | 52 | Not passed to model — `EncoderHead` has no logvar clamping |
+| `model.logvar_max` | 53 | Same |
+| `geometry.use_manifold_parameter` | 69 | Never read by any code |
+| `geometry.geodesic_steps` | 71 | Never read by any code |
+| `precision.dtype` | 79 | `set_determinism()` hardcodes `torch.float64` |
+| `training.use_stratified` | 204 | Never read — always uses full dataset shuffle |
+| `training.high_v_budget_ratio` | 205 | Never read |
+| `training.use_adaptive` | 208 | Never read |
+| `training.hierarchy_threshold` | 209 | Never read |
+| `training.patience` | 210 | Never read (early stopping not implemented) |
+| `training.min_epochs` | 211 | Never read |
+| `loss.zero_structure` | 181-184 | `ZeroStructureLoss` class **does not exist** |
+| `loss.hyperbolic_kl` | 188-189 | Not consumed by `CombinedLoss` |
+| `checkpoints.save_dir` | 251 | `train.py` uses `log_dir / 'checkpoints'` instead |
+| `checkpoints.save_best` | 252 | Never read (hardcoded to save best_Q) |
+| `checkpoints.best_metric` | 253 | Never read |
+| `checkpoints.checkpoint_name` | 254 | Never read |
+| `data.use_full_dataset` | 228 | Never read |
+| `data.n_operations` | 229 | Never read — hardcoded via `TERNARY` singleton |
+| `early_stopping.*` | 279-282 | Never read — early stopping not implemented |
+| `memory.gradient_checkpointing` | 271 | Never read |
+| `memory.max_memory_growth` | 274 | Never read |
+| `targets.*` | 259-265 | Never read — purely documentation |
 
-**Impact**: Cosmetic / API clarity issue only. No functional bug.
-
-**Recommendation**: Either remove the `device` parameter from `DataAuditor` or add a docstring clarifying that data stays on CPU for DataLoader compatibility.
-
----
-
-### L-8: checkpoint_validator.py is dead code in the training path
-
-**File**: `src/utils/checkpoint_validator.py` (94 lines)
-**Type**: Dead code
-
-`validate_training_config` is:
-- Defined and exported via `utils/__init__.py`
-- Never called from `train.py` or any other production code
-- Contains the contradictory anchor checkpoint check (see M-1)
-
-**Impact**: The entire module provides no value in the current training pipeline.
-
-**Recommendation**: Either integrate into `train.py`'s startup sequence (with corrected logic) or remove.
-
----
-
-### L-9: log_hyperbolic_metrics references v5.10-specific tags
-
-**File**: `src/utils/tensorboard_logger.py`, lines 218-245
-**Type**: Stale references
-
-```python
-self.writer.add_scalars("v5.10/HyperbolicKL", ...)
-self.writer.add_scalar("v5.10/CentroidLoss", ...)
-self.writer.add_scalars("v5.10/StateNetSigma", ...)
-self.writer.add_scalars("v5.10/StateNetCurvature", ...)
-```
-
-These are V5.10-specific metrics that no longer exist in V6. The method uses `.get()` with defaults so it won't crash, but it silently logs meaningless zeros.
-
-**Recommendation**: Update or remove the v5.10-specific logging paths.
+**Impact**: Users may spend time tuning `encoder_dropout`, `use_stratified`, `patience`, or `early_stopping` expecting them to have an effect. They are silently ignored.
 
 ---
 
-## INFO (6 issues)
+## REMAINING: INFO (6 issues)
 
 ### I-1: Test coverage gaps
 
-**Current coverage**: 214 tests across 6 test files covering 3 modules (core, geometry, losses).
+**Current**: 214 tests across 6 files covering 3 modules (core, geometry, losses).
 
-**Untested modules** (no test files at all):
+**Planned but unimplemented** (per `docs/plans/TESTS_CRITICAL_TARGETS.md`):
 
-| Module | File | Lines | Complexity |
-|--------|------|-------|------------|
-| Models | `src/models/vae.py` | 528 | High - encoder/decoder, forward pass, reparameterization |
-| Models | `src/models/hyperbolic_projection.py` | 267 | High - expmap0/logmap0 integration, learnable curvature |
-| Models | `src/models/lr_controller.py` | 643 | High - 3 controller classes, gate logic, state machines |
-| Utils | `src/utils/tensorboard_logger.py` | 577 | Medium - TensorBoard integration |
-| Utils | `src/utils/hardware_monitor.py` | 263 | Low - monitoring only |
-| Utils | `src/utils/checkpoint.py` | 57 | Low - thin wrapper |
-| Utils | `src/utils/checkpoint_validator.py` | 94 | Low - validation logic |
-| Losses | `src/losses/hyperbolic_kl.py` | 193 | Medium - curvature-corrected KL |
+| Planned file | Tier | Target module | Status |
+|-------------|------|---------------|--------|
+| `tests/test_lr_controller.py` | 3 | `MetricBasedLR` gate transitions, hysteresis, warmup | Not started |
+| `tests/test_vae_trainability.py` | 3 | `set_encoder_a_trainable()`, gradient flow, param groups | Not started |
+| `tests/test_edge_cases.py` | 4 | Empty tensors, boundary points, batch_size=1 | Not started |
 
-**Priority recommendations for new tests**:
+**Untested modules with no test files:**
 
-1. **`vae.py`** (HIGH): Forward pass shape correctness, reparameterization trick, Poincare ball containment of outputs, gradient flow through full encoder-projection-decoder pipeline.
-
-2. **`hyperbolic_projection.py`** (HIGH): `expmap0` output stays in ball, `logmap0(expmap0(v)) ~ v` roundtrip, learnable curvature stays positive, `DualHyperbolicProjection` produces valid manifold points.
-
-3. **`lr_controller.py`** (MEDIUM): `MetricBasedLR` gate transitions (warmup -> active), hysteresis enforcement, `ScheduleBasedLR` interpolation, `update_optimizer_lr_scales` correctly modifies param groups.
+| File | Lines | Key untested functionality |
+|------|-------|--------------------------|
+| `models/vae.py` | 528 | `TernaryVAEV6.forward()` output shapes, reparameterization, Poincaré ball containment of `z_A_hyp`/`z_B_hyp`, `get_param_groups()` group names and LR scales, `set_encoder_a_trainable()` |
+| `models/hyperbolic_projection.py` | 267 | `HyperbolicProjection` output containment, tangent_net transform, `DualHyperbolicProjection` shared curvature, learnable curvature stays positive |
+| `models/lr_controller.py` | 643 | `MetricBasedLR` warmup→active transition, coverage gate freeze/unfreeze, hierarchy plateau detection, projections gradient monitoring, hysteresis enforcement, `ScheduleBasedLR` interpolation, `update_optimizer_lr_scales` param group modification |
+| `utils/tensorboard_logger.py` | 577 | Not critical to test (visualization only) |
+| `utils/hardware_monitor.py` | 263 | Not critical to test (monitoring only) |
+| `losses/hyperbolic_kl.py` | 193 | Dead code — test if integrating into loss system |
 
 ---
 
-### I-2: GrokkingDetector uses basic linear regression
+### I-2: GrokkingDetector heuristic
 
 **File**: `src/train.py`, `GrokkingDetector` class
-**Type**: Design observation
 
-The grokking detector fits a simple linear regression to the train/val loss gap to detect late generalization. This is a reasonable heuristic but may produce false positives if the gap naturally narrows due to learning rate decay rather than actual grokking.
-
-**No action needed** -- this is a design choice, not a bug.
+Fits linear regression to train/val loss gap to detect late generalization. Reasonable heuristic but may false-positive on natural gap narrowing from LR decay. Design choice, not a bug.
 
 ---
 
-### I-3: torch.Generator state and reproducibility across config changes
+### I-3: Per-loss Generator state not checkpoint-safe
 
 **File**: `src/losses/padic_geodesic.py`
-**Type**: Reproducibility observation
 
-`PAdicGeodesicLoss`, `RadialHierarchyLoss`, and `GlobalRankLoss` each maintain their own `torch.Generator` for pair sampling. These generators advance independently. If the loss configuration changes between runs (e.g., disabling geodesic loss via phase gating), the other generators will see different sequences because the total number of generator advances per epoch changes.
-
-This means two runs with identical seeds but different loss configurations will produce different pair samples for the shared losses, even if those losses are identically configured.
-
-**No action needed** -- this is inherent to per-loss generators and is generally acceptable for training. Perfect cross-config reproducibility would require a single shared generator (which has its own downsides).
+`PAdicGeodesicLoss`, `RadialHierarchyLoss`, `GlobalRankLoss`, and `MonotonicRadialLoss` each maintain a `torch.Generator(manual_seed=42)` for pair sampling. Generator state advances each forward call. If training is interrupted and resumed from checkpoint, the generators reset to seed 42, producing different pair sequences than the original run would have at that epoch. This means checkpoint-resumed training is not bit-identical to uninterrupted training.
 
 ---
 
-### I-4: CombinedLoss.compute_reconstruction_loss uses F.cross_entropy
-
-**File**: `src/losses/combined.py`, lines 392, 400
-**Type**: Design observation
-
-The reconstruction loss uses `F.cross_entropy` with 3 classes (for ternary values {-1, 0, 1}). The targets are shifted from {-1, 0, 1} to {0, 1, 2} for class indices. This is correct and well-implemented.
-
-**No action needed** -- noting for completeness.
-
----
-
-### I-5: _manifold_cache in poincare.py is a module-level global
+### I-4: `_manifold_cache` module-level global
 
 **File**: `src/geometry/poincare.py`, line 45
-**Type**: Design observation
-
 ```python
 _manifold_cache = {}
 ```
 
-The manifold cache is a module-level dictionary keyed by `(curvature, device_str)`. This is efficient but:
-- Not thread-safe (concurrent `get_manifold` calls could race)
-- Grows without bounds (one entry per unique curvature/device pair)
-- Not clearable without direct access to the private variable
+Not thread-safe, grows without bounds, not clearable. Negligible for single-GPU training.
 
-**Impact**: Negligible for single-GPU training. Could matter for multi-threaded inference or long-running processes with dynamic curvatures.
+---
 
-**No action needed** for current use case.
+### I-5: CombinedLoss reconstruction loss target shifting
+
+**File**: `src/losses/combined.py`, lines 385-400
+
+Targets shift `{-1, 0, 1}` → `{0, 1, 2}` via `(targets + 1).long()`. Correct implementation. The `(B, 27)` logit path in `RichHierarchyLoss` (line 729) does the same shift but without `.clamp(0, 2)` — relies on data validity. `CombinedLoss._compute_coverage_loss()` (line 391) does add `.clamp(0, 2)`.
 
 ---
 
 ### I-6: Copyright year range
 
-**File**: All source files
-**Type**: Administrative
-
-Copyright headers read "Copyright 2024-2025" but the current date is 2026-02-24. This is cosmetic.
-
-**No action needed** unless preparing for release.
+All source files read "Copyright 2024-2025". Current date is 2026-02-24. Cosmetic.
 
 ---
 
@@ -476,18 +602,20 @@ Copyright headers read "Copyright 2024-2025" but the current date is 2026-02-24.
 
 | Severity | Count | Key areas |
 |----------|-------|-----------|
+| FIXED | 8 | LR controller (3), optimizer params (2), geometry (1), scheduler (1), dtype (1) |
 | CRITICAL | 2 | TensorBoard logger V5.x API (crash if called) |
-| MODERATE | 5 | Validator contradiction, division-by-zero, dtype, performance, dead code |
-| LOW | 9 | Unused imports, dead code modules, security, API clarity |
+| MODERATE | 5 | Validator contradiction, division-by-zero, dead code, dtype, performance |
+| LOW | 10 | Unused imports (4), dead modules (2), config keys (20+), test fixtures, security |
 | INFO | 6 | Test coverage gaps, design observations, reproducibility |
 
 ## Recommended Priority Actions
 
-1. **Immediate**: Fix or remove `TensorBoardLogger.log_manifold_embedding` and `log_epoch` (C-1, C-2)
-2. **Short-term**: Remove dead code: `CombinedGeodesicLoss` (M-5), unused imports (L-2, L-3), `checkpoint_validator.py` or fix it (M-1, L-8)
-3. **Medium-term**: Add tests for `vae.py` and `hyperbolic_projection.py` (I-1)
-4. **Low priority**: Fix `ScheduleBasedLR` duplicate epoch handling (M-2), update `weights_only` (L-6), remove unused config fields (L-5)
+1. **Immediate**: Fix or remove `TensorBoardLogger.log_manifold_embedding` and `log_epoch` (C-1, C-2) — these are crash bugs in public API
+2. **Short-term**: Remove dead code — `CombinedGeodesicLoss` (M-5), `hyperbolic_kl.py` or integrate it (L-1), unused imports (L-2 through L-5), dead `checkpoint_validator.py` or fix it (M-1)
+3. **Short-term**: Clean v6.yaml — remove or comment the ~20 ignored config keys (L-10), especially `loss.zero_structure` which references a nonexistent class
+4. **Medium-term**: Add Tier 3 tests for `vae.py`, `hyperbolic_projection.py`, and `lr_controller.py` (I-1); fix test fixtures to produce valid Poincaré ball points (L-9)
+5. **Low priority**: Fix `ScheduleBasedLR` duplicate epoch handling (M-2), update `weights_only` (L-8), remove unused config fields (L-6)
 
 ---
 
-*Generated by automated codebase audit. All line numbers reference the codebase state as of 2026-02-24.*
+*Generated by deep-read codebase audit. All line numbers verified against codebase state as of 2026-02-24, post-fix commit `e2b74b0`.*
