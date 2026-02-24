@@ -415,9 +415,9 @@ class MetricBasedLR(LRController):
             }
 
         # Compute gates (which may update state and generate events)
-        _, cov_event = self._compute_coverage_gate(metrics)
-        _, hier_event = self._compute_hierarchy_gate(metrics)
-        _, proj_event = self._compute_projections_gate(metrics)
+        cov_scale, cov_event = self._compute_coverage_gate(metrics)
+        hier_scale, hier_event = self._compute_hierarchy_gate(metrics)
+        proj_scale, proj_event = self._compute_projections_gate(metrics)
 
         if cov_event:
             events.append(cov_event)
@@ -426,8 +426,17 @@ class MetricBasedLR(LRController):
         if proj_event:
             events.append(proj_event)
 
+        # Use scales from the gate calls above instead of calling
+        # get_lr_scales() again, which would re-invoke gates with side effects
+        lr_scales = {
+            'encoder_a': cov_scale,
+            'encoder_b': hier_scale,
+            'projections': proj_scale,
+            'decoders': self.config.lr_scales.decoders,
+        }
+
         return {
-            "lr_scales": self.get_lr_scales(metrics),
+            "lr_scales": lr_scales,
             "events": events,
             "type": "metric_based",
             "best_q": self._best_q,

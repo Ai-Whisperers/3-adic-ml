@@ -761,14 +761,26 @@ def train(
         print("  Training controller: Disabled")
 
     # Optimizer
+    # Include loss_fn parameters when learnable weights are enabled
+    loss_params = list(loss_fn.parameters()) if loss_cfg.get('learnable_weights', False) else []
+    if loss_params:
+        print(f"  Learnable loss weights: {len(loss_params)} parameters")
+
     if riemannian_cfg.get('enabled', False):
         param_groups = model.get_param_groups(base_lr)
+        if loss_params:
+            param_groups.append({"params": loss_params, "lr": base_lr, "name": "loss_weights"})
         stabilize = riemannian_cfg.get('stabilize', 10)  # Re-project to manifold every N steps
-        optimizer = get_riemannian_optimizer(param_groups, lr=base_lr, stabilize=stabilize)
-        print(f"  Optimizer: RiemannianAdam (stabilize={stabilize})")
+        optimizer = get_riemannian_optimizer(
+            param_groups, lr=base_lr, stabilize=stabilize, weight_decay=weight_decay,
+        )
+        print(f"  Optimizer: RiemannianAdam (stabilize={stabilize}, wd={weight_decay})")
     else:
+        param_groups = model.get_param_groups(base_lr)
+        if loss_params:
+            param_groups.append({"params": loss_params, "lr": base_lr, "name": "loss_weights"})
         optimizer = torch.optim.AdamW(
-            model.get_param_groups(base_lr),
+            param_groups,
             weight_decay=weight_decay,
         )
         print("  Optimizer: AdamW")
@@ -1001,7 +1013,10 @@ def train(
                 controller_state = lr_controller.update(metrics)
 
                 # Apply LR scales to optimizer (the key Option C mechanism)
-                update_optimizer_lr_scales(optimizer, base_lr, controller_state['lr_scales'])
+                # Use the scheduler's current LR so controller scales compose
+                # with cosine annealing rather than overriding it
+                current_base_lr = scheduler.get_last_lr()[0]
+                update_optimizer_lr_scales(optimizer, current_base_lr, controller_state['lr_scales'])
 
                 # Format summary from LR scales
                 scales = controller_state['lr_scales']
@@ -1235,8 +1250,11 @@ def main():
     # Memory optimization settings
     memory_cfg = config.get('memory', {})
     if memory_cfg.get('cudnn_benchmark', True) and device.type == 'cuda':
-        torch.backends.cudnn.benchmark = True
-        print("  cuDNN benchmark: enabled")
+        if not torch.backends.cudnn.deterministic:
+            torch.backends.cudnn.benchmark = True
+            print("  cuDNN benchmark: enabled")
+        else:
+            print("  cuDNN benchmark: skipped (deterministic mode active)")
 
     # Create run directory
     config_name = config_path.stem

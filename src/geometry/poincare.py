@@ -169,7 +169,7 @@ def exp_map_zero(v: torch.Tensor, c: float = 1.0) -> torch.Tensor:
     return manifold.expmap(origin, v)
 
 
-def log_map_zero(z: torch.Tensor, c: float = 1.0, max_norm: float = 0.95) -> torch.Tensor:
+def log_map_zero(z: torch.Tensor, c: float = 1.0, max_norm: float | None = None) -> torch.Tensor:
     """Logarithmic map from Poincare ball to tangent space at origin.
 
     log_0(z) = arctanh(sqrt(c) * ||z||) * z / (sqrt(c) * ||z||)
@@ -177,14 +177,31 @@ def log_map_zero(z: torch.Tensor, c: float = 1.0, max_norm: float = 0.95) -> tor
     Args:
         z: Points on Poincare ball, shape (..., dim)
         c: Curvature parameter
-        max_norm: Maximum norm (for clamping near boundary)
+        max_norm: Maximum norm (for clamping near boundary). Points with
+                  norm > max_norm are rescaled before logmap to avoid
+                  numerical instability near the boundary (arctanh diverges).
+                  If None, defaults to ball_radius - 1e-5.
 
     Returns:
         Tangent vectors at origin
     """
+    # Default: clamp just inside the ball boundary (1/sqrt(c))
+    ball_radius = 1.0 / (c ** 0.5)
+    effective_max_norm = max_norm if max_norm is not None else ball_radius - 1e-5
+    # Never exceed ball boundary regardless of what caller passes
+    effective_max_norm = min(effective_max_norm, ball_radius - 1e-5)
+
+    norm = torch.norm(z, dim=-1, keepdim=True)
+    scale = torch.where(
+        norm > effective_max_norm,
+        effective_max_norm / (norm + 1e-10),
+        torch.ones_like(norm),
+    )
+    z_clamped = z * scale
+
     manifold = get_manifold(c, device=z.device)
-    origin = torch.zeros_like(z)
-    return manifold.logmap(origin, z)
+    origin = torch.zeros_like(z_clamped)
+    return manifold.logmap(origin, z_clamped)
 
 
 def mobius_add(x: torch.Tensor, y: torch.Tensor, c: float = 1.0) -> torch.Tensor:

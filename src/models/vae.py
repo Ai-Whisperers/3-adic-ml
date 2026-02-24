@@ -486,7 +486,7 @@ class TernaryVAEV6Controllable(TernaryVAEV6):
             groups.append({
                 "params": enc_a_params,
                 "lr": base_lr * self.encoder_a_lr_scale,
-                "name": "encoder_A",
+                "name": "encoder_a",
             })
 
         # Encoder B (medium learner)
@@ -495,7 +495,7 @@ class TernaryVAEV6Controllable(TernaryVAEV6):
             groups.append({
                 "params": enc_b_params,
                 "lr": base_lr * self.encoder_b_lr_scale,
-                "name": "encoder_B",
+                "name": "encoder_b",
             })
 
         # Projections / Controller (fast adapter)

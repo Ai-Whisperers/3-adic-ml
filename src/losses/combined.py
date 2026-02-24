@@ -213,34 +213,34 @@ class CombinedLoss(nn.Module):
         # RichHierarchy sub-components
         if self.rich_hierarchy is not None:
             self.log_sigma_hierarchy = nn.Parameter(
-                torch.tensor(weight_to_log_sigma(self.rich_hierarchy_weights['hierarchy']))
+                torch.tensor(weight_to_log_sigma(self.rich_hierarchy_weights['hierarchy']), dtype=torch.float64)
             )
             self.log_sigma_coverage = nn.Parameter(
-                torch.tensor(weight_to_log_sigma(self.rich_hierarchy_weights['coverage']))
+                torch.tensor(weight_to_log_sigma(self.rich_hierarchy_weights['coverage']), dtype=torch.float64)
             )
             self.log_sigma_separation = nn.Parameter(
-                torch.tensor(weight_to_log_sigma(self.rich_hierarchy_weights['separation']))
+                torch.tensor(weight_to_log_sigma(self.rich_hierarchy_weights['separation']), dtype=torch.float64)
             )
 
         # Other losses
         if self.radial_loss is not None:
             self.log_sigma_radial = nn.Parameter(
-                torch.tensor(weight_to_log_sigma(self.radial_weight))
+                torch.tensor(weight_to_log_sigma(self.radial_weight), dtype=torch.float64)
             )
 
         if self.geodesic_loss is not None:
             self.log_sigma_geodesic = nn.Parameter(
-                torch.tensor(weight_to_log_sigma(self.geodesic_weight))
+                torch.tensor(weight_to_log_sigma(self.geodesic_weight), dtype=torch.float64)
             )
 
         if self.rank_loss is not None:
             self.log_sigma_rank = nn.Parameter(
-                torch.tensor(weight_to_log_sigma(self.rank_weight))
+                torch.tensor(weight_to_log_sigma(self.rank_weight), dtype=torch.float64)
             )
 
         if self.monotonic_loss is not None:
             self.log_sigma_monotonic = nn.Parameter(
-                torch.tensor(weight_to_log_sigma(self.monotonic_weight))
+                torch.tensor(weight_to_log_sigma(self.monotonic_weight), dtype=torch.float64)
             )
 
     def _uncertainty_weight(self, log_sigma: nn.Parameter) -> torch.Tensor:
