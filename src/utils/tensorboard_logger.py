@@ -19,19 +19,12 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 import torch
 
 from src.core import TERNARY
 from src.geometry import poincare_distance
-
-# Default model forward pass parameters for embedding visualization
-# These match the standard TernaryVAE interface: model(x, temp_A, temp_B, beta_A, beta_B)
-DEFAULT_TEMP_A = 1.0
-DEFAULT_TEMP_B = 1.0
-DEFAULT_BETA_A = 0.5
-DEFAULT_BETA_B = 0.5
 
 # TensorBoard integration (optional)
 try:
@@ -116,296 +109,6 @@ class TensorBoardLogger:
         self.writer.add_scalar("Batch/KL_A", kl_A, global_step)
         self.writer.add_scalar("Batch/KL_B", kl_B, global_step)
 
-    def log_hyperbolic_batch(
-        self,
-        global_step: int,
-        ranking_loss: float = 0.0,
-        radial_loss: float = 0.0,
-        hyp_kl_A: float = 0.0,
-        hyp_kl_B: float = 0.0,
-        centroid_loss: float = 0.0,
-    ) -> None:
-        """Log v5.10 hyperbolic metrics at batch level.
-
-        Args:
-            global_step: Global batch step
-            ranking_loss: Hyperbolic ranking loss
-            radial_loss: Radial hierarchy loss
-            hyp_kl_A: Hyperbolic KL for VAE-A
-            hyp_kl_B: Hyperbolic KL for VAE-B
-            centroid_loss: Frechet centroid loss
-        """
-        if self.writer is None:
-            return
-
-        self.writer.add_scalar("Batch/HypRankingLoss", ranking_loss, global_step)
-        self.writer.add_scalar("Batch/RadialLoss", radial_loss, global_step)
-        self.writer.add_scalar("Batch/HypKL_A", hyp_kl_A, global_step)
-        self.writer.add_scalar("Batch/HypKL_B", hyp_kl_B, global_step)
-        self.writer.add_scalar("Batch/CentroidLoss", centroid_loss, global_step)
-
-    def log_hyperbolic_epoch(
-        self,
-        epoch: int,
-        corr_A_hyp: float,
-        corr_B_hyp: float,
-        corr_A_euc: float,
-        corr_B_euc: float,
-        mean_radius_A: float,
-        mean_radius_B: float,
-        ranking_weight: float,
-        ranking_loss: float = 0.0,
-        radial_loss: float = 0.0,
-        hyp_kl_A: float = 0.0,
-        hyp_kl_B: float = 0.0,
-        centroid_loss: float = 0.0,
-        statenet_metrics: Optional[Dict[str, float]] = None,
-    ) -> None:
-        """Log v5.10 hyperbolic metrics at epoch level.
-
-        Args:
-            epoch: Current epoch
-            corr_A_hyp: VAE-A hyperbolic correlation
-            corr_B_hyp: VAE-B hyperbolic correlation
-            corr_A_euc: VAE-A Euclidean correlation
-            corr_B_euc: VAE-B Euclidean correlation
-            mean_radius_A: VAE-A mean latent radius
-            mean_radius_B: VAE-B mean latent radius
-            ranking_weight: Current ranking loss weight
-            ranking_loss: Hyperbolic ranking loss
-            radial_loss: Radial hierarchy loss
-            hyp_kl_A: Hyperbolic KL for VAE-A
-            hyp_kl_B: Hyperbolic KL for VAE-B
-            centroid_loss: Frechet centroid loss
-            statenet_metrics: Dict of statenet adaptation metrics
-        """
-        if self.writer is None:
-            return
-
-        corr_mean_hyp = (corr_A_hyp + corr_B_hyp) / 2
-        corr_mean_euc = (corr_A_euc + corr_B_euc) / 2
-
-        self.writer.add_scalars(
-            "Hyperbolic/Correlation_Hyp",
-            {
-                "VAE_A": corr_A_hyp,
-                "VAE_B": corr_B_hyp,
-                "Mean": corr_mean_hyp,
-            },
-            epoch,
-        )
-
-        self.writer.add_scalars(
-            "Hyperbolic/Correlation_Euc",
-            {
-                "VAE_A": corr_A_euc,
-                "VAE_B": corr_B_euc,
-                "Mean": corr_mean_euc,
-            },
-            epoch,
-        )
-
-        self.writer.add_scalars(
-            "Hyperbolic/MeanRadius",
-            {"VAE_A": mean_radius_A, "VAE_B": mean_radius_B},
-            epoch,
-        )
-
-        self.writer.add_scalar("Hyperbolic/RankingWeight", ranking_weight, epoch)
-        self.writer.add_scalar("Hyperbolic/RankingLoss", ranking_loss, epoch)
-        self.writer.add_scalar("Hyperbolic/RadialLoss", radial_loss, epoch)
-
-        # v5.10 specific
-        self.writer.add_scalars(
-            "v5.10/HyperbolicKL",
-            {"VAE_A": hyp_kl_A, "VAE_B": hyp_kl_B},
-            epoch,
-        )
-        self.writer.add_scalar("v5.10/CentroidLoss", centroid_loss, epoch)
-
-        # StateNet metrics
-        if statenet_metrics:
-            if "prior_sigma_A" in statenet_metrics:
-                self.writer.add_scalars(
-                    "v5.10/StateNetSigma",
-                    {
-                        "VAE_A": statenet_metrics.get("prior_sigma_A", 1.0),
-                        "VAE_B": statenet_metrics.get("prior_sigma_B", 1.0),
-                    },
-                    epoch,
-                )
-            if "prior_curvature_A" in statenet_metrics:
-                self.writer.add_scalars(
-                    "v5.10/StateNetCurvature",
-                    {
-                        "VAE_A": statenet_metrics.get("prior_curvature_A", 2.0),
-                        "VAE_B": statenet_metrics.get("prior_curvature_B", 2.0),
-                    },
-                    epoch,
-                )
-
-    def log_epoch(
-        self,
-        epoch: int,
-        train_losses: Dict[str, Any],
-        val_losses: Dict[str, Any],
-        unique_A: int,
-        unique_B: int,
-        cov_A: float,
-        cov_B: float,
-    ) -> None:
-        """Log epoch-level metrics.
-
-        Args:
-            epoch: Current epoch
-            train_losses: Training losses dict
-            val_losses: Validation losses dict
-            unique_A: VAE-A unique operations
-            unique_B: VAE-B unique operations
-            cov_A: VAE-A coverage percentage
-            cov_B: VAE-B coverage percentage
-        """
-        if self.writer is None:
-            return
-
-        # Primary losses
-        self.writer.add_scalars(
-            "Loss/Total",
-            {"train": train_losses["loss"], "val": val_losses["loss"]},
-            epoch,
-        )
-
-        # VAE-A metrics
-        self.writer.add_scalar("VAE_A/CrossEntropy", train_losses["ce_A"], epoch)
-        self.writer.add_scalar("VAE_A/KL_Divergence", train_losses["kl_A"], epoch)
-        self.writer.add_scalar("VAE_A/Entropy", train_losses["H_A"], epoch)
-        self.writer.add_scalar("VAE_A/Coverage_Count", unique_A, epoch)
-        self.writer.add_scalar("VAE_A/Coverage_Pct", cov_A, epoch)
-
-        # VAE-B metrics
-        self.writer.add_scalar("VAE_B/CrossEntropy", train_losses["ce_B"], epoch)
-        self.writer.add_scalar("VAE_B/KL_Divergence", train_losses["kl_B"], epoch)
-        self.writer.add_scalar("VAE_B/Entropy", train_losses["H_B"], epoch)
-        self.writer.add_scalar("VAE_B/Coverage_Count", unique_B, epoch)
-        self.writer.add_scalar("VAE_B/Coverage_Pct", cov_B, epoch)
-
-        # Comparative metrics
-        self.writer.add_scalars(
-            "Compare/Entropy",
-            {"VAE_A": train_losses["H_A"], "VAE_B": train_losses["H_B"]},
-            epoch,
-        )
-        self.writer.add_scalars(
-            "Compare/Coverage",
-            {"VAE_A": cov_A, "VAE_B": cov_B},
-            epoch,
-        )
-
-        # Training dynamics
-        self.writer.add_scalar("Dynamics/Phase", train_losses["phase"], epoch)
-        self.writer.add_scalar("Dynamics/Rho", train_losses["rho"], epoch)
-        self.writer.add_scalar("Dynamics/GradRatio", train_losses["grad_ratio"], epoch)
-        self.writer.add_scalar(
-            "Dynamics/EMA_Momentum", train_losses["ema_momentum"], epoch
-        )
-
-        # Lambda weights
-        self.writer.add_scalars(
-            "Lambdas",
-            {
-                "lambda1": train_losses["lambda1"],
-                "lambda2": train_losses["lambda2"],
-                "lambda3": train_losses["lambda3"],
-            },
-            epoch,
-        )
-
-        # Temperature scheduling
-        self.writer.add_scalars(
-            "Temperature",
-            {"VAE_A": train_losses["temp_A"], "VAE_B": train_losses["temp_B"]},
-            epoch,
-        )
-
-        # Beta scheduling
-        self.writer.add_scalars(
-            "Beta",
-            {"VAE_A": train_losses["beta_A"], "VAE_B": train_losses["beta_B"]},
-            epoch,
-        )
-
-        # Learning rate
-        self.writer.add_scalar("LR/Scheduled", train_losses["lr_scheduled"], epoch)
-        if "lr_corrected" in train_losses:
-            self.writer.add_scalar("LR/Corrected", train_losses["lr_corrected"], epoch)
-            self.writer.add_scalar("LR/Delta", train_losses.get("delta_lr", 0), epoch)
-
-        # StateNet corrections
-        if "delta_lambda1" in train_losses:
-            self.writer.add_scalars(
-                "StateNet/Deltas",
-                {
-                    "delta_lr": train_losses.get("delta_lr", 0),
-                    "delta_lambda1": train_losses.get("delta_lambda1", 0),
-                    "delta_lambda2": train_losses.get("delta_lambda2", 0),
-                    "delta_lambda3": train_losses.get("delta_lambda3", 0),
-                },
-                epoch,
-            )
-
-        # p-Adic losses
-        self._log_padic_losses(epoch, train_losses)
-
-        # Single flush per epoch
-        self.writer.flush()
-
-    def _log_padic_losses(self, epoch: int, train_losses: Dict[str, Any]) -> None:
-        """Log p-adic loss components.
-
-        Args:
-            epoch: Current epoch
-            train_losses: Training losses dict
-        """
-        if self.writer is None:
-            return
-
-        has_padic = (
-            train_losses.get("padic_metric_A", 0) > 0
-            or train_losses.get("padic_ranking_A", 0) > 0
-            or train_losses.get("padic_norm_A", 0) > 0
-        )
-
-        if not has_padic:
-            return
-
-        if train_losses.get("padic_metric_A", 0) > 0:
-            self.writer.add_scalars(
-                "PAdicLoss/Metric",
-                {
-                    "VAE_A": train_losses.get("padic_metric_A", 0),
-                    "VAE_B": train_losses.get("padic_metric_B", 0),
-                },
-                epoch,
-            )
-        if train_losses.get("padic_ranking_A", 0) > 0:
-            self.writer.add_scalars(
-                "PAdicLoss/Ranking",
-                {
-                    "VAE_A": train_losses.get("padic_ranking_A", 0),
-                    "VAE_B": train_losses.get("padic_ranking_B", 0),
-                },
-                epoch,
-            )
-        if train_losses.get("padic_norm_A", 0) > 0:
-            self.writer.add_scalars(
-                "PAdicLoss/Norm",
-                {
-                    "VAE_A": train_losses.get("padic_norm_A", 0),
-                    "VAE_B": train_losses.get("padic_norm_B", 0),
-                },
-                epoch,
-            )
-
     def log_histograms(self, epoch: int, model: torch.nn.Module) -> None:
         """Log model weight histograms.
 
@@ -463,23 +166,19 @@ class TensorBoardLogger:
         x = all_operations[indices].to(device)
 
         with torch.no_grad():
-            # Use default parameters for embedding visualization
-            outputs = model(x, DEFAULT_TEMP_A, DEFAULT_TEMP_B, DEFAULT_BETA_A, DEFAULT_BETA_B)
-            z_A = outputs["z_A"]
-            z_B = outputs["z_B"]
+            # V6 model: forward(x) returns dict with z_A_hyp, z_B_hyp (Poincare manifold)
+            outputs = model(x)
+            z_A_hyp = outputs["z_A_hyp"]
+            z_B_hyp = outputs["z_B_hyp"]
+            # Tangent space representations for Euclidean embedding view
+            mu_A = outputs["mu_A"]
+            mu_B = outputs["mu_B"]
 
-            # Project to Poincare ball for visualization
-            z_A_euc_norm = torch.norm(z_A, dim=1, keepdim=True)
-            z_A_poincare = z_A / (1 + z_A_euc_norm) * 0.95
-
-            z_B_euc_norm = torch.norm(z_B, dim=1, keepdim=True)
-            z_B_poincare = z_B / (1 + z_B_euc_norm) * 0.95
-
-            # V5.12.2: Compute hyperbolic radii for metadata
-            origin_A = torch.zeros_like(z_A_poincare)
-            origin_B = torch.zeros_like(z_B_poincare)
-            hyp_radii_A = poincare_distance(z_A_poincare, origin_A, c=1.0)
-            hyp_radii_B = poincare_distance(z_B_poincare, origin_B, c=1.0)
+            # Compute hyperbolic radii (z_A_hyp/z_B_hyp are already on the Poincare manifold)
+            origin_A = torch.zeros_like(z_A_hyp)
+            origin_B = torch.zeros_like(z_B_hyp)
+            hyp_radii_A = poincare_distance(z_A_hyp, origin_A, c=1.0)
+            hyp_radii_B = poincare_distance(z_B_hyp, origin_B, c=1.0)
 
         # Compute 3-adic metadata
         metadata = []
@@ -511,30 +210,30 @@ class TensorBoardLogger:
                 f"{r_B:.3f}",
             ])
 
-        # Log embeddings
+        # Log embeddings (mu = tangent space means, hyp = Poincare manifold points)
         self.writer.add_embedding(
-            z_A.cpu(),
+            mu_A.cpu(),
             metadata=metadata,
             metadata_header=metadata_header,
             global_step=epoch,
-            tag="Embedding/VAE_A_Euclidean",
+            tag="Embedding/VAE_A_TangentSpace",
         )
         self.writer.add_embedding(
-            z_A_poincare.cpu(),
+            z_A_hyp.cpu(),
             metadata=metadata,
             metadata_header=metadata_header,
             global_step=epoch,
             tag="Embedding/VAE_A_Poincare",
         )
         self.writer.add_embedding(
-            z_B.cpu(),
+            mu_B.cpu(),
             metadata=metadata,
             metadata_header=metadata_header,
             global_step=epoch,
-            tag="Embedding/VAE_B_Euclidean",
+            tag="Embedding/VAE_B_TangentSpace",
         )
         self.writer.add_embedding(
-            z_B_poincare.cpu(),
+            z_B_hyp.cpu(),
             metadata=metadata,
             metadata_header=metadata_header,
             global_step=epoch,
