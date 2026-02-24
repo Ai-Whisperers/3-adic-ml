@@ -1,6 +1,6 @@
 # src/ - P-Adic VAE Source Code
 
-**Last Updated**: 2026-01-26
+**Last Updated**: 2026-02-24
 
 ---
 
@@ -353,17 +353,25 @@ Reads YAML `loss:` section and instantiates enabled losses:
 
 ```yaml
 loss:
+  learnable_weights: false  # Enable trainable loss weights (V6.1)
   rich_hierarchy:
     enabled: true
     hierarchy_weight: 5.0
-    separation_margin: 0.01      # configurable
+    coverage_weight: 1.0
+    separation_weight: 3.0
   radial:
     enabled: true
-    valuation_weight_exponent: 0.25  # configurable
-    margin_step_factor: 0.5          # configurable
-  monotonic:
+    inner_radius: 0.08
+    outer_radius: 0.90
+    radial_weight: 1.0
+  geodesic:
     enabled: true
-    target_loss_weight: 0.5          # configurable
+    phase_start_epoch: 30
+    weight: 0.4
+  rank:
+    enabled: true
+    weight: 0.5
+    temperature: 0.1
 ```
 
 #### Loss Classes
@@ -450,12 +458,16 @@ params = head.get_trainable_params()  # Get trainable params for optimizer
 
 **Files:** `constants.py`, `paths.py`
 
-| Constant | Value | Usage |
-|----------|-------|-------|
-| `N_TERNARY_OPERATIONS` | 19683 | Coverage calculation |
-| `STATENET_COVERAGE_FIX_THRESHOLD` | 0.99 | Fix encoder when coverage drops |
-| `STATENET_COVERAGE_TRAIN_THRESHOLD` | 0.999 | Allow training when coverage above |
-| `PROJECT_ROOT` | Auto-detected | Path resolution |
+| Constant | Value | Location |
+|----------|-------|----------|
+| `N_TERNARY_OPERATIONS` | 19683 | `constants.py` |
+| `PROJECT_ROOT` | Auto-detected | `paths.py` |
+| `RUNS_DIR` | `PROJECT_ROOT / "runs"` | `paths.py` |
+| `CHECKPOINTS_DIR` | `PROJECT_ROOT / "models" / "checkpoints"` | `paths.py` |
+
+Coverage/hierarchy thresholds are now in `StateNetConfig` (not module-level constants):
+- `config.coverage.fix_threshold` (default: 0.995)
+- `config.coverage.train_threshold` (default: 1.0)
 
 ---
 
@@ -800,9 +812,9 @@ The following dead code was removed after deep analysis:
   - `RadialHierarchyLoss` - per-valuation radius targets
   - `GlobalRankLoss` - soft ranking violations
   - `MonotonicRadialLoss` - level-wise ordering
-  - `ZeroStructureLoss` - zero-valuation structure
+  - `CombinedGeodesicLoss` - wrapper for geodesic + radial (unused, prefer CombinedLoss)
 - **`combined.py`**: `CombinedLoss` factory reads YAML, instantiates enabled losses
-- **`hyperbolic_kl.py`**: `HyperbolicKLDivergence` with conformal factor correction
+- **`hyperbolic_kl.py`**: `HyperbolicKLDivergence` with conformal factor correction (not currently used by CombinedLoss)
 
 #### src/models/
 
@@ -926,4 +938,4 @@ for name, weight in loss_fn.get_learned_weights().items():
 
 ---
 
-**Maintainer:** Claude Opus 4.5
+**Maintainer:** Claude Opus 4.6

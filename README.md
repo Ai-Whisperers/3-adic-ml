@@ -250,11 +250,16 @@ The training pipeline includes:
 
 ## License
 
-[Add license information]
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-[Add contribution guidelines]
+Contributions are welcome. To get started:
+
+1. Fork the repository and create a feature branch
+2. Ensure all tests pass: `pytest tests/ -v`
+3. Follow existing code patterns (float64 throughout, geoopt for geometry)
+4. Submit a pull request with a clear description of changes
 
 ## Acknowledgments
 
