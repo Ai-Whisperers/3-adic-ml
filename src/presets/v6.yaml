@@ -151,7 +151,7 @@ loss:
   radial:
     enabled: true
     inner_radius: 0.08  # High valuation (v=9) target
-    outer_radius: 0.65  # More spread
+    outer_radius: 0.75  # More spread
     radial_weight: 5.0
     margin_weight: 0.5
 
@@ -191,7 +191,7 @@ loss:
   # Uses conformal factor λ(x) for proper Poincaré geometry
   hyperbolic_kl:
     enabled: true
-    beta: 2.0
+    beta: 1.5
     free_bits: 0.0  # Minimum KL per dimension
 
 # =============================================================================
