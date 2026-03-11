@@ -1035,7 +1035,7 @@ def train(
                     z_hyp = out.get("z_A_hyp", out.get("z_B_hyp"))
                     logits = out.get("logits_A", out.get("logits"))
 
-                    losses = loss_fn(z_hyp, batch_idx, logits, batch_ops, epoch=epoch)
+                    losses = loss_fn(z_hyp, batch_idx, logits, batch_ops, epoch=epoch, mu=out['mu_A'], logvar=out['logvar_A'])
                     loss = losses["total"]
 
                 scaler.scale(loss).backward()
