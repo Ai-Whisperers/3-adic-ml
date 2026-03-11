@@ -79,11 +79,11 @@ loss:
   # AUXILIARY: Radial targets
   radial:
     enabled: true
+    # Note: inner_radius/outer_radius are shared with rich_hierarchy
     inner_radius: 0.08
     outer_radius: 0.90
     radial_weight: 1.0
     margin_weight: 0.5
-
   # Phase 2: Geodesic (earlier start for extended training)
   geodesic:
     enabled: true

@@ -719,3 +719,155 @@ class TestCombinedLossRepr:
 
         repr_str = repr(loss_fn)
         assert 'learnable' in repr_str
+
+
+class TestRadiusSharing:
+    """Test radius sharing functionality."""
+
+    def test_auto_share_single_block(self):
+        """Verify single block specifies radii, others share."""
+        from src.losses.radius_defaults import auto_share_radius_config
+
+        config = {
+            'rich_hierarchy': {'enabled': True, 'inner_radius': 0.08, 'outer_radius': 0.70},
+            'radial': {'enabled': True},
+            'monotonic': {'enabled': True},
+        }
+
+        radius_configs = auto_share_radius_config(config)
+
+        assert 'rich_hierarchy' in radius_configs
+        assert 'radial' in radius_configs
+        assert 'monotonic' in radius_configs
+
+        # All should have same config
+        assert radius_configs['rich_hierarchy'].inner_radius == 0.08
+        assert radius_configs['rich_hierarchy'].outer_radius == 0.70
+        assert radius_configs['radial'].inner_radius == 0.08
+        assert radius_configs['radial'].outer_radius == 0.70
+        assert radius_configs['monotonic'].inner_radius == 0.08
+        assert radius_configs['monotonic'].outer_radius == 0.70
+
+    def test_auto_share_uses_defaults_when_none_specified(self):
+        """Verify defaults used when no block specifies radii."""
+        from src.losses.radius_defaults import auto_share_radius_config, DEFAULT_INNER_RADIUS, DEFAULT_OUTER_RADIUS
+
+        config = {
+            'rich_hierarchy': {'enabled': True},
+            'radial': {'enabled': True},
+        }
+
+        radius_configs = auto_share_radius_config(config)
+
+        # Should use defaults
+        assert radius_configs['rich_hierarchy'].inner_radius == DEFAULT_INNER_RADIUS
+        assert radius_configs['rich_hierarchy'].outer_radius == DEFAULT_OUTER_RADIUS
+        assert radius_configs['radial'].inner_radius == DEFAULT_INNER_RADIUS
+        assert radius_configs['radial'].outer_radius == DEFAULT_OUTER_RADIUS
+
+    def test_auto_share_multiple_blocks_warns(self):
+        """Verify warning when multiple blocks specify radii."""
+        from src.losses.radius_defaults import auto_share_radius_config
+
+        config = {
+            'rich_hierarchy': {'enabled': True, 'inner_radius': 0.08, 'outer_radius': 0.70},
+            'radial': {'enabled': True, 'inner_radius': 0.10, 'outer_radius': 0.80},  # Different values
+            'monotonic': {'enabled': True},
+        }
+
+        radius_configs = auto_share_radius_config(config)
+
+        # Should use first block's config for all
+        assert radius_configs['rich_hierarchy'].inner_radius == 0.08
+        assert radius_configs['radial'].inner_radius == 0.08  # Should match first block
+        assert radius_configs['monotonic'].inner_radius == 0.08
+
+    def test_compare_radius_configs_all_equal(self):
+        """Verify comparison returns True when all configs equal."""
+        from src.losses.radius_defaults import RadiusConfig, compare_radius_configs
+
+        config1 = RadiusConfig(inner_radius=0.08, outer_radius=0.70)
+        config2 = RadiusConfig(inner_radius=0.08, outer_radius=0.70)
+        config3 = RadiusConfig(inner_radius=0.08, outer_radius=0.70)
+
+        configs = {
+            'block1': config1,
+            'block2': config2,
+            'block3': config3,
+        }
+
+        all_equal, msg = compare_radius_configs(configs)
+        assert all_equal is True
+        assert 'consistent' in msg.lower()
+
+    def test_compare_radius_configs_detects_inconsistency(self):
+        """Verify comparison detects different radius configs."""
+        from src.losses.radius_defaults import RadiusConfig, compare_radius_configs
+
+        config1 = RadiusConfig(inner_radius=0.08, outer_radius=0.70)
+        config2 = RadiusConfig(inner_radius=0.10, outer_radius=0.80)
+
+        configs = {
+            'block1': config1,
+            'block2': config2,
+        }
+
+        all_equal, msg = compare_radius_configs(configs)
+        assert all_equal is False
+        assert 'inconsistent' in msg.lower()
+        assert 'block1' in msg
+        assert 'block2' in msg
+
+    def test_combined_loss_uses_shared_radius_config(self):
+        """Verify CombinedLoss uses shared radius config across losses."""
+        config = {
+            'rich_hierarchy': {
+                'enabled': True,
+                'inner_radius': 0.08,
+                'outer_radius': 0.70,
+            },
+            'radial': {'enabled': True},
+            'monotonic': {'enabled': True},
+        }
+
+        loss_fn = CombinedLoss(config, curvature=1.0)
+        radius_config = loss_fn.get_radius_config()
+
+        # All losses should have same radius config
+        assert radius_config['rich_hierarchy']['inner_radius'] == 0.08
+        assert radius_config['rich_hierarchy']['outer_radius'] == 0.70
+        assert radius_config['radial']['inner_radius'] == 0.08
+        assert radius_config['radial']['outer_radius'] == 0.70
+        assert radius_config['monotonic']['inner_radius'] == 0.08
+        assert radius_config['monotonic']['outer_radius'] == 0.70
+
+    def test_combined_loss_get_radius_config_empty_when_no_radial_losses(self):
+        """Verify get_radius_config returns empty dict when no radial losses enabled."""
+        config = {
+            'geodesic': {'enabled': True},
+            'rank': {'enabled': True},
+        }
+
+        loss_fn = CombinedLoss(config, curvature=1.0)
+        radius_config = loss_fn.get_radius_config()
+
+        assert radius_config == {}
+
+    def test_radial_monotonic_share_defaults(self):
+        """Verify radial and monotonic share defaults when rich_hierarchy not enabled."""
+        from src.losses.radius_defaults import DEFAULT_INNER_RADIUS, DEFAULT_OUTER_RADIUS
+
+        config = {
+            'radial': {'enabled': True},
+            'monotonic': {'enabled': True},
+        }
+
+        loss_fn = CombinedLoss(config, curvature=1.0)
+        radius_config = loss_fn.get_radius_config()
+
+        # Should use defaults
+        assert radius_config['radial']['inner_radius'] == DEFAULT_INNER_RADIUS
+        assert radius_config['radial']['outer_radius'] == DEFAULT_OUTER_RADIUS
+        assert radius_config['monotonic']['inner_radius'] == DEFAULT_INNER_RADIUS
+        assert radius_config['monotonic']['outer_radius'] == DEFAULT_OUTER_RADIUS
+

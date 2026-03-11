@@ -275,12 +275,12 @@ class RadialHierarchyLoss(nn.Module):
         self.generator.manual_seed(seed)
 
         # Precompute target radii in hyperbolic distance units
-        self._target_radii = _euclidean_to_hyperbolic_radius(
+        target_radii = _euclidean_to_hyperbolic_radius(
             _exponential_target_radii(
                 max_valuation, inner_radius, outer_radius, scale=3.0
             )
         )
-
+        self.register_buffer('_target_radii', target_radii)
     def forward(
         self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
     ) -> Tuple[torch.Tensor, dict]:
@@ -305,7 +305,7 @@ class RadialHierarchyLoss(nn.Module):
 
         # Compute target radius using exponential p-adic mapping (via precomputed LUT)
         v_clamped = valuations.long().clamp(0, self.max_valuation)
-        target_radius = self._target_radii.to(device)[v_clamped]
+        target_radius = self._target_radii[v_clamped]
 
         # Weighted loss (high-valuation points are rarer, more important)
         if self.valuation_weighting:
@@ -352,8 +352,8 @@ class RadialHierarchyLoss(nn.Module):
                 # (p-adic structure → larger margins at low valuation, smaller at high)
                 vi_clamped = v_i[higher_v_mask].long().clamp(0, self.max_valuation)
                 vj_clamped = v_j[higher_v_mask].long().clamp(0, self.max_valuation)
-                target_r_j = self._target_radii.to(device)[vj_clamped]
-                target_r_i = self._target_radii.to(device)[vi_clamped]
+                target_r_j = self._target_radii[vj_clamped]
+                target_r_i = self._target_radii[vi_clamped]
                 expected_margin = (target_r_j - target_r_i) * self.margin_step_factor
 
                 # Actual difference: r_j - r_i (should be positive)
@@ -606,12 +606,12 @@ class MonotonicRadialLoss(nn.Module):
         self.target_loss_weight = target_loss_weight
 
         # Precompute target radii in hyperbolic distance units
-        self._target_radii = _euclidean_to_hyperbolic_radius(
+        target_radii = _euclidean_to_hyperbolic_radius(
             _exponential_target_radii(
                 max_valuation, inner_radius, outer_radius, scale=3.0
             )
         )
-
+        self.register_buffer('_target_radii', target_radii)
     def forward(
         self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
     ) -> Tuple[torch.Tensor, dict]:
@@ -661,7 +661,7 @@ class MonotonicRadialLoss(nn.Module):
 
         # Compute target margins between adjacent present levels
         # Using exponential target radii for p-adic structure
-        target_lut = self._target_radii.to(device)
+        target_lut = self._target_radii
         margins = []
         for i in range(n_levels - 1):
             v_curr = levels_present[i]
@@ -770,7 +770,7 @@ class RichHierarchyLoss(nn.Module):
         # Use hyperbolic radius (distance from origin), not Euclidean norm
         radii = hyperbolic_radius(z_hyp, c=self.curvature)
         # Use precomputed hyperbolic target radii from __init__
-        target_radii = self.target_radii.to(device)
+        target_radii = self.target_radii
 
         valuations = TERNARY.valuation(indices_batch).long().to(device)
 

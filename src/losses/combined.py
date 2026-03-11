@@ -38,7 +38,6 @@ import torch.nn.functional as F
 
 from src.core import TERNARY
 from src.geometry import poincare_distance
-
 from .padic_geodesic import (
     PAdicGeodesicLoss,
     RadialHierarchyLoss,
@@ -46,6 +45,14 @@ from .padic_geodesic import (
     MonotonicRadialLoss,
     RichHierarchyLoss,
 )
+from .radius_defaults import (
+    RadiusConfig,
+    DEFAULT_INNER_RADIUS,
+    DEFAULT_OUTER_RADIUS,
+    auto_share_radius_config,
+    compare_radius_configs,
+)
+
 
 
 class CombinedLoss(nn.Module):
@@ -109,12 +116,35 @@ class CombinedLoss(nn.Module):
     def _init_losses(self):
         """Initialize loss modules based on config."""
 
+        # Initialize losses
+        self.rich_hierarchy = None
+        self.radial_loss = None
+        self.geodesic_loss = None
+        self.rank_loss = None
+        self.monotonic_loss = None
+        
+        # Collect enabled loss configs for radius sharing
+        loss_configs = {}
+        for name in ['rich_hierarchy', 'radial', 'monotonic']:
+            cfg = self.config.get(name, {})
+            if cfg.get('enabled', False):
+                loss_configs[name] = cfg
+        
+        # Auto-share radius hyperparameters across all radial losses
+        radius_configs = auto_share_radius_config(loss_configs)
+        
+        # Validate consistency
+        consistent, msg = compare_radius_configs(radius_configs)
+        if not consistent:
+            print(f"[CombinedLoss] {msg}")
+        
         # RichHierarchyLoss (primary unified loss)
         rich_cfg = self.config.get('rich_hierarchy', {})
         if rich_cfg.get('enabled', False):
+            radius_cfg = radius_configs['rich_hierarchy']
             self.rich_hierarchy = RichHierarchyLoss(
-                inner_radius=rich_cfg.get('inner_radius', 0.1),
-                outer_radius=rich_cfg.get('outer_radius', 0.85),
+                inner_radius=radius_cfg.inner_radius,
+                outer_radius=radius_cfg.outer_radius,
                 curvature=self.curvature,
                 separation_margin=rich_cfg.get('separation_margin', 0.01),
             )
@@ -130,8 +160,8 @@ class CombinedLoss(nn.Module):
         radial_cfg = self.config.get('radial', {})
         if radial_cfg.get('enabled', False):
             self.radial_loss = RadialHierarchyLoss(
-                inner_radius=radial_cfg.get('inner_radius', 0.1),
-                outer_radius=radial_cfg.get('outer_radius', 0.85),
+                inner_radius=radius_configs['radial'].inner_radius,
+                outer_radius=radius_configs['radial'].outer_radius,
                 margin_weight=radial_cfg.get('margin_weight', 1.0),
                 curvature=self.curvature,
                 valuation_weight_exponent=radial_cfg.get('valuation_weight_exponent', 0.25),
@@ -175,8 +205,8 @@ class CombinedLoss(nn.Module):
         monotonic_cfg = self.config.get('monotonic', {})
         if monotonic_cfg.get('enabled', False):
             self.monotonic_loss = MonotonicRadialLoss(
-                inner_radius=monotonic_cfg.get('inner_radius', 0.1),
-                outer_radius=monotonic_cfg.get('outer_radius', 0.85),
+                inner_radius=radius_configs['monotonic'].inner_radius,
+                outer_radius=radius_configs['monotonic'].outer_radius,
                 min_margin=monotonic_cfg.get('min_margin', 0.02),
                 curvature=self.curvature,
                 target_loss_weight=monotonic_cfg.get('target_loss_weight', 0.5),
@@ -489,6 +519,30 @@ class CombinedLoss(nn.Module):
         enabled = self.get_enabled_losses()
         learnable = "learnable" if self.use_learnable_weights else "fixed"
         return f"CombinedLoss(enabled={enabled}, weights={learnable})"
+
+    def get_radius_config(self) -> Dict[str, Dict[str, float]]:
+        """Return radius configuration for each enabled loss.
+
+        Returns:
+            Dict mapping loss name to {'inner_radius': x, 'outer_radius': y}
+        """
+        radius_config = {}
+        if self.rich_hierarchy is not None:
+            radius_config['rich_hierarchy'] = {
+                'inner_radius': self.rich_hierarchy.inner_radius,
+                'outer_radius': self.rich_hierarchy.outer_radius,
+            }
+        if self.radial_loss is not None:
+            radius_config['radial'] = {
+                'inner_radius': self.radial_loss.inner_radius,
+                'outer_radius': self.radial_loss.outer_radius,
+            }
+        if self.monotonic_loss is not None:
+            radius_config['monotonic'] = {
+                'inner_radius': self.monotonic_loss.inner_radius,
+                'outer_radius': self.monotonic_loss.outer_radius,
+            }
+        return radius_config
 
 
 __all__ = ["CombinedLoss"]

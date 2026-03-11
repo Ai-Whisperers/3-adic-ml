@@ -150,11 +150,9 @@ loss:
   # Radial targets (MSE to target radii based on 3-adic valuation)
   radial:
     enabled: true
-    inner_radius: 0.08  # High valuation (v=9) target
-    outer_radius: 0.70  # Low valuation (v=0) target (smaller = more spread)
+    # Note: inner_radius/outer_radius automatically shared from rich_hierarchy
     radial_weight: 5.0
     margin_weight: 0.5
-
   # Geodesic loss (Poincaré distance alignment)
   geodesic:
     enabled: true
@@ -181,12 +179,10 @@ loss:
   # Monotonic radial ordering
   monotonic:
     enabled: true
-    inner_radius: 0.08
-    outer_radius: 0.70
+    # Note: inner_radius/outer_radius automatically shared from rich_hierarchy
     weight: 1.0
     target_loss_weight: 0.5
     min_margin: 0.02
-
   # Hyperbolic KL divergence (curvature-corrected, optional)
   # Uses conformal factor λ(x) for proper Poincaré geometry
   hyperbolic_kl:
