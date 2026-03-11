@@ -417,7 +417,10 @@ def compute_coverage(logits: torch.Tensor, targets: torch.Tensor) -> float:
 def compute_hyperbolic_coverage(z_hyp: torch.Tensor, curvature: float = 1.0) -> float:
     """Compute hyperbolic coverage via radial entropy/spread."""
     with torch.no_grad():
-        radii = hyperbolic_radius(z_hyp, c=curvature).clamp(min=0.01, max=0.99)
+        # Normalize hyperbolic radius [0, inf) -> [0, 1) using 1 - exp(-r)
+        radii_raw = hyperbolic_radius(z_hyp, c=curvature)
+        radii = 1.0 - torch.exp(-radii_raw)  # Maps [0, inf) -> [0, 1)
+        radii = radii.clamp(min=0.001, max=0.999)
         hist = torch.histc(radii, bins=10, min=0.0, max=1.0)
         probs = (hist / hist.sum().clamp(min=1)) + 1e-10
         probs = probs / probs.sum()
