@@ -574,8 +574,12 @@ class TestTargetRadiusMonotonicity:
         )
         target = loss_fn._target_radii
 
-        assert torch.all(target >= inner - 1e-10)
-        assert torch.all(target <= outer + 1e-10)
+        # Targets are now in hyperbolic distance units (via _euclidean_to_hyperbolic_radius)
+        # inner=0.1 -> hyp~0.200, outer=0.85 -> hyp~2.512
+        inner_hyp = 2.0 * torch.atanh(torch.tensor(inner))
+        outer_hyp = 2.0 * torch.atanh(torch.tensor(outer).clamp(max=0.999))
+        assert torch.all(target >= inner_hyp - 1e-10)
+        assert torch.all(target <= outer_hyp + 1e-10)
 
     def test_monotonic_target_radii_buffer(self):
         """Verify MonotonicRadialLoss uses exponential target radii with shrinking gaps."""
@@ -584,12 +588,14 @@ class TestTargetRadiusMonotonicity:
         )
         target = loss_fn._target_radii
 
-        # Endpoints are preserved
+        # Endpoints are preserved (in hyperbolic distance units)
+        outer_hyp = 2.0 * torch.atanh(torch.tensor(0.85, dtype=torch.float64))
+        inner_hyp = 2.0 * torch.atanh(torch.tensor(0.1, dtype=torch.float64))
         assert torch.allclose(
-            target[0], torch.tensor(0.85, dtype=torch.float64), atol=1e-10
+            target[0], outer_hyp, atol=1e-10
         )
         assert torch.allclose(
-            target[-1], torch.tensor(0.1, dtype=torch.float64), atol=1e-10
+            target[-1], inner_hyp, atol=1e-10
         )
 
         # Exponential spacing means early gaps are larger than late gaps
@@ -600,12 +606,15 @@ class TestTargetRadiusMonotonicity:
         """Verify RichHierarchyLoss target_radii buffer follows exponential mapping."""
         loss_fn = RichHierarchyLoss(inner_radius=0.1, outer_radius=0.85)
 
-        # Check buffer values
-        expected = _exponential_target_radii(
-            max_valuation=9,
-            inner_radius=0.1,
-            outer_radius=0.85,
-            scale=3.0,
+        # Check buffer values (now in hyperbolic distance units)
+        from src.losses.padic_geodesic import _euclidean_to_hyperbolic_radius
+        expected = _euclidean_to_hyperbolic_radius(
+            _exponential_target_radii(
+                max_valuation=9,
+                inner_radius=0.1,
+                outer_radius=0.85,
+                scale=3.0,
+            )
         )
 
         target_radii = torch.as_tensor(loss_fn.target_radii)

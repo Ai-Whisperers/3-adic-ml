@@ -144,14 +144,15 @@ loss:
     coverage_weight: 1.0
     richness_weight: 2.5
     separation_weight: 3.0
-    min_richness_ratio: 0.4
+    inner_radius: 0.08
+    outer_radius: 0.70
 
   # Radial targets (MSE to target radii based on 3-adic valuation)
   radial:
     enabled: true
     inner_radius: 0.08  # High valuation (v=9) target
-    outer_radius: 0.90  # Low valuation (v=0) target
-    radial_weight: 1.0
+    outer_radius: 0.70  # Low valuation (v=0) target (smaller = more spread)
+    radial_weight: 5.0
     margin_weight: 0.5
 
   # Geodesic loss (Poincaré distance alignment)
@@ -162,7 +163,7 @@ loss:
     max_target_distance: 3.0
     n_pairs: 2000
     use_smooth_l1: true
-    weight: 0.4
+    weight: 2.0
 
   # Global rank loss (soft ordering violations)
   rank:
@@ -176,6 +177,15 @@ loss:
     enabled: true
     valuation_weight: 0.5
     sparsity_weight: 0.3
+ 
+  # Monotonic radial ordering
+  monotonic:
+    enabled: true
+    inner_radius: 0.08
+    outer_radius: 0.70
+    weight: 1.0
+    target_loss_weight: 0.5
+    min_margin: 0.02
 
   # Hyperbolic KL divergence (curvature-corrected, optional)
   # Uses conformal factor λ(x) for proper Poincaré geometry
@@ -188,7 +198,7 @@ loss:
 # Training Configuration
 # =============================================================================
 training:
-  epochs: 100
+  epochs: 200
   batch_size: 512
   lr: 8.0e-4
   weight_decay: 1.0e-4

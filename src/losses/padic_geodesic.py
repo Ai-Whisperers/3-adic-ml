@@ -66,6 +66,24 @@ def _exponential_target_radii(
     return inner_radius + (outer_radius - inner_radius) * (exp_levels - exp_max) / denom
 
 
+def _euclidean_to_hyperbolic_radius(r_euclid: torch.Tensor) -> torch.Tensor:
+    """Convert Poincaré ball Euclidean radius to hyperbolic geodesic distance.
+
+    The Poincaré ball model uses: r_hyp = 2 * arctanh(||x||)
+    where ||x|| is the Euclidean norm of the point.
+
+    This converts config targets (in Euclidean [0,1) coords) to hyperbolic
+    distance units (what hyperbolic_radius() returns).
+
+    Args:
+        r_euclid: Euclidean radius in [0, 1) Poincaré coordinates
+    Returns:
+        Hyperbolic distance from origin
+    """
+    r_euclid = r_euclid.clamp(min=0.0, max=0.999)
+    return 2.0 * torch.atanh(r_euclid)
+
+
 class PAdicGeodesicLoss(nn.Module):
     """Unified P-Adic Geodesic Loss.
 
@@ -256,9 +274,11 @@ class RadialHierarchyLoss(nn.Module):
         self.generator = torch.Generator()
         self.generator.manual_seed(seed)
 
-        # Precompute exponential target radii (p-adic structure)
-        self._target_radii = _exponential_target_radii(
-            max_valuation, inner_radius, outer_radius, scale=3.0
+        # Precompute target radii in hyperbolic distance units
+        self._target_radii = _euclidean_to_hyperbolic_radius(
+            _exponential_target_radii(
+                max_valuation, inner_radius, outer_radius, scale=3.0
+            )
         )
 
     def forward(
@@ -585,9 +605,11 @@ class MonotonicRadialLoss(nn.Module):
         self.temperature = temperature
         self.target_loss_weight = target_loss_weight
 
-        # Precompute exponential target radii (p-adic structure)
-        self._target_radii = _exponential_target_radii(
-            max_valuation, inner_radius, outer_radius, scale=3.0
+        # Precompute target radii in hyperbolic distance units
+        self._target_radii = _euclidean_to_hyperbolic_radius(
+            _exponential_target_radii(
+                max_valuation, inner_radius, outer_radius, scale=3.0
+            )
         )
 
     def forward(
@@ -734,9 +756,11 @@ class RichHierarchyLoss(nn.Module):
         self.outer_radius = outer_radius
         self.curvature = curvature
         self.separation_margin = separation_margin
-        # Precompute target radii using exponential p-adic mapping
-        target_radii = _exponential_target_radii(
-            9, inner_radius, outer_radius, scale=3.0
+        # Precompute target radii in hyperbolic distance units
+        target_radii = _euclidean_to_hyperbolic_radius(
+            _exponential_target_radii(
+                9, inner_radius, outer_radius, scale=3.0
+            )
         )
         self.register_buffer("target_radii", target_radii)
 
@@ -745,12 +769,8 @@ class RichHierarchyLoss(nn.Module):
 
         # Use hyperbolic radius (distance from origin), not Euclidean norm
         radii = hyperbolic_radius(z_hyp, c=self.curvature)
-        target_radii = _exponential_target_radii(
-            max_valuation=9,
-            inner_radius=self.inner_radius,
-            outer_radius=self.outer_radius,
-            scale=3.0,
-        ).to(device)
+        # Use precomputed hyperbolic target radii from __init__
+        target_radii = self.target_radii.to(device)
 
         valuations = TERNARY.valuation(indices_batch).long().to(device)
 
