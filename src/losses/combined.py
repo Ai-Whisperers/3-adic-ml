@@ -47,9 +47,6 @@ from .padic_geodesic import (
     RichHierarchyLoss,
 )
 
-from .hyperbolic_kl import HyperbolicKLDivergence
-
-
 
 class CombinedLoss(nn.Module):
     """Config-driven combined loss function.
@@ -189,20 +186,6 @@ class CombinedLoss(nn.Module):
             self.monotonic_loss = None
             self.monotonic_weight = 0.0
 
-        # Hyperbolic KL divergence
-        kl_cfg = self.config.get('hyperbolic_kl', {})
-        if kl_cfg.get('enabled', False):
-            self.hyperbolic_kl = HyperbolicKLDivergence(
-                curvature=self.curvature,
-                beta=kl_cfg.get('beta', 1.0),
-                free_bits=kl_cfg.get('free_bits', 0.0),
-            )
-            self.hyperbolic_kl_weight = kl_cfg.get('weight', 1.0)
-        else:
-            self.hyperbolic_kl = None
-            self.hyperbolic_kl_weight = 0.0
-
-
     def _init_learnable_weights(self):
         """Initialize learnable log-sigma parameters for uncertainty weighting.
 
@@ -297,8 +280,6 @@ class CombinedLoss(nn.Module):
         logits: torch.Tensor,
         targets: torch.Tensor,
         epoch: int = 0,
-        mu: Optional[torch.Tensor] = None,
-        logvar: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """Compute combined loss.
 
@@ -378,14 +359,6 @@ class CombinedLoss(nn.Module):
                 total = total + self._weighted_loss(monotonic_out, self.log_sigma_monotonic)
             else:
                 total = total + self.monotonic_weight * monotonic_out
-
-        # 6. Hyperbolic KL Divergence
-        if self.hyperbolic_kl is not None and mu is not None and logvar is not None:
-            kl_loss = self.hyperbolic_kl(mu, logvar, z_hyp)
-            losses['hyperbolic_kl'] = kl_loss
-            total = total + self.hyperbolic_kl_weight * kl_loss
-
-
 
         # 6. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:
