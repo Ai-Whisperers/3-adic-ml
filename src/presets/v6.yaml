@@ -64,12 +64,8 @@ riemannian:
 # =============================================================================
 # Geometry Settings (V6.0)
 # =============================================================================
-geometry:
-  # z_hyp is wrapped as ManifoldParameter (as_manifold=True in forward pass)
-  use_manifold_parameter: true
-  # Geodesic interpolation available via geodesic() and geodesic_interpolation()
-  geodesic_steps: 10  # Default steps for geodesic_interpolation
-
+# NOTE: geometry.use_manifold_parameter and geometry.geodesic_steps were removed
+# (dead config, no code reads them). Archived in archive-for-review/config_drift/
 # =============================================================================
 # Precision Settings (V6.0)
 # =============================================================================
@@ -107,7 +103,7 @@ statenet:
 
   # Initial trainability states (before StateNet takes over)
   initial:
-    encoder_a_trainable: false    # Start fixed (coverage anchor)
+    encoder_a_trainable: true    # Start trainable (both encoders active)
     encoder_b_trainable: true     # Start trainable (hierarchy learner)
     projections_trainable: true   # Start trainable (fast adapter)
 
@@ -200,15 +196,9 @@ training:
   weight_decay: 1.0e-4
   max_grad_norm: 1.0
 
-  # Stratified sampling (oversample high-valuation operations)
-  use_stratified: true
-  high_v_budget_ratio: 0.25
-
-  # Adaptive curriculum
-  use_adaptive: true
-  hierarchy_threshold: -0.75
-  patience: 50
-  min_epochs: 50
+  # NOTE: training.use_stratified, high_v_budget_ratio, use_adaptive,
+  # hierarchy_threshold, patience, min_epochs were removed (dead config,
+  # no code reads them). Archived in archive-for-review/config_drift/
 
   # Learning rate scheduler
   scheduler:
@@ -268,19 +258,14 @@ targets:
 # Memory Optimization
 # =============================================================================
 memory:
-  gradient_checkpointing: false
   empty_cache_freq: 25
   cudnn_benchmark: true
-  max_memory_growth: 0.8
+  # NOTE: gradient_checkpointing and max_memory_growth were removed (dead config,
+  # no code reads them). Archived in archive-for-review/config_drift/
 
-# =============================================================================
-# Early Stopping
-# =============================================================================
-early_stopping:
-  extended_patience: true
-  plateau_override: false
-  grokking_patience: 50
-
+# NOTE: early_stopping section was removed entirely (dead config,
+# GrokkingDetector has its own internal logic).
+# Archived in archive-for-review/config_drift/
 # =============================================================================
 # Version Tracking
 # =============================================================================

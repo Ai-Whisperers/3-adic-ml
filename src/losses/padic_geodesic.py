@@ -35,6 +35,37 @@ from ..core import TERNARY
 from ..geometry import poincare_distance, hyperbolic_radius
 
 
+def _exponential_target_radii(
+    max_valuation: int, inner_radius: float, outer_radius: float, scale: float = 3.0
+) -> torch.Tensor:
+    """Precompute target radii using exponential decay matching p-adic structure.
+
+    Formula: r(v) = inner + (outer - inner) * (exp(-v/s) - exp(-M/s)) / (1 - exp(-M/s))
+    where M = max_valuation, s = scale.
+
+    This creates exponentially-spaced radial bands that match the ultrametric
+    structure of 3-adic distances: large gaps at low valuation (boundary),
+    smaller gaps at high valuation (origin). Exact endpoints: r(0)=outer, r(M)=inner.
+
+    Args:
+        max_valuation: Maximum valuation level (typically 9 for 3^9).
+        inner_radius: Target radius for highest valuation (near origin).
+        outer_radius: Target radius for lowest valuation (near boundary).
+        scale: Exponential decay rate. Higher = more gradual decay.
+            Default 3.0 matches PAdicGeodesicLoss.valuation_scale.
+
+    Returns:
+        Tensor of shape (max_valuation + 1,) with target radius per level.
+    """
+    import math
+
+    levels = torch.arange(max_valuation + 1, dtype=torch.float64)
+    exp_levels = torch.exp(-levels / scale)
+    exp_max = math.exp(-max_valuation / scale)
+    denom = 1.0 - exp_max
+    return inner_radius + (outer_radius - inner_radius) * (exp_levels - exp_max) / denom
+
+
 class PAdicGeodesicLoss(nn.Module):
     """Unified P-Adic Geodesic Loss.
 
@@ -92,7 +123,9 @@ class PAdicGeodesicLoss(nn.Module):
         """
         return self.max_target * torch.exp(-valuation / self.valuation_scale)
 
-    def forward(self, z_hyp: torch.Tensor, batch_indices: torch.Tensor) -> Tuple[torch.Tensor, dict]:
+    def forward(
+        self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
+    ) -> Tuple[torch.Tensor, dict]:
         """Compute unified geodesic loss.
 
         Args:
@@ -111,8 +144,12 @@ class PAdicGeodesicLoss(nn.Module):
         # Sample random pairs (reproducible via generator)
         n_pairs = min(self.n_pairs, batch_size * (batch_size - 1) // 2)
         # Generate on CPU with seeded generator, then move to device
-        i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
-        j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
+        i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(
+            device
+        )
+        j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(
+            device
+        )
 
         # Avoid self-pairs
         same_mask = i_idx == j_idx
@@ -140,8 +177,16 @@ class PAdicGeodesicLoss(nn.Module):
                 corr = torch.tensor(0.0, device=device, dtype=torch.float64)
 
             # Mean distances by valuation level
-            mean_d_low_v = d_actual[valuation < 2].mean() if (valuation < 2).any() else torch.tensor(0.0, device=device, dtype=torch.float64)
-            mean_d_high_v = d_actual[valuation >= 4].mean() if (valuation >= 4).any() else torch.tensor(0.0, device=device, dtype=torch.float64)
+            mean_d_low_v = (
+                d_actual[valuation < 2].mean()
+                if (valuation < 2).any()
+                else torch.tensor(0.0, device=device, dtype=torch.float64)
+            )
+            mean_d_high_v = (
+                d_actual[valuation >= 4].mean()
+                if (valuation >= 4).any()
+                else torch.tensor(0.0, device=device, dtype=torch.float64)
+            )
 
         metrics = {
             "n_pairs": n_pairs,
@@ -211,10 +256,14 @@ class RadialHierarchyLoss(nn.Module):
         self.generator = torch.Generator()
         self.generator.manual_seed(seed)
 
-        # Compute radius step per valuation level
-        self.radius_step = (outer_radius - inner_radius) / max_valuation
+        # Precompute exponential target radii (p-adic structure)
+        self._target_radii = _exponential_target_radii(
+            max_valuation, inner_radius, outer_radius, scale=3.0
+        )
 
-    def forward(self, z_hyp: torch.Tensor, batch_indices: torch.Tensor) -> Tuple[torch.Tensor, dict]:
+    def forward(
+        self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
+    ) -> Tuple[torch.Tensor, dict]:
         """Compute radial hierarchy loss.
 
         Args:
@@ -234,9 +283,9 @@ class RadialHierarchyLoss(nn.Module):
         # This ensures consistent geometry throughout the system
         actual_radius = hyperbolic_radius(z_hyp, c=self.curvature)
 
-        # Compute target radius (inverse relationship with valuation)
-        normalized_v = valuations / self.max_valuation
-        target_radius = self.outer_radius - normalized_v * (self.outer_radius - self.inner_radius)
+        # Compute target radius using exponential p-adic mapping (via precomputed LUT)
+        v_clamped = valuations.long().clamp(0, self.max_valuation)
+        target_radius = self._target_radii.to(device)[v_clamped]
 
         # Weighted loss (high-valuation points are rarer, more important)
         if self.valuation_weighting:
@@ -246,18 +295,24 @@ class RadialHierarchyLoss(nn.Module):
             raw_weights = 1.0 + torch.exp(valuations * self.valuation_weight_exponent)
             weights = torch.clamp(raw_weights, min=1.0, max=10.0)
         else:
-            weights = torch.ones_like(normalized_v)
+            weights = torch.ones_like(valuations)
 
         # Primary loss: push each point to its target radius
-        primary_loss = (F.mse_loss(actual_radius, target_radius, reduction="none") * weights).mean()
+        primary_loss = (
+            F.mse_loss(actual_radius, target_radius, reduction="none") * weights
+        ).mean()
 
         # Margin loss: enforce separation between different valuation levels
         margin_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
         if self.use_margin_loss and batch_size >= 2:
             # Sample pairs (reproducible via generator)
             n_pairs = min(1000, batch_size * (batch_size - 1) // 2)
-            i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
-            j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
+            i_idx = torch.randint(
+                0, batch_size, (n_pairs,), generator=self.generator
+            ).to(device)
+            j_idx = torch.randint(
+                0, batch_size, (n_pairs,), generator=self.generator
+            ).to(device)
 
             # Avoid same index
             same = i_idx == j_idx
@@ -273,9 +328,13 @@ class RadialHierarchyLoss(nn.Module):
             higher_v_mask = v_i > v_j
 
             if higher_v_mask.any():
-                # Expected margin: proportional to valuation difference
-                v_diff = v_i[higher_v_mask] - v_j[higher_v_mask]
-                expected_margin = v_diff * self.radius_step * self.margin_step_factor
+                # Expected margin: difference in exponential target radii
+                # (p-adic structure → larger margins at low valuation, smaller at high)
+                vi_clamped = v_i[higher_v_mask].long().clamp(0, self.max_valuation)
+                vj_clamped = v_j[higher_v_mask].long().clamp(0, self.max_valuation)
+                target_r_j = self._target_radii.to(device)[vj_clamped]
+                target_r_i = self._target_radii.to(device)[vi_clamped]
+                expected_margin = (target_r_j - target_r_i) * self.margin_step_factor
 
                 # Actual difference: r_j - r_i (should be positive)
                 actual_diff = r_j[higher_v_mask] - r_i[higher_v_mask]
@@ -288,7 +347,9 @@ class RadialHierarchyLoss(nn.Module):
 
         # Metrics
         with torch.no_grad():
-            radial_corr = torch.corrcoef(torch.stack([valuations, -actual_radius]))[0, 1]
+            radial_corr = torch.corrcoef(torch.stack([valuations, -actual_radius]))[
+                0, 1
+            ]
             if torch.isnan(radial_corr):
                 radial_corr = torch.tensor(0.0, device=device, dtype=torch.float64)
 
@@ -303,67 +364,11 @@ class RadialHierarchyLoss(nn.Module):
             "radius_max": actual_radius.max().item(),
             "radius_range": radius_range.item(),
             "primary_loss": primary_loss.item(),
-            "margin_loss": (margin_loss.item() if isinstance(margin_loss, torch.Tensor) else margin_loss),
-        }
-
-        return total_loss, metrics
-
-
-class CombinedGeodesicLoss(nn.Module):
-    """Combined Geodesic + Radial Loss for V5.11.
-
-    Wraps both losses with curriculum-based blending:
-    - Early: More radial loss (establish hierarchy)
-    - Late: More geodesic loss (refine correlation)
-
-    The tau parameter controls the blend (can be learned by controller).
-    """
-
-    def __init__(
-        self,
-        curvature: float = 1.0,
-        max_target_distance: float = 3.0,
-        inner_radius: float = 0.1,
-        outer_radius: float = 0.85,
-        n_pairs: int = 2000,
-    ):
-        super().__init__()
-        self.geodesic_loss = PAdicGeodesicLoss(
-            curvature=curvature,
-            max_target_distance=max_target_distance,
-            n_pairs=n_pairs,
-        )
-        self.radial_loss = RadialHierarchyLoss(inner_radius=inner_radius, outer_radius=outer_radius)
-
-    def forward(
-        self,
-        z_hyp: torch.Tensor,
-        batch_indices: torch.Tensor,
-        tau: float = 0.5,
-    ) -> Tuple[torch.Tensor, dict]:
-        """Compute combined loss with curriculum blending.
-
-        Args:
-            z_hyp: Points in Poincaré ball
-            batch_indices: Operation indices
-            tau: Blend factor (0 = pure radial, 1 = pure geodesic)
-
-        Returns:
-            Tuple of (loss, metrics_dict)
-        """
-        geo_loss, geo_metrics = self.geodesic_loss(z_hyp, batch_indices)
-        rad_loss, rad_metrics = self.radial_loss(z_hyp, batch_indices)
-
-        # Curriculum blend
-        total_loss = (1 - tau) * rad_loss + tau * geo_loss
-
-        # Merge metrics
-        metrics = {
-            "geodesic_loss": geo_loss.item(),
-            "radial_loss": rad_loss.item(),
-            "tau": tau,
-            **{f"geo_{k}": v for k, v in geo_metrics.items()},
-            **{f"rad_{k}": v for k, v in rad_metrics.items()},
+            "margin_loss": (
+                margin_loss.item()
+                if isinstance(margin_loss, torch.Tensor)
+                else margin_loss
+            ),
         }
 
         return total_loss, metrics
@@ -410,7 +415,9 @@ class GlobalRankLoss(nn.Module):
         self.generator = torch.Generator()
         self.generator.manual_seed(seed)
 
-    def forward(self, z_hyp: torch.Tensor, batch_indices: torch.Tensor) -> Tuple[torch.Tensor, dict]:
+    def forward(
+        self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
+    ) -> Tuple[torch.Tensor, dict]:
         """Compute global rank loss.
 
         Args:
@@ -424,7 +431,9 @@ class GlobalRankLoss(nn.Module):
         batch_size = z_hyp.size(0)
 
         if batch_size < 2:
-            return torch.tensor(0.0, device=device, dtype=torch.float64), {"n_violations": 0}
+            return torch.tensor(0.0, device=device, dtype=torch.float64), {
+                "n_violations": 0
+            }
 
         # Get valuations and radii
         valuations = TERNARY.valuation(batch_indices).double()
@@ -433,13 +442,27 @@ class GlobalRankLoss(nn.Module):
 
         if self.use_all_pairs:
             # All pairs (expensive: O(n²))
-            i_idx = torch.arange(batch_size, device=device).unsqueeze(1).expand(-1, batch_size).reshape(-1)
-            j_idx = torch.arange(batch_size, device=device).unsqueeze(0).expand(batch_size, -1).reshape(-1)
+            i_idx = (
+                torch.arange(batch_size, device=device)
+                .unsqueeze(1)
+                .expand(-1, batch_size)
+                .reshape(-1)
+            )
+            j_idx = (
+                torch.arange(batch_size, device=device)
+                .unsqueeze(0)
+                .expand(batch_size, -1)
+                .reshape(-1)
+            )
         else:
             # Sample pairs (reproducible via generator)
             n_pairs = min(self.n_pairs, batch_size * (batch_size - 1))
-            i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
-            j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
+            i_idx = torch.randint(
+                0, batch_size, (n_pairs,), generator=self.generator
+            ).to(device)
+            j_idx = torch.randint(
+                0, batch_size, (n_pairs,), generator=self.generator
+            ).to(device)
 
             # Avoid self-pairs
             same = i_idx == j_idx
@@ -562,11 +585,14 @@ class MonotonicRadialLoss(nn.Module):
         self.temperature = temperature
         self.target_loss_weight = target_loss_weight
 
-        # Compute target radius per level
-        self.radius_range = outer_radius - inner_radius
-        self.level_step = self.radius_range / max_valuation
+        # Precompute exponential target radii (p-adic structure)
+        self._target_radii = _exponential_target_radii(
+            max_valuation, inner_radius, outer_radius, scale=3.0
+        )
 
-    def forward(self, z_hyp: torch.Tensor, batch_indices: torch.Tensor) -> Tuple[torch.Tensor, dict]:
+    def forward(
+        self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
+    ) -> Tuple[torch.Tensor, dict]:
         """Compute monotonic radial loss.
 
         Args:
@@ -580,7 +606,9 @@ class MonotonicRadialLoss(nn.Module):
         batch_size = z_hyp.size(0)
 
         if batch_size < 2:
-            return torch.tensor(0.0, device=device, dtype=torch.float64), {"n_levels": 0}
+            return torch.tensor(0.0, device=device, dtype=torch.float64), {
+                "n_levels": 0
+            }
 
         # Get valuations and radii
         valuations = TERNARY.valuation(batch_indices)
@@ -610,12 +638,17 @@ class MonotonicRadialLoss(nn.Module):
         n_levels = len(levels_present)
 
         # Compute target margins between adjacent present levels
-        # Margin proportional to valuation gap
+        # Using exponential target radii for p-adic structure
+        target_lut = self._target_radii.to(device)
         margins = []
         for i in range(n_levels - 1):
-            v_gap = levels_present[i + 1] - levels_present[i]
-            # Adaptive margin: larger gaps get larger margins
-            margin = max(self.min_margin, self.level_step * v_gap * self.margin_scale)
+            v_curr = levels_present[i]
+            v_next = levels_present[i + 1]
+            # Margin from exponential target difference (scaled, with floor)
+            exp_margin = (
+                target_lut[v_curr] - target_lut[v_next]
+            ).item() * self.margin_scale
+            margin = max(self.min_margin, exp_margin)
             margins.append(margin)
 
         margins = torch.tensor(margins, device=device, dtype=torch.float64)
@@ -634,12 +667,8 @@ class MonotonicRadialLoss(nn.Module):
             # Hard hinge
             loss = F.relu(violations).mean()
 
-        # Also add a gentle pull toward target radii per level
-        target_radii = []
-        for v in levels_present:
-            target = self.outer_radius - (v / self.max_valuation) * self.radius_range
-            target_radii.append(target)
-        target_radii = torch.tensor(target_radii, device=device, dtype=torch.float64)
+        # Also add a gentle pull toward exponential target radii per level
+        target_radii = target_lut[torch.tensor(levels_present, dtype=torch.long)]
 
         target_loss = F.mse_loss(level_means, target_radii)
 
@@ -649,10 +678,15 @@ class MonotonicRadialLoss(nn.Module):
         # Metrics
         with torch.no_grad():
             hard_violations = (violations > 0).sum().item()
-            mean_violation = violations[violations > 0].mean().item() if hard_violations > 0 else 0.0
+            mean_violation = (
+                violations[violations > 0].mean().item() if hard_violations > 0 else 0.0
+            )
 
             # Build level radius map for logging
-            level_radius_map = {f"r_v{levels_present[i]}": level_means[i].item() for i in range(n_levels)}
+            level_radius_map = {
+                f"r_v{levels_present[i]}": level_means[i].item()
+                for i in range(n_levels)
+            }
 
         metrics = {
             "n_levels": n_levels,
@@ -660,8 +694,12 @@ class MonotonicRadialLoss(nn.Module):
             "mean_violation_magnitude": mean_violation,
             "monotonic_loss": loss.item(),
             "target_loss": target_loss.item(),
-            "min_radius_diff": (radius_diffs.min().item() if len(radius_diffs) > 0 else 0),
-            "mean_radius_diff": (radius_diffs.mean().item() if len(radius_diffs) > 0 else 0),
+            "min_radius_diff": (
+                radius_diffs.min().item() if len(radius_diffs) > 0 else 0
+            ),
+            "mean_radius_diff": (
+                radius_diffs.mean().item() if len(radius_diffs) > 0 else 0
+            ),
             **level_radius_map,
         }
 
@@ -679,7 +717,9 @@ class RichHierarchyLoss(nn.Module):
     Refactored to use pure Hyperbolic distance for radii.
     """
 
-    def __init__(self, inner_radius=0.1, outer_radius=0.85, curvature=1.0, separation_margin=0.01):
+    def __init__(
+        self, inner_radius=0.1, outer_radius=0.85, curvature=1.0, separation_margin=0.01
+    ):
         """Initialize RichHierarchyLoss.
 
         Args:
@@ -694,11 +734,10 @@ class RichHierarchyLoss(nn.Module):
         self.outer_radius = outer_radius
         self.curvature = curvature
         self.separation_margin = separation_margin
-        # Precompute target radii for valuations 0..9
-        target_radii = torch.tensor([
-            outer_radius - (v / 9) * (outer_radius - inner_radius)
-            for v in range(10)
-        ], dtype=torch.float64)
+        # Precompute target radii using exponential p-adic mapping
+        target_radii = _exponential_target_radii(
+            9, inner_radius, outer_radius, scale=3.0
+        )
         self.register_buffer("target_radii", target_radii)
 
     def forward(self, z_hyp, indices_batch, logits, targets):
@@ -706,20 +745,26 @@ class RichHierarchyLoss(nn.Module):
 
         # Use hyperbolic radius (distance from origin), not Euclidean norm
         radii = hyperbolic_radius(z_hyp, c=self.curvature)
+        target_radii = _exponential_target_radii(
+            max_valuation=9,
+            inner_radius=self.inner_radius,
+            outer_radius=self.outer_radius,
+            scale=3.0,
+        ).to(device)
 
         valuations = TERNARY.valuation(indices_batch).long().to(device)
 
         # 1. Hierarchy loss (MSE to target radius)
         hierarchy_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
         present_levels = torch.unique(valuations)
-        
+
         for v in present_levels:
             mask = valuations == v
             if mask.sum() > 0:
                 mean_r = radii[mask].mean()
-                target_r = self.target_radii[v]
+                target_r = target_radii[int(v.item())]
                 hierarchy_loss = hierarchy_loss + (mean_r - target_r) ** 2
-        
+
         if len(present_levels) > 0:
             hierarchy_loss = hierarchy_loss / len(present_levels)
 
@@ -748,7 +793,7 @@ class RichHierarchyLoss(nn.Module):
         # v=0 (Outer) -> v=9 (Inner)
         # We want r[v] > r[v+1] (Outer > Inner)
         sorted_levels = sorted(present_levels.tolist())
-        
+
         for v in sorted_levels:
             mask = valuations == v
             if mask.sum() > 0:
@@ -762,18 +807,29 @@ class RichHierarchyLoss(nn.Module):
         # We expect mean_radii[i] (outer) > mean_radii[i+1] (inner)
         # So mean_radii[i+1] - mean_radii[i] should be negative.
         # If it's positive, inner is larger than outer -> violation.
+        min_margin = torch.tensor(
+            self.separation_margin, device=device, dtype=torch.float64
+        )
         for i in range(len(mean_radii) - 1):
-            violation = F.relu(mean_radii[i + 1] - mean_radii[i] + self.separation_margin)
+            v_curr = sorted_levels[i]
+            v_next = sorted_levels[i + 1]
+            level_margin = torch.maximum(
+                min_margin, target_radii[v_curr] - target_radii[v_next]
+            )
+            violation = F.relu(mean_radii[i + 1] - mean_radii[i] + level_margin)
             separation_loss = separation_loss + violation
 
         # Return raw components - CombinedLoss applies weights from config
-        return {"hierarchy": hierarchy_loss, "coverage": coverage_loss, "separation": separation_loss}
+        return {
+            "hierarchy": hierarchy_loss,
+            "coverage": coverage_loss,
+            "separation": separation_loss,
+        }
 
 
 __all__ = [
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",
-    "CombinedGeodesicLoss",
     "GlobalRankLoss",
     "MonotonicRadialLoss",
     "RichHierarchyLoss",

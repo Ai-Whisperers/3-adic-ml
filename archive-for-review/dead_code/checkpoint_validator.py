@@ -1,3 +1,9 @@
+# ARCHIVED: 2026-03-10
+# REASON: Config validator superseded by ModelAuditor class in train.py.
+#          Exported from utils but never imported by train.py or any other module.
+#          Could be reintegrated if standalone CLI config validation is needed.
+# ORIGINAL LOCATION: src/utils/checkpoint_validator.py
+
 # Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
 #
 # Licensed under the PolyForm Noncommercial License 1.0.0

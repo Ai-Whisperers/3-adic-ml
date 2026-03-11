@@ -285,3 +285,40 @@ The "trainable" terminology provides clear, positive logic for component control
 
 **Audit updated**: 2025-01-24
 **Auditor**: Claude Opus 4.5
+
+---
+
+## Addendum (2026-02-26 Audit)
+
+**Auditor**: Claude Opus 4.6
+
+### Stale Information Corrections
+
+1. **`statenet.py` does not exist as a file.** This audit references `statenet.py` throughout (sections 4, line references). The "StateNet" system is distributed across:
+   - `src/config/statenet_config.py` — Configuration dataclasses
+   - `src/models/lr_controller.py` — Decision logic (`MetricBasedLR`)
+   - `src/models/vae.py` — Component trainability (`set_encoder_a_trainable()`, etc.)
+   - `src/train.py` — Integration point
+
+2. **Module Exports table is stale.** The `__init__.py` exports:
+   - `StateNet` → This class does not exist. Should read `MetricBasedLR`
+   - Also exports: `TrainingMetrics`, `update_optimizer_lr_scales`, `ScheduleBasedLR` (dead), `LearnableLRController` (dead)
+
+3. **Magic number references** (section 4.3, lines 228-229) reference `statenet.py:52` and `statenet.py:295` — these are actually in `lr_controller.py`
+
+### New Issues Found (2026-02-26)
+
+| Issue | Severity | Location | Description |
+|-------|----------|----------|-------------|
+| No tests for vae.py | HIGH | — | No test coverage for forward pass, trainability control, or param groups |
+| No tests for hyperbolic_projection.py | HIGH | — | No test coverage for projection, max_radius clamping |
+| No tests for lr_controller.py | HIGH | — | No test coverage for MetricBasedLR decisions, hysteresis, warmup |
+| Dead class: ScheduleBasedLR | MODERATE | lr_controller.py:109-180 | 72 lines, never used, has division-by-zero edge case |
+| Dead class: LearnableLRController | MODERATE | lr_controller.py:473-556 | 84 lines, conceptually flawed (no_grad prevents learning) |
+| Encoder dropout never applied | LOW | v6.yaml vs vae.py | `model.encoder_dropout` in config but `EncoderHead` has no dropout |
+| Decoder dropout never applied | LOW | v6.yaml vs vae.py | `model.decoder_dropout` in config but decoder has no dropout |
+| logvar never clamped | LOW | v6.yaml vs vae.py | `model.logvar_min/max` defined but `reparameterize()` never clamps |
+
+### Updated Rating
+
+**Rating**: 7/10 (was 8/10 — downgraded for zero test coverage, 156 lines of dead code in lr_controller.py, and stale audit references)

@@ -469,3 +469,48 @@ Minor issues include a duplicated constant, mismatched scheduler phases, and onl
 
 **Audit completed**: 2025-01-23
 **Auditor**: Claude Opus 4.5
+
+---
+
+## Addendum (2026-02-26 Audit)
+
+**Auditor**: Claude Opus 4.6
+
+### Stale Information Corrections
+
+1. **Preset file has changed.** `research_extended_grokking.yaml` no longer exists. Current presets:
+   - `src/presets/v6.yaml` (304 lines) — main V6.0 config
+   - `src/presets/5.12.4.yaml` (188 lines) — extended grokking config
+
+2. **`src/config/` has changed.** Current files:
+   - `statenet_config.py` (233 lines) — 8 nested dataclasses for StateNet config
+   - `constants.py` (2 lines) — Only `N_TERNARY_OPERATIONS = 19683`
+   - `paths.py` (8 lines) — `PROJECT_ROOT`, `RUNS_DIR`, `CHECKPOINTS_DIR`, `MODELS_DIR`, `PRESETS_DIR`, `SRC_PRESETS_DIR`
+
+3. **`constants.py` was gutted.** All `STATENET_*` constants were removed. They're now in `statenet_config.py` as dataclass defaults. Only `N_TERNARY_OPERATIONS` remains.
+
+4. **Model name in YAML is now `TernaryVAEV6Controllable`**, not `TernaryVAEV5_11_PartialFreeze`.
+
+### Critical Finding: 20+ Silently Ignored YAML Keys
+
+This is the **most important training-readiness issue** in the codebase. See full list in MASTER_AUDIT.md.
+
+Key categories:
+- **V5 remnants** (encoder/decoder dropout, logvar clamping) — defined but code never reads them
+- **Planned features never implemented** (stratified sampling, adaptive curriculum, early stopping, ZeroStructureLoss)
+- **Config name mismatches** (GrokkingDetector params don't match YAML keys — will crash if grokking_detection section has keys)
+- **5.12.4.yaml scheduler mismatch** — defines `multi_phase_cosine` but train.py only handles `cosine_warmup_restart` and `cosine`
+
+### New Issues Found (2026-02-26)
+
+| Issue | Severity | Location | Description |
+|-------|----------|----------|-------------|
+| 20+ silently ignored YAML keys | HIGH | v6.yaml | Users may tune parameters that have zero effect |
+| GrokkingDetector param name mismatch | HIGH | v6.yaml vs train.py | YAML keys don't match constructor params — will crash |
+| 5.12.4.yaml scheduler type unsupported | MODERATE | 5.12.4.yaml | `multi_phase_cosine` not handled by train.py |
+| `patience_ceiling` fields orphaned | LOW | statenet_config.py:40,49 | Loaded but never consumed by MetricBasedLR |
+| `PRESETS_DIR`, `MODELS_DIR`, `SRC_PRESETS_DIR` unused | LOW | paths.py | Defined but never imported |
+
+### Updated Rating
+
+**Rating**: 5/10 (was 8/10 — downgraded significantly for massive config drift: 20+ ignored keys, crash bug in grokking config)

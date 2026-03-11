@@ -405,3 +405,32 @@ None. Core operations work properly.
 
 **Audit completed**: 2025-01-23
 **Auditor**: Claude Opus 4.5
+
+---
+
+## Addendum (2026-02-26 Audit)
+
+**Auditor**: Claude Opus 4.6
+
+### Stale Information Corrections
+
+1. **Line count changed.** Current: `poincare.py` is 401 lines (was 357). New functions added: `geodesic()`, `geodesic_interpolation()`, `hyperbolic_radius()`, `hyperbolic_centroid()`.
+
+2. **Verdict is outdated.** The verdict says "the rest of the codebase doesn't use these functions properly" — this was fixed in V6.0. The VAE now correctly uses `expmap0`/`logmap0` via `HyperbolicProjection`.
+
+3. **Some "Missing Operations" have been added:**
+   - `geodesic()` → Now exists
+   - `dist_to_origin()` → Now exists as `hyperbolic_radius()`
+   - `frechet_mean()` → Now exists as `hyperbolic_centroid()`
+
+4. **`log_map_zero` max_norm issue was fixed.** The unused `max_norm` parameter now works — norm clamping was added before logmap (commit `c71c2ef`).
+
+### Findings (2026-02-26)
+
+No new issues found beyond what was already documented. The module remains well-structured with correct mathematical implementations.
+
+45 tests cover the geometry module (29 + 16 extended). All operations verified.
+
+### Updated Rating
+
+**Rating**: 8.5/10 (improved from 8/10 — missing operations have been added, max_norm bug fixed)

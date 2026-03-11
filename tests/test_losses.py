@@ -25,7 +25,7 @@ from src.geometry import hyperbolic_radius, poincare_distance
 from src.losses.padic_geodesic import (
     PAdicGeodesicLoss,
     RadialHierarchyLoss,
-    CombinedGeodesicLoss,
+    _exponential_target_radii,
     GlobalRankLoss,
     MonotonicRadialLoss,
     RichHierarchyLoss,
@@ -169,7 +169,7 @@ class TestGradientFlowRadialHierarchy:
 
         assert z_hyp.grad is not None
         # Margin loss should contribute to gradient
-        assert metrics['margin_loss'] >= 0
+        assert metrics["margin_loss"] >= 0
 
 
 class TestGradientFlowGlobalRank:
@@ -250,7 +250,7 @@ class TestGradientFlowRichHierarchy:
         out = loss_fn(z_hyp, indices, logits, targets)
 
         # Sum all components
-        total = out['hierarchy'] + out['coverage'] + out['separation']
+        total = out["hierarchy"] + out["coverage"] + out["separation"]
         total.backward()
 
         assert z_hyp.grad is not None, "z_hyp gradient not computed"
@@ -271,7 +271,7 @@ class TestGradientFlowRichHierarchy:
         loss_fn = RichHierarchyLoss()
         out = loss_fn(z_hyp, indices, logits, targets)
 
-        out['hierarchy'].backward()
+        out["hierarchy"].backward()
 
         assert z_hyp.grad is not None
         assert z_hyp.grad.abs().sum() > 1e-10
@@ -284,30 +284,14 @@ class TestGradientFlowRichHierarchy:
         loss_fn = RichHierarchyLoss()
         out = loss_fn(z_hyp, indices, logits, targets)
 
-        out['coverage'].backward()
+        out["coverage"].backward()
 
         assert logits.grad is not None
         assert logits.grad.abs().sum() > 1e-10
 
 
-class TestGradientFlowCombinedGeodesic:
-    """Test gradient flow through CombinedGeodesicLoss."""
-
-    def test_gradient_with_curriculum(self, sample_batch):
-        """Verify gradient flow with curriculum blending."""
-        z_hyp, indices = sample_batch
-        z_hyp = z_hyp.clone().requires_grad_(True)
-
-        loss_fn = CombinedGeodesicLoss()
-
-        for tau in [0.0, 0.5, 1.0]:
-            z_hyp.grad = None  # Reset gradient
-            loss, _ = loss_fn(z_hyp, indices, tau=tau)
-            loss.backward()
-
-            assert z_hyp.grad is not None, f"No gradient at tau={tau}"
-            assert torch.isfinite(z_hyp.grad).all(), f"Non-finite gradient at tau={tau}"
-
+# NOTE: TestGradientFlowCombinedGeodesic removed — CombinedGeodesicLoss
+# was archived as dead code (superseded by CombinedLoss).
 
 # =============================================================================
 # Test Classes: Loss Non-Negativity
@@ -344,7 +328,7 @@ class TestLossNonNegativityPAdicGeodesic:
         loss, metrics = loss_fn(z_hyp, indices)
 
         assert loss == 0.0
-        assert metrics['n_pairs'] == 0
+        assert metrics["n_pairs"] == 0
 
     @pytest.mark.parametrize("seed", [1, 2, 3, 4, 5])
     def test_loss_non_negative_multiple_seeds(self, seed):
@@ -371,7 +355,7 @@ class TestLossNonNegativityRadialHierarchy:
         loss, metrics = loss_fn(z_hyp, indices)
 
         assert loss >= 0
-        assert metrics['primary_loss'] >= 0
+        assert metrics["primary_loss"] >= 0
 
     def test_margin_loss_non_negative(self, sample_batch):
         """Verify margin loss >= 0."""
@@ -381,7 +365,7 @@ class TestLossNonNegativityRadialHierarchy:
         loss, metrics = loss_fn(z_hyp, indices)
 
         assert loss >= 0
-        assert metrics['margin_loss'] >= 0
+        assert metrics["margin_loss"] >= 0
 
     def test_total_loss_non_negative(self, sample_batch):
         """Verify total loss >= 0."""
@@ -423,7 +407,7 @@ class TestLossNonNegativityGlobalRank:
         loss_fn = GlobalRankLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        assert 0 <= metrics['violation_rate'] <= 1
+        assert 0 <= metrics["violation_rate"] <= 1
 
 
 class TestLossNonNegativityMonotonicRadial:
@@ -445,8 +429,8 @@ class TestLossNonNegativityMonotonicRadial:
         loss_fn = MonotonicRadialLoss()
         loss, metrics = loss_fn(z_hyp, indices)
 
-        assert metrics['monotonic_loss'] >= 0
-        assert metrics['target_loss'] >= 0
+        assert metrics["monotonic_loss"] >= 0
+        assert metrics["target_loss"] >= 0
 
     def test_hard_margin_non_negative(self, sample_batch):
         """Verify hard margin (relu) loss >= 0."""
@@ -468,7 +452,7 @@ class TestLossNonNegativityRichHierarchy:
         loss_fn = RichHierarchyLoss()
         out = loss_fn(z_hyp, indices, logits, targets)
 
-        assert out['hierarchy'] >= 0
+        assert out["hierarchy"] >= 0
 
     def test_coverage_non_negative(self, sample_batch_with_reconstruction):
         """Verify coverage loss >= 0."""
@@ -477,7 +461,7 @@ class TestLossNonNegativityRichHierarchy:
         loss_fn = RichHierarchyLoss()
         out = loss_fn(z_hyp, indices, logits, targets)
 
-        assert out['coverage'] >= 0
+        assert out["coverage"] >= 0
 
     def test_separation_non_negative(self, sample_batch_with_reconstruction):
         """Verify separation loss >= 0."""
@@ -486,7 +470,7 @@ class TestLossNonNegativityRichHierarchy:
         loss_fn = RichHierarchyLoss()
         out = loss_fn(z_hyp, indices, logits, targets)
 
-        assert out['separation'] >= 0
+        assert out["separation"] >= 0
 
     def test_all_components_finite(self, sample_batch_with_reconstruction):
         """Verify all components are finite."""
@@ -495,9 +479,9 @@ class TestLossNonNegativityRichHierarchy:
         loss_fn = RichHierarchyLoss()
         out = loss_fn(z_hyp, indices, logits, targets)
 
-        assert torch.isfinite(out['hierarchy'])
-        assert torch.isfinite(out['coverage'])
-        assert torch.isfinite(out['separation'])
+        assert torch.isfinite(out["hierarchy"])
+        assert torch.isfinite(out["coverage"])
+        assert torch.isfinite(out["separation"])
 
 
 # =============================================================================
@@ -515,7 +499,9 @@ class TestTargetDistanceMonotonicity:
         for v in range(9):
             d_current = loss_fn.target_distance(torch.tensor(v, dtype=torch.float64))
             d_next = loss_fn.target_distance(torch.tensor(v + 1, dtype=torch.float64))
-            assert d_current > d_next, f"Not monotonic at v={v}: d({v})={d_current}, d({v+1})={d_next}"
+            assert d_current > d_next, (
+                f"Not monotonic at v={v}: d({v})={d_current}, d({v + 1})={d_next}"
+            )
 
     def test_target_distance_positive(self):
         """Verify target_distance is always positive."""
@@ -536,7 +522,9 @@ class TestTargetDistanceMonotonicity:
         """Verify target_distance follows d = max * exp(-v/scale)."""
         max_target = 3.0
         scale = 3.0
-        loss_fn = PAdicGeodesicLoss(max_target_distance=max_target, valuation_scale=scale)
+        loss_fn = PAdicGeodesicLoss(
+            max_target_distance=max_target, valuation_scale=scale
+        )
 
         test_cases = [
             (0, max_target * math.exp(0)),
@@ -546,8 +534,12 @@ class TestTargetDistanceMonotonicity:
         ]
 
         for v, expected in test_cases:
-            actual = loss_fn.target_distance(torch.tensor(v, dtype=torch.float64)).item()
-            assert abs(actual - expected) < 1e-10, f"Formula mismatch at v={v}: expected {expected}, got {actual}"
+            actual = loss_fn.target_distance(
+                torch.tensor(v, dtype=torch.float64)
+            ).item()
+            assert abs(actual - expected) < 1e-10, (
+                f"Formula mismatch at v={v}: expected {expected}, got {actual}"
+            )
 
     def test_target_distance_batch(self):
         """Verify target_distance works on batched input."""
@@ -566,48 +558,79 @@ class TestTargetRadiusMonotonicity:
 
     def test_radial_hierarchy_target_decreasing(self):
         """Verify target radius decreases with valuation."""
-        inner = 0.1
-        outer = 0.85
-        max_v = 9
-
+        loss_fn = RadialHierarchyLoss(
+            inner_radius=0.1, outer_radius=0.85, max_valuation=9
+        )
+        target = loss_fn._target_radii
         for v in range(9):
-            r_current = outer - (v / max_v) * (outer - inner)
-            r_next = outer - ((v + 1) / max_v) * (outer - inner)
-            assert r_current > r_next, f"Not monotonic at v={v}"
+            assert target[v] > target[v + 1], f"Not monotonic at v={v}"
 
     def test_radial_hierarchy_target_bounds(self):
         """Verify target radii are within [inner, outer]."""
         inner = 0.1
         outer = 0.85
-        max_v = 9
+        loss_fn = RadialHierarchyLoss(
+            inner_radius=inner, outer_radius=outer, max_valuation=9
+        )
+        target = loss_fn._target_radii
 
-        for v in range(10):
-            r = outer - (v / max_v) * (outer - inner)
-            # Use tolerance for floating point comparison
-            assert inner - 1e-10 <= r <= outer + 1e-10, f"Target radius out of bounds at v={v}: r={r}"
+        assert torch.all(target >= inner - 1e-10)
+        assert torch.all(target <= outer + 1e-10)
 
     def test_monotonic_target_radii_buffer(self):
-        """Verify MonotonicRadialLoss computes correct target radii."""
-        loss_fn = MonotonicRadialLoss(inner_radius=0.1, outer_radius=0.85, max_valuation=9)
+        """Verify MonotonicRadialLoss uses exponential target radii with shrinking gaps."""
+        loss_fn = MonotonicRadialLoss(
+            inner_radius=0.1, outer_radius=0.85, max_valuation=9
+        )
+        target = loss_fn._target_radii
 
-        # Verify range and step
-        assert loss_fn.radius_range == 0.75
-        assert abs(loss_fn.level_step - 0.75/9) < 1e-10
+        # Endpoints are preserved
+        assert torch.allclose(
+            target[0], torch.tensor(0.85, dtype=torch.float64), atol=1e-10
+        )
+        assert torch.allclose(
+            target[-1], torch.tensor(0.1, dtype=torch.float64), atol=1e-10
+        )
+
+        # Exponential spacing means early gaps are larger than late gaps
+        gaps = target[:-1] - target[1:]
+        assert gaps[0] > gaps[-1]
 
     def test_rich_hierarchy_target_radii_buffer(self):
-        """Verify RichHierarchyLoss target_radii buffer is correct."""
+        """Verify RichHierarchyLoss target_radii buffer follows exponential mapping."""
         loss_fn = RichHierarchyLoss(inner_radius=0.1, outer_radius=0.85)
 
         # Check buffer values
-        expected = torch.tensor([
-            0.85 - (v / 9) * (0.85 - 0.1) for v in range(10)
-        ], dtype=torch.float64)
+        expected = _exponential_target_radii(
+            max_valuation=9,
+            inner_radius=0.1,
+            outer_radius=0.85,
+            scale=3.0,
+        )
 
-        assert torch.allclose(loss_fn.target_radii, expected, atol=1e-10)
+        target_radii = torch.as_tensor(loss_fn.target_radii)
+        assert torch.allclose(target_radii, expected, atol=1e-10)
 
         # Check monotonicity
         for i in range(9):
-            assert loss_fn.target_radii[i] > loss_fn.target_radii[i + 1]
+            assert target_radii[i] > target_radii[i + 1]
+
+    def test_rich_hierarchy_separation_uses_level_aware_margin(self):
+        """Verify separation penalizes v=0/v=9 pairs using valuation-aware margin."""
+        loss_fn = RichHierarchyLoss(
+            inner_radius=0.1, outer_radius=0.85, separation_margin=0.01
+        )
+
+        z_hyp = torch.zeros(2, 16, dtype=torch.float64)
+        z_hyp[0, 0] = math.tanh(0.6 / 2.0)
+        z_hyp[1, 0] = math.tanh(0.5 / 2.0)
+        indices = torch.tensor([1, 0], dtype=torch.long)
+
+        logits = torch.randn(2, 9, 3, dtype=torch.float64)
+        targets = torch.randint(-1, 2, (2, 9))
+
+        out = loss_fn(z_hyp, indices, logits, targets)
+        assert out["separation"] > 0.0
 
 
 # =============================================================================
@@ -625,7 +648,7 @@ class TestMetricBoundsPAdicGeodesic:
         loss_fn = PAdicGeodesicLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        corr = metrics['distance_correlation']
+        corr = metrics["distance_correlation"]
         assert -1 <= corr <= 1, f"Correlation out of bounds: {corr}"
 
     def test_correlation_not_nan(self, sample_batch):
@@ -635,7 +658,7 @@ class TestMetricBoundsPAdicGeodesic:
         loss_fn = PAdicGeodesicLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        assert not math.isnan(metrics['distance_correlation'])
+        assert not math.isnan(metrics["distance_correlation"])
 
     def test_mean_distances_positive(self, sample_batch):
         """Verify mean distances are positive."""
@@ -644,8 +667,8 @@ class TestMetricBoundsPAdicGeodesic:
         loss_fn = PAdicGeodesicLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        assert metrics['mean_d_actual'] >= 0
-        assert metrics['mean_d_target'] >= 0
+        assert metrics["mean_d_actual"] >= 0
+        assert metrics["mean_d_target"] >= 0
 
     def test_n_pairs_reasonable(self, sample_batch):
         """Verify n_pairs is within expected range."""
@@ -656,7 +679,7 @@ class TestMetricBoundsPAdicGeodesic:
         _, metrics = loss_fn(z_hyp, indices)
 
         max_pairs = batch_size * (batch_size - 1) // 2
-        assert 0 < metrics['n_pairs'] <= max_pairs
+        assert 0 < metrics["n_pairs"] <= max_pairs
 
 
 class TestMetricBoundsRadialHierarchy:
@@ -669,7 +692,7 @@ class TestMetricBoundsRadialHierarchy:
         loss_fn = RadialHierarchyLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        corr = metrics['radial_hierarchy_corr']
+        corr = metrics["radial_hierarchy_corr"]
         assert -1 <= corr <= 1, f"Correlation out of bounds: {corr}"
 
     def test_radius_bounds(self, sample_batch):
@@ -679,9 +702,9 @@ class TestMetricBoundsRadialHierarchy:
         loss_fn = RadialHierarchyLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        assert metrics['radius_min'] >= 0
-        assert metrics['radius_max'] >= metrics['radius_min']
-        assert metrics['radius_range'] >= 0
+        assert metrics["radius_min"] >= 0
+        assert metrics["radius_max"] >= metrics["radius_min"]
+        assert metrics["radius_range"] >= 0
 
 
 class TestMetricBoundsGlobalRank:
@@ -694,7 +717,7 @@ class TestMetricBoundsGlobalRank:
         loss_fn = GlobalRankLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        assert metrics['n_violations'] >= 0
+        assert metrics["n_violations"] >= 0
 
     def test_n_pairs_positive_when_data(self, sample_batch):
         """Verify n_pairs > 0 with sufficient data."""
@@ -703,7 +726,7 @@ class TestMetricBoundsGlobalRank:
         loss_fn = GlobalRankLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        assert metrics['n_pairs'] > 0
+        assert metrics["n_pairs"] > 0
 
 
 class TestMetricBoundsMonotonicRadial:
@@ -716,7 +739,7 @@ class TestMetricBoundsMonotonicRadial:
         loss_fn = MonotonicRadialLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        assert 0 <= metrics['n_levels'] <= 10
+        assert 0 <= metrics["n_levels"] <= 10
 
     def test_margin_violations_non_negative(self, sample_batch):
         """Verify margin_violations >= 0."""
@@ -725,7 +748,7 @@ class TestMetricBoundsMonotonicRadial:
         loss_fn = MonotonicRadialLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        assert metrics['margin_violations'] >= 0
+        assert metrics["margin_violations"] >= 0
 
     def test_per_level_radii_present(self, sample_batch):
         """Verify per-level radius metrics are logged."""
@@ -735,7 +758,7 @@ class TestMetricBoundsMonotonicRadial:
         _, metrics = loss_fn(z_hyp, indices)
 
         # At least some r_v* keys should exist
-        level_keys = [k for k in metrics if k.startswith('r_v')]
+        level_keys = [k for k in metrics if k.startswith("r_v")]
         assert len(level_keys) > 0, "No per-level radius metrics"
 
 
@@ -772,16 +795,21 @@ class TestEdgeCasesBatchSize:
 
         # RichHierarchyLoss
         out = RichHierarchyLoss()(z_hyp, indices, logits, targets)
-        assert torch.isfinite(out['hierarchy'])
-        assert torch.isfinite(out['coverage'])
-        assert torch.isfinite(out['separation'])
+        assert torch.isfinite(out["hierarchy"])
+        assert torch.isfinite(out["coverage"])
+        assert torch.isfinite(out["separation"])
 
     def test_batch_size_two(self):
         """Verify batch_size=2 works for pair-based losses."""
         z_hyp = torch.randn(2, 16, dtype=torch.float64) * 0.5
         indices = torch.tensor([0, 100])
 
-        for LossClass in [PAdicGeodesicLoss, RadialHierarchyLoss, GlobalRankLoss, MonotonicRadialLoss]:
+        for LossClass in [
+            PAdicGeodesicLoss,
+            RadialHierarchyLoss,
+            GlobalRankLoss,
+            MonotonicRadialLoss,
+        ]:
             loss, _ = LossClass()(z_hyp, indices)
             assert torch.isfinite(loss), f"{LossClass.__name__} failed on batch_size=2"
 
@@ -801,7 +829,7 @@ class TestEdgeCasesSameValuation:
 
         assert torch.isfinite(loss)
         # Correlation may be NaN but should be handled (returns 0)
-        assert not math.isnan(metrics['distance_correlation'])
+        assert not math.isnan(metrics["distance_correlation"])
 
     def test_same_valuation_monotonic_radial(self):
         """Verify MonotonicRadialLoss handles same-valuation batch."""
@@ -815,7 +843,7 @@ class TestEdgeCasesSameValuation:
 
         # Only 1 level present, should return 0 loss
         assert loss == 0.0
-        assert metrics['n_levels'] == 1
+        assert metrics["n_levels"] == 1
 
 
 class TestEdgeCasesNearBoundary:
@@ -832,21 +860,31 @@ class TestEdgeCasesNearBoundary:
         targets = torch.randint(-1, 2, (32, 9))
 
         # Test all losses
-        for LossClass in [PAdicGeodesicLoss, RadialHierarchyLoss, GlobalRankLoss, MonotonicRadialLoss]:
+        for LossClass in [
+            PAdicGeodesicLoss,
+            RadialHierarchyLoss,
+            GlobalRankLoss,
+            MonotonicRadialLoss,
+        ]:
             loss, _ = LossClass()(z_hyp, indices)
             assert torch.isfinite(loss), f"{LossClass.__name__} not finite at boundary"
 
         out = RichHierarchyLoss()(z_hyp, indices, logits, targets)
-        assert torch.isfinite(out['hierarchy'])
-        assert torch.isfinite(out['coverage'])
-        assert torch.isfinite(out['separation'])
+        assert torch.isfinite(out["hierarchy"])
+        assert torch.isfinite(out["coverage"])
+        assert torch.isfinite(out["separation"])
 
     def test_origin_points(self):
         """Verify points at origin work correctly."""
         z_hyp = torch.zeros(32, 16, dtype=torch.float64)
         indices = torch.randint(0, 19683, (32,))
 
-        for LossClass in [PAdicGeodesicLoss, RadialHierarchyLoss, GlobalRankLoss, MonotonicRadialLoss]:
+        for LossClass in [
+            PAdicGeodesicLoss,
+            RadialHierarchyLoss,
+            GlobalRankLoss,
+            MonotonicRadialLoss,
+        ]:
             loss, _ = LossClass()(z_hyp, indices)
             assert torch.isfinite(loss), f"{LossClass.__name__} not finite at origin"
 
@@ -870,7 +908,7 @@ class TestConsistencyHyperbolicRadius:
         expected_radii = hyperbolic_radius(z_hyp, c=1.0)
 
         # Mean should match
-        assert abs(metrics['mean_radius'] - expected_radii.mean().item()) < 1e-6
+        assert abs(metrics["mean_radius"] - expected_radii.mean().item()) < 1e-6
 
     def test_global_rank_uses_hyperbolic_distance(self, sample_batch):
         """Verify GlobalRankLoss uses hyperbolic_radius."""

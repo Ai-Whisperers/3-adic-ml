@@ -106,79 +106,6 @@ class LRController(ABC):
         pass
 
 
-class ScheduleBasedLR(LRController):
-    """Predetermined schedule for LR scales.
-
-    Simplest approach: define (epoch, lr_scale) pairs for each component.
-    Interpolates linearly between points.
-
-    Example:
-        controller = ScheduleBasedLR({
-            'encoder_a': [(0, 0.0), (50, 0.05), (100, 0.0)],
-            'encoder_b': [(0, 0.1), (80, 0.0)],
-            'projections': [(0, 1.0)],
-            'decoders': [(0, 1.0)],
-        })
-    """
-
-    def __init__(
-        self,
-        schedules: Dict[str, List[Tuple[int, float]]],
-        interpolate: bool = True,
-    ):
-        """Initialize schedule-based controller.
-
-        Args:
-            schedules: Dict mapping component name to list of (epoch, lr_scale)
-            interpolate: If True, linearly interpolate between points
-        """
-        self.schedules = schedules
-        self.interpolate = interpolate
-        self._validate_schedules()
-
-    def _validate_schedules(self):
-        """Ensure schedules are sorted by epoch."""
-        for name, schedule in self.schedules.items():
-            if not schedule:
-                raise ValueError(f"Schedule for {name} is empty")
-            sorted_schedule = sorted(schedule, key=lambda x: x[0])
-            self.schedules[name] = sorted_schedule
-
-    def _get_scale_at_epoch(self, schedule: List[Tuple[int, float]], epoch: int) -> float:
-        """Get LR scale at given epoch from schedule."""
-        if epoch <= schedule[0][0]:
-            return schedule[0][1]
-        if epoch >= schedule[-1][0]:
-            return schedule[-1][1]
-
-        # Find surrounding points
-        for i in range(len(schedule) - 1):
-            e1, s1 = schedule[i]
-            e2, s2 = schedule[i + 1]
-            if e1 <= epoch < e2:
-                if self.interpolate:
-                    t = (epoch - e1) / (e2 - e1)
-                    return s1 + t * (s2 - s1)
-                return s1
-
-        return schedule[-1][1]
-
-    def get_lr_scales(self, metrics: TrainingMetrics) -> Dict[str, float]:
-        """Get LR scales for current epoch."""
-        return {
-            name: self._get_scale_at_epoch(schedule, metrics.epoch)
-            for name, schedule in self.schedules.items()
-        }
-
-    def update(self, metrics: TrainingMetrics) -> Dict[str, Any]:
-        """Return current scales (no state to update)."""
-        scales = self.get_lr_scales(metrics)
-        return {
-            "lr_scales": scales,
-            "events": [],
-            "type": "schedule",
-        }
-
 
 class MetricBasedLR(LRController):
     """Metric-based LR control (soft version of StateNet logic).
@@ -470,91 +397,6 @@ class MetricBasedLR(LRController):
         self._best_q = 0.0
 
 
-class LearnableLRController(nn.Module, LRController):
-    """Learnable LR controller (differentiable, experimental).
-
-    A small MLP that takes metrics and outputs LR multipliers.
-    Can be trained end-to-end with the VAE using meta-learning.
-
-    Warning: This is experimental and may destabilize training.
-    """
-
-    def __init__(
-        self,
-        n_metrics: int = 6,
-        hidden_dim: int = 32,
-        n_components: int = 4,
-        temperature: float = 1.0,
-    ):
-        """Initialize learnable controller.
-
-        Args:
-            n_metrics: Number of input metrics
-            hidden_dim: Hidden dimension for MLP
-            n_components: Number of output LR scales
-            temperature: Softmax temperature (higher = softer)
-        """
-        super().__init__()
-        self.n_components = n_components
-        self.temperature = temperature
-
-        self.mlp = nn.Sequential(
-            nn.Linear(n_metrics, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, n_components),
-        )
-
-        # Initialize to output near-1.0 scales
-        with torch.no_grad():
-            self.mlp[-1].bias.fill_(2.0)  # sigmoid(2) ≈ 0.88
-
-        self.component_names = ['encoder_a', 'encoder_b', 'projections', 'decoders']
-
-    def forward(self, metrics_tensor: torch.Tensor) -> torch.Tensor:
-        """Forward pass: metrics -> LR scales.
-
-        Args:
-            metrics_tensor: (batch, n_metrics) or (n_metrics,)
-
-        Returns:
-            LR scales in [0, 1], shape (batch, n_components) or (n_components,)
-        """
-        logits = self.mlp(metrics_tensor)
-        return torch.sigmoid(logits / self.temperature)
-
-    def get_lr_scales(self, metrics: TrainingMetrics) -> Dict[str, float]:
-        """Get LR scales from metrics."""
-        # Convert metrics to tensor
-        metrics_tensor = torch.tensor([
-            metrics.coverage,
-            metrics.hierarchy_a,
-            metrics.hierarchy_b,
-            metrics.dist_corr_a,
-            metrics.q_value,
-            metrics.grad_norm_projections,
-        ], dtype=torch.float32)
-
-        with torch.no_grad():
-            scales = self.forward(metrics_tensor)
-
-        return {
-            name: scales[i].item()
-            for i, name in enumerate(self.component_names[:self.n_components])
-        }
-
-    def update(self, metrics: TrainingMetrics) -> Dict[str, Any]:
-        """Return scales (state is implicit in weights)."""
-        scales = self.get_lr_scales(metrics)
-        return {
-            "lr_scales": scales,
-            "events": [],
-            "type": "learnable",
-        }
-
 
 def update_optimizer_lr_scales(
     optimizer: torch.optim.Optimizer,
@@ -633,9 +475,7 @@ def get_optimizer_grad_stats(
 
 __all__ = [
     "LRController",
-    "ScheduleBasedLR",
     "MetricBasedLR",
-    "LearnableLRController",
     "TrainingMetrics",
     "update_optimizer_lr_scales",
     "get_optimizer_grad_stats",

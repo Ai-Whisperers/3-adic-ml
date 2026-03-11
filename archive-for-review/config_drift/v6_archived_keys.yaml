@@ -1,0 +1,60 @@
+# ============================================================================
+# ARCHIVED CONFIG KEYS FROM src/presets/v6.yaml
+# ============================================================================
+# Date: 2026-03-10
+# Motive: These keys exist in v6.yaml but have NO corresponding implementation
+#   in any src/ Python file. They are dead configuration that creates confusion.
+# Action: Removed from v6.yaml, preserved here for review.
+# Recovery: If implementing any of these features, move the key back to v6.yaml
+#   and add corresponding code in the appropriate module.
+# ============================================================================
+
+# --------------------------------------------------------------------------
+# SECTION: training
+# Reason: Stratified sampling and adaptive curriculum were planned but
+#   never implemented in src/train.py or any data loader code.
+# --------------------------------------------------------------------------
+training:
+  # Stratified sampling (oversample high-valuation operations)
+  # No stratified sampler exists — DataLoader uses shuffle=True uniformly
+  use_stratified: true
+  high_v_budget_ratio: 0.25
+
+  # Adaptive curriculum — no implementation reads these keys
+  use_adaptive: true
+  hierarchy_threshold: -0.75
+  patience: 50
+  min_epochs: 50
+
+# --------------------------------------------------------------------------
+# SECTION: geometry
+# Reason: These geometry keys are read by no Python code.
+#   use_manifold_parameter: The model wraps z_hyp as ManifoldParameter
+#     unconditionally in vae.py — this flag is never checked.
+#   geodesic_steps: No function reads this from config. The geodesic()
+#     utility in poincare.py has its own default parameter.
+# --------------------------------------------------------------------------
+geometry:
+  use_manifold_parameter: true
+  geodesic_steps: 10
+
+# --------------------------------------------------------------------------
+# SECTION: memory
+# Reason: gradient_checkpointing and max_memory_growth are not read
+#   by any code. empty_cache_freq IS used (in train.py) so it stays.
+#   cudnn_benchmark IS used (in train.py) so it stays.
+# --------------------------------------------------------------------------
+memory:
+  gradient_checkpointing: false
+  max_memory_growth: 0.8
+
+# --------------------------------------------------------------------------
+# SECTION: early_stopping
+# Reason: The entire early_stopping section is unimplemented.
+#   train.py has a GrokkingDetector class that handles its own patience
+#   internally and does NOT read these config keys.
+# --------------------------------------------------------------------------
+early_stopping:
+  extended_patience: true
+  plateau_override: false
+  grokking_patience: 50

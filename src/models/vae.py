@@ -57,6 +57,7 @@ from src.models.hyperbolic_projection import DualHyperbolicProjection
 # EncoderHead: Modular encoder with trainability control
 # =============================================================================
 
+
 class EncoderHead(nn.Module):
     """Encoder backbone + mu/logvar projection heads with trainability control.
 
@@ -138,7 +139,10 @@ class EncoderHead(nn.Module):
 # Encoder/Decoder Builders
 # =============================================================================
 
-def _build_encoder_backbone(hidden_dim: int, encoder_type: str = "improved") -> nn.Sequential:
+
+def _build_encoder_backbone(
+    hidden_dim: int, encoder_type: str = "improved"
+) -> nn.Sequential:
     """Build encoder backbone network (internal helper).
 
     Maps 9-dim ternary input to hidden representation. Does NOT include
@@ -181,7 +185,9 @@ def _build_encoder_backbone(hidden_dim: int, encoder_type: str = "improved") -> 
         )
 
 
-def _build_decoder(latent_dim: int, hidden_dim: int, decoder_type: str = "improved") -> nn.Sequential:
+def _build_decoder(
+    latent_dim: int, hidden_dim: int, decoder_type: str = "improved"
+) -> nn.Sequential:
     """Build decoder network.
 
     Maps latent vector (from tangent space via logmap0) to reconstruction
@@ -225,6 +231,7 @@ def _build_decoder(latent_dim: int, hidden_dim: int, decoder_type: str = "improv
 # =============================================================================
 # TernaryVAEV6
 # =============================================================================
+
 
 class TernaryVAEV6(nn.Module):
     """Dual Ternary VAE with true hyperbolic geometry.
@@ -347,9 +354,7 @@ class TernaryVAEV6(nn.Module):
         z_A_tangent = self.reparameterize(mu_A, logvar_A)
         z_B_tangent = self.reparameterize(mu_B, logvar_B)
 
-        # Project to Poincaré manifold via expmap0
-        # as_manifold=True returns ManifoldParameter for type safety and constraint enforcement
-        z_A_hyp, z_B_hyp = self.projections(z_A_tangent, z_B_tangent, as_manifold=True)
+        z_A_hyp, z_B_hyp = self.projections(z_A_tangent, z_B_tangent, as_manifold=False)
 
         # Map back to tangent space for decoder (logmap0)
         z_A_dec = log_map_zero(z_A_hyp, c=self.curvature, max_norm=self.max_radius)
@@ -380,6 +385,7 @@ class TernaryVAEV6(nn.Module):
 # =============================================================================
 # TernaryVAEV6Controllable
 # =============================================================================
+
 
 class TernaryVAEV6Controllable(TernaryVAEV6):
     """VAE with dynamic trainability control for StateNet integration.
@@ -483,39 +489,47 @@ class TernaryVAEV6Controllable(TernaryVAEV6):
         # Encoder A (slow learner)
         enc_a_params = self.head_A.get_trainable_params()
         if enc_a_params:
-            groups.append({
-                "params": enc_a_params,
-                "lr": base_lr * self.encoder_a_lr_scale,
-                "name": "encoder_a",
-            })
+            groups.append(
+                {
+                    "params": enc_a_params,
+                    "lr": base_lr * self.encoder_a_lr_scale,
+                    "name": "encoder_a",
+                }
+            )
 
         # Encoder B (medium learner)
         enc_b_params = self.head_B.get_trainable_params()
         if enc_b_params:
-            groups.append({
-                "params": enc_b_params,
-                "lr": base_lr * self.encoder_b_lr_scale,
-                "name": "encoder_b",
-            })
+            groups.append(
+                {
+                    "params": enc_b_params,
+                    "lr": base_lr * self.encoder_b_lr_scale,
+                    "name": "encoder_b",
+                }
+            )
 
         # Projections / Controller (fast adapter)
         proj_params = [p for p in self.projections.parameters() if p.requires_grad]
         if proj_params:
-            groups.append({
-                "params": proj_params,
-                "lr": base_lr * self.projections_lr_scale,
-                "name": "projections",
-            })
+            groups.append(
+                {
+                    "params": proj_params,
+                    "lr": base_lr * self.projections_lr_scale,
+                    "name": "projections",
+                }
+            )
 
         # Decoders (always trainable, full LR)
         dec_params = [p for p in self.decoder_A.parameters() if p.requires_grad]
         dec_params += [p for p in self.decoder_B.parameters() if p.requires_grad]
         if dec_params:
-            groups.append({
-                "params": dec_params,
-                "lr": base_lr,
-                "name": "decoders",
-            })
+            groups.append(
+                {
+                    "params": dec_params,
+                    "lr": base_lr,
+                    "name": "decoders",
+                }
+            )
 
         return groups
 

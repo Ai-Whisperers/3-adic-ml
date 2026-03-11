@@ -539,3 +539,25 @@ This is the kind of module that other modules should emulate.
 
 **Audit completed**: 2025-01-23
 **Auditor**: Claude Opus 4.5
+
+---
+
+## Addendum (2026-02-26 Audit)
+
+**Auditor**: Claude Opus 4.6
+
+### Stale Information Corrections
+
+1. **Line count is outdated.** Current: `ternary.py` is 759 lines (was 365). The module grew with Option B properties, `target_radius()`, `parent()`, and additional analysis methods.
+
+2. **Exports list is incomplete.** Current `__init__.py` also exports: `target_radius`, `N_OPERATIONS`, and possibly other new convenience functions.
+
+### Findings (2026-02-26)
+
+No new issues found. The core module remains the strongest component of the codebase. 57 tests cover it thoroughly (28 + 29 extended). All mathematical invariants verified.
+
+The module continues to serve as the single source of truth for all ternary algebra operations.
+
+### Updated Rating
+
+**Rating**: 9.5/10 (unchanged quality, slight adjustment for line count growth without proportional test growth)

@@ -1,9 +1,8 @@
-# Audit Index: p-adic-vaes (V6.0)
+# Audit Index: 3-adic-ml (V6.0/V6.1)
 
-**Last Updated**: 2025-01-24
-**Auditor**: Claude Opus 4.5
-**Version**: V6.0 (True Hyperbolic Architecture)
-
+**Last Updated**: 2026-02-26
+**Auditors**: Claude Opus 4.5 (2025-01), Claude Opus 4.6 (2026-02)
+**Version**: V6.1 (True Hyperbolic + Learnable Weights)
 ---
 
 ## Overview
@@ -48,24 +47,25 @@ This directory contains comprehensive audits of the p-adic-vaes codebase. The au
 
 ## Module Audits
 
-| Module | File | Rating | V6.0 Status |
-|--------|------|--------|-------------|
-| **src/core/** | [CORE_MODULE_AUDIT.md](CORE_MODULE_AUDIT.md) | **7.5/10** | Unchanged |
-| **src/losses/** | [LOSSES_MODULE_AUDIT.md](LOSSES_MODULE_AUDIT.md) | **8/10** | Unchanged |
-| **src/utils/** | [UTILS_MODULE_AUDIT.md](UTILS_MODULE_AUDIT.md) | **7/10** | Unchanged |
-| **src/geometry/** | [GEOMETRY_MODULE_AUDIT.md](GEOMETRY_MODULE_AUDIT.md) | **8/10** | Unchanged |
-| **src/config/** | [CONFIG_PRESETS_MODULE_AUDIT.md](CONFIG_PRESETS_MODULE_AUDIT.md) | **8/10** | Config keys renamed |
-| **src/models/** | [MODELS_MODULE_AUDIT.md](MODELS_MODULE_AUDIT.md) | **8/10** | ✅ **Major fixes applied** |
+| Module | File | Rating (2025-01) | Rating (2026-02) |
+|--------|------|------------------|------------------|
+| **src/core/** | [CORE_MODULE_AUDIT.md](CORE_MODULE_AUDIT.md) | 7.5/10 | **9.5/10** |
+| **src/geometry/** | [GEOMETRY_MODULE_AUDIT.md](GEOMETRY_MODULE_AUDIT.md) | 8/10 | **8.5/10** |
+| **src/losses/** | [LOSSES_MODULE_AUDIT.md](LOSSES_MODULE_AUDIT.md) | 8/10 | **7.5/10** ↓ |
+| **src/models/** | [MODELS_MODULE_AUDIT.md](MODELS_MODULE_AUDIT.md) | 8/10 | **7/10** ↓ |
+| **src/utils/** | [UTILS_MODULE_AUDIT.md](UTILS_MODULE_AUDIT.md) | 7/10 | **6.5/10** ↓ |
+| **src/config/** | [CONFIG_PRESETS_MODULE_AUDIT.md](CONFIG_PRESETS_MODULE_AUDIT.md) | 8/10 | **5/10** ↓ |
 
-### Module Ratings (V6.0)
+### Module Ratings (2026-02-26)
 
 ```
-src/models/     ████████░░   8/10  Good (was 6/10 - fixed!)
-src/geometry/   ████████░░   8/10  Good
-src/config/     ████████░░   8/10  Good
-src/losses/     ████████░░   8/10  Good
-src/core/       ███████▌░░  7.5/10 Good
-src/utils/      ███████░░░   7/10  Acceptable
+src/core/       █████████▌  9.5/10  Exemplary
+src/geometry/   ████████▌░  8.5/10  Good (improved)
+src/losses/     ███████▌░░  7.5/10  Dead code, config drift
+src/models/     ███████░░░  7/10    Needs tests, dead code
+src/train.py    ███████░░░  7/10    Works after fixes
+src/utils/      ██████▌░░░  6.5/10  Stale files, no tests
+src/config/     █████░░░░░  5/10    20+ ignored YAML keys
 ```
 
 ---
@@ -81,28 +81,32 @@ src/utils/      ███████░░░   7/10  Acceptable
 
 ---
 
-## Key Files (V6.0)
+## Key Files (V6.1)
 
 | File | Purpose |
 |------|---------|
 | `src/models/vae.py` | `TernaryVAEV6`, `TernaryVAEV6Controllable` |
-| `src/models/statenet.py` | Q-gated trainability controller |
+| `src/models/lr_controller.py` | `MetricBasedLR`, LR scale control |
 | `src/models/hyperbolic_projection.py` | expmap0/logmap0 projections |
 | `src/geometry/poincare.py` | Riemannian backend (geoopt) |
+| `src/losses/combined.py` | Config-driven loss composition (V6.1 learnable weights) |
 | `src/losses/padic_geodesic.py` | All hierarchy/geodesic losses |
 | `src/train.py` | Unified training entry point |
-| `src/presets/5.12.4.yaml` | Main training config |
-
+| `src/presets/v6.yaml` | Main V6 training config |
+| `src/presets/5.12.4.yaml` | Extended grokking config |
 ---
 
-## Remaining Issues
+## Training Readiness
 
-| Issue | Severity | Module | Status |
-|-------|----------|--------|--------|
-| Silent error masking | Medium | core | ⚠️ Open |
-| KeyError risks | Medium | utils | ⚠️ Open |
-| Race conditions in cache | Low | core | Documented (benign) |
+**Status**: NOT TRAINING-READY (see [MASTER_AUDIT.md](MASTER_AUDIT.md))
 
+| Severity | Count | Key Areas |
+|----------|-------|-----------|
+| CRITICAL | 2 | GrokkingDetector crash, 5.12.4 scheduler mismatch |
+| HIGH | 4 | 20+ silent config keys, DataLoader determinism, no tests, cudnn order |
+| MODERATE | 6 | Dead code (~507 lines), performance, generator checkpoint |
+| LOW | 12 | Unused imports, security, cleanup |
+| INFO | 4 | Design observations |
 ---
 
 ## Positive Findings
@@ -123,17 +127,21 @@ src/utils/      ███████░░░   7/10  Acceptable
 ```
 docs/audits/
 ├── INDEX.md                          # This file
+├── MASTER_AUDIT.md                   # ⭐ Synthesized training-readiness assessment
 │
-├── # Module Audits
+├── # Comprehensive Audits
+├── COMPREHENSIVE_CODEBASE_AUDIT_2026-02-24.md  # Full audit with 10 bug fixes
+│
+├── # Module Audits (each updated 2026-02-26)
 ├── CORE_MODULE_AUDIT.md
 ├── LOSSES_MODULE_AUDIT.md
 ├── UTILS_MODULE_AUDIT.md
 ├── GEOMETRY_MODULE_AUDIT.md
 ├── CONFIG_PRESETS_MODULE_AUDIT.md
-├── MODELS_MODULE_AUDIT.md            # Updated for V6.0
+├── MODELS_MODULE_AUDIT.md
 │
 ├── # Integration Audits
-├── GEOOPT_INTEGRATION_AUDIT.md       # Updated for V6.0
+├── GEOOPT_INTEGRATION_AUDIT.md
 ├── real-non-euclidean.md
 ├── tensorboard-logs.md
 ├── terminal-monitoring-integration.md
@@ -153,4 +161,4 @@ docs/audits/
 
 ---
 
-**Index maintained by**: Claude Opus 4.5
+**Index maintained by**: Claude Opus 4.6

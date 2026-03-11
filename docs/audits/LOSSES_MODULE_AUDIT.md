@@ -623,3 +623,35 @@ The losses correctly supervise the hyperbolic structure, but as noted in the mod
 
 **Audit completed**: 2025-01-23
 **Auditor**: Claude Opus 4.5
+
+---
+
+## Addendum (2026-02-26 Audit)
+
+**Auditor**: Claude Opus 4.6
+
+### Stale Information Corrections
+
+1. **Line count is outdated.** Current: combined.py (494 lines), padic_geodesic.py (780 lines), hyperbolic_kl.py (192 lines). Total ~1,490 lines.
+
+2. **Missing file: `hyperbolic_kl.py`** (192 lines, 2 classes). Not mentioned in original audit. Contains `HyperbolicKLDivergence` and `StandardKLDivergence`. Both are DEAD CODE — never imported or used by `CombinedLoss` or `train.py`.
+
+3. **CombinedLoss has changed significantly (V6.1).** Now supports learnable weights via `nn.Parameter` log_sigma values (Kendall et al. 2018). Lines 197-243 in combined.py. These were float32 in a float64 codebase (fixed in commit `c71c2ef`).
+
+4. **Verdict statement is outdated**: "the decoder doesn't use z_hyp for generation" — this was fixed in V6.0. The decoder now uses `logmap0(z_hyp)` for decoding.
+
+### New Issues Found (2026-02-26)
+
+| Issue | Severity | Location | Description |
+|-------|----------|----------|-------------|
+| Dead code: CombinedGeodesicLoss | MODERATE | padic_geodesic.py:312-369 | 58 lines, V5.11 wrapper superseded by CombinedLoss |
+| Dead module: hyperbolic_kl.py | LOW | entire file (192 lines) | Never integrated into pipeline; config placeholder exists but CombinedLoss never reads it |
+| Unused imports in combined.py | LOW | combined.py:39-40 | `TERNARY` and `poincare_distance` imported but never used in file body |
+| Config key mismatch | LOW | v6.yaml `radial.radial_weight` vs CombinedLoss reads `weight` | Silent config ignore |
+| `loss.zero_structure` references nonexistent class | LOW | v6.yaml:181-184 | `ZeroStructureLoss` does not exist in codebase |
+| `loss.hyperbolic_kl` config never consumed | LOW | v6.yaml:188-189 | CombinedLoss has no code path for this |
+| Inconsistent target shift clamp | INFO | combined.py uses `.clamp(0,2)`, padic_geodesic.py:729 does not | Style inconsistency, not a bug |
+
+### Updated Rating
+
+**Rating**: 7.5/10 (was 9/10 — downgraded for 250 lines of dead code, config drift, and outdated verdict)

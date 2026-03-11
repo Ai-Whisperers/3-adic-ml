@@ -646,7 +646,7 @@ The tangent space at the origin T₀M **IS** Euclidean ℝⁿ. This means:
 |------|---------|
 | `src/models/vae.py` | `EncoderHead`, `TernaryVAEV6`, `TernaryVAEV6Controllable` |
 | `src/models/hyperbolic_projection.py` | `HyperbolicProjection`, `DualHyperbolicProjection` (expmap0) |
-| `src/models/lr_controller.py` | `MetricBasedLR`, `ScheduleBasedLR` (trainability controller) |
+| `src/models/lr_controller.py` | `MetricBasedLR` (trainability controller; legacy schedulers archived in `archive-for-review/`) |
 | `src/config/statenet_config.py` | `StateNetConfig` dataclass (centralized config) |
 | `src/geometry/poincare.py` | `exp_map_zero`, `log_map_zero` via geoopt |
 
@@ -827,7 +827,7 @@ The following dead code was removed after deep analysis:
   - `DualHyperbolicProjection` - shared curvature, separate tangent_nets
 - **`lr_controller.py`**:
   - `MetricBasedLR` - Q-gated threshold decisions
-  - `ScheduleBasedLR` - epoch-based scheduling
+  - Legacy `ScheduleBasedLR`/`LearnableLRController` moved to `archive-for-review/dead_code/`
   - `TrainingMetrics` dataclass
   - `update_optimizer_lr_scales()` - applies scales to optimizer
 

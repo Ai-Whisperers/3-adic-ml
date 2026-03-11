@@ -1,7 +1,6 @@
 from .padic_geodesic import (
     PAdicGeodesicLoss,
     RadialHierarchyLoss,
-    CombinedGeodesicLoss,
     GlobalRankLoss,
     MonotonicRadialLoss,
     RichHierarchyLoss,
@@ -13,7 +12,6 @@ __all__ = [
     # P-adic geodesic losses
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",
-    "CombinedGeodesicLoss",
     "GlobalRankLoss",
     "MonotonicRadialLoss",
     "RichHierarchyLoss",

@@ -1,0 +1,399 @@
+import torch
+import torch.nn as nn
+
+from src.models.vae import EncoderHead, TernaryVAEV6, TernaryVAEV6Controllable
+
+
+class TestEncoderHead:
+    def test_forward_pass_shapes(self):
+        """Forward pass produces (mu, logvar) with correct latent_dim."""
+        head = EncoderHead(hidden_dim=64, latent_dim=16).to(torch.float64)
+        x = torch.randn(10, 9, dtype=torch.float64)
+        mu, logvar = head(x)
+
+        assert mu.shape == (10, 16)
+        assert logvar.shape == (10, 16)
+        assert mu.dtype == torch.float64
+        assert logvar.dtype == torch.float64
+
+    def test_set_trainable_false(self):
+        """set_trainable(False) -> all params.requires_grad == False."""
+        head = EncoderHead(hidden_dim=64, latent_dim=16).to(torch.float64)
+        head.set_trainable(False)
+
+        for param in head.parameters():
+            assert not param.requires_grad
+        assert not head.is_trainable
+
+    def test_set_trainable_true(self):
+        """set_trainable(True) -> all params.requires_grad == True."""
+        head = EncoderHead(hidden_dim=64, latent_dim=16).to(torch.float64)
+        head.set_trainable(False)  # First freeze
+        head.set_trainable(True)  # Then unfreeze
+
+        for param in head.parameters():
+            assert param.requires_grad
+        assert head.is_trainable
+
+    def test_get_trainable_params_frozen(self):
+        """get_trainable_params() returns empty list when frozen."""
+        head = EncoderHead(hidden_dim=64, latent_dim=16).to(torch.float64)
+        head.set_trainable(False)
+
+        params = head.get_trainable_params()
+        assert len(params) == 0
+
+    def test_get_trainable_params_trainable(self):
+        """get_trainable_params() returns non-empty when trainable."""
+        head = EncoderHead(hidden_dim=64, latent_dim=16).to(torch.float64)
+        head.set_trainable(True)
+
+        params = head.get_trainable_params()
+        assert len(params) > 0
+        assert len(params) == len(list(head.parameters()))
+
+    def test_gradient_flow(self):
+        """Gradient flow: loss.backward() produces gradients on all params when trainable."""
+        head = EncoderHead(hidden_dim=64, latent_dim=16).to(torch.float64)
+        head.set_trainable(True)
+
+        x = torch.randn(10, 9, dtype=torch.float64)
+        mu, logvar = head(x)
+
+        loss = mu.sum() + logvar.sum()
+        loss.backward()
+
+        for param in head.parameters():
+            assert param.grad is not None
+            assert torch.any(param.grad != 0)
+
+
+class TestTernaryVAEV6:
+    def test_forward_pass_keys(self):
+        """Forward pass returns dict with all expected keys."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
+        x = torch.randn(10, 9, dtype=torch.float64)
+
+        out = model(x)
+
+        expected_keys = {
+            "logits",
+            "logits_A",
+            "logits_B",
+            "mu_A",
+            "logvar_A",
+            "mu_B",
+            "logvar_B",
+            "z_A_tangent",
+            "z_B_tangent",
+            "z_A_hyp",
+            "z_B_hyp",
+        }
+        assert set(out.keys()) == expected_keys
+
+    def test_logits_shape(self):
+        """logits shape is (B, 27) for 9 ternary positions x 3 classes."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
+        x = torch.randn(10, 9, dtype=torch.float64)
+
+        out = model(x)
+        assert out["logits"].shape == (10, 27)
+        assert out["logits_A"].shape == (10, 27)
+        assert out["logits_B"].shape == (10, 27)
+
+    def test_poincare_ball_containment(self):
+        """z_A_hyp and z_B_hyp are inside Poincaré ball (norm < 1)."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
+        x = (
+            torch.randn(10, 9, dtype=torch.float64) * 5.0
+        )  # Large inputs to test boundary
+
+        out = model(x)
+
+        norm_A = torch.norm(out["z_A_hyp"], dim=-1)
+        norm_B = torch.norm(out["z_B_hyp"], dim=-1)
+
+        assert torch.all(norm_A < 1.0)
+        assert torch.all(norm_B < 1.0)
+
+    def test_float64_precision(self):
+        """float64 precision maintained throughout (all outputs are float64)."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
+        x = torch.randn(10, 9, dtype=torch.float64)
+
+        out = model(x)
+
+        for key, tensor in out.items():
+            assert tensor.dtype == torch.float64, f"{key} is not float64"
+
+    def test_reparameterize_stochastic(self):
+        """reparameterize produces different samples each call (stochastic)."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
+        mu = torch.zeros(10, 16, dtype=torch.float64)
+        logvar = torch.zeros(10, 16, dtype=torch.float64)  # std = 1
+
+        z1 = model.reparameterize(mu, logvar)
+        z2 = model.reparameterize(mu, logvar)
+
+        assert not torch.allclose(z1, z2)
+
+    def test_reparameterize_zero_logvar(self):
+        """reparameterize with zero logvar produces mu + noise (std=1)."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
+        mu = torch.ones(1000, 16, dtype=torch.float64) * 5.0
+        logvar = torch.zeros(1000, 16, dtype=torch.float64)  # std = 1
+
+        z = model.reparameterize(mu, logvar)
+
+        # Mean should be close to mu (5.0)
+        assert torch.allclose(
+            z.mean(), torch.tensor(5.0, dtype=torch.float64), atol=0.1
+        )
+        # Std should be close to 1.0
+        assert torch.allclose(z.std(), torch.tensor(1.0, dtype=torch.float64), atol=0.1)
+
+    def test_decoder_receives_logmap0(self):
+        """Decoder receives logmap0 output (not raw z_hyp) - verify by checking output changes with different curvature."""
+        model1 = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
+        model2 = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
+
+        # Copy weights so they are identical
+        model2.load_state_dict(model1.state_dict())
+
+        # Change curvature of model2
+        model2.projections.proj_A.curvature.data.fill_(2.0)
+
+        x = torch.randn(10, 9, dtype=torch.float64)
+
+        # Fix random seed for reparameterization
+        torch.manual_seed(42)
+        out1 = model1(x)
+
+        torch.manual_seed(42)
+        out2 = model2(x)
+
+        # The logits should be different because the logmap0 output depends on curvature
+        assert not torch.allclose(out1["logits_A"], out2["logits_A"])
+
+    def test_gradient_flow_end_to_end(self):
+        """Gradient flow end-to-end: CrossEntropy(logits, target).backward() -> encoder params have gradients."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
+        x = torch.randn(10, 9, dtype=torch.float64)
+        target = torch.randint(0, 3, (10, 9))
+
+        out = model(x)
+
+        # Reshape logits for CrossEntropyLoss: (B, 27) -> (B, 9, 3) -> (B*9, 3)
+        logits = out["logits"].view(-1, 3)
+        target = target.view(-1)
+
+        loss = nn.CrossEntropyLoss()(logits, target)
+        loss.backward()
+
+        # Check that encoder backbone has gradients
+        has_grad = False
+        for param in model.head_A.backbone.parameters():
+            if param.grad is not None and torch.any(param.grad != 0):
+                has_grad = True
+                break
+        assert has_grad
+
+
+class TestTernaryVAEV6Controllable:
+    def test_initial_trainability_states(self):
+        """Initial trainability states match constructor args."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=False,
+            encoder_b_trainable=True,
+            projections_trainable=False,
+        ).to(torch.float64)
+
+        assert not model.head_A.is_trainable
+        assert model.head_B.is_trainable
+        assert not model.projections.proj_A.tangent_net[0].weight.requires_grad
+        assert not model.projections.proj_B.tangent_net[0].weight.requires_grad
+
+    def test_set_encoder_a_trainable(self):
+        """set_encoder_a_trainable(False) freezes head_A params only."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=True,
+            encoder_b_trainable=True,
+            projections_trainable=True,
+        ).to(torch.float64)
+
+        model.set_encoder_a_trainable(False)
+
+        assert not model.head_A.is_trainable
+        assert model.head_B.is_trainable
+        assert model.projections.proj_A.tangent_net[0].weight.requires_grad
+
+    def test_set_encoder_b_trainable(self):
+        """set_encoder_b_trainable(False) freezes head_B params only."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=True,
+            encoder_b_trainable=True,
+            projections_trainable=True,
+        ).to(torch.float64)
+
+        model.set_encoder_b_trainable(False)
+
+        assert model.head_A.is_trainable
+        assert not model.head_B.is_trainable
+        assert model.projections.proj_A.tangent_net[0].weight.requires_grad
+
+    def test_set_projections_trainable(self):
+        """set_projections_trainable(False) freezes projection params only."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=True,
+            encoder_b_trainable=True,
+            projections_trainable=True,
+        ).to(torch.float64)
+
+        model.set_projections_trainable(False)
+
+        assert model.head_A.is_trainable
+        assert model.head_B.is_trainable
+        assert not model.projections.proj_A.tangent_net[0].weight.requires_grad
+        assert not model.projections.proj_B.tangent_net[0].weight.requires_grad
+
+    def test_decoders_remain_trainable(self):
+        """Decoders remain trainable when encoders frozen."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=False,
+            encoder_b_trainable=False,
+            projections_trainable=False,
+        ).to(torch.float64)
+
+        for param in model.decoder_A.parameters():
+            assert param.requires_grad
+        for param in model.decoder_B.parameters():
+            assert param.requires_grad
+
+    def test_get_param_groups_scales(self):
+        """get_param_groups returns named groups with correct LR scales."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=True,
+            encoder_b_trainable=True,
+            projections_trainable=True,
+        ).to(torch.float64)
+
+        groups = model.get_param_groups(base_lr=0.1)
+
+        names = [g["name"] for g in groups]
+        assert "encoder_a" in names
+        assert "encoder_b" in names
+        assert "projections" in names
+        assert "decoders" in names
+
+        for g in groups:
+            if g["name"] == "encoder_a":
+                assert g["lr"] == 0.1 * 0.05
+            elif g["name"] == "encoder_b":
+                assert g["lr"] == 0.1 * 0.1
+            elif g["name"] == "projections":
+                assert g["lr"] == 0.1 * 1.0
+            elif g["name"] == "decoders":
+                assert g["lr"] == 0.1 * 1.0
+
+    def test_get_param_groups_excludes_frozen(self):
+        """get_param_groups excludes frozen component params."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=False,
+            encoder_b_trainable=True,
+            projections_trainable=False,
+        ).to(torch.float64)
+
+        groups = model.get_param_groups(base_lr=0.1)
+        names = [g["name"] for g in groups]
+
+        assert "encoder_a" not in names
+        assert "encoder_b" in names
+        assert "projections" not in names
+        assert "decoders" in names
+
+    def test_apply_statenet_state(self):
+        """apply_statenet_state correctly sets all three components."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=True,
+            encoder_b_trainable=True,
+            projections_trainable=True,
+        ).to(torch.float64)
+
+        state = {
+            "encoder_a_trainable": False,
+            "encoder_b_trainable": True,
+            "controller_trainable": False,
+        }
+        model.apply_statenet_state(state)
+
+        assert not model.head_A.is_trainable
+        assert model.head_B.is_trainable
+        assert not model.projections.proj_A.tangent_net[0].weight.requires_grad
+
+    def test_get_trainability_summary(self):
+        """get_trainability_summary returns correct string format."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=False,
+            encoder_b_trainable=True,
+            projections_trainable=False,
+        ).to(torch.float64)
+
+        summary = model.get_trainability_summary()
+
+        assert "A:fixed" in summary
+        assert "B:train" in summary
+        assert "P:fixed" in summary
+
+    def test_gradient_isolation(self):
+        """Gradient isolation: when encoder_a frozen, backward pass produces NO gradients on head_A params but DOES produce gradients on head_B/projections/decoders."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            encoder_a_trainable=False,
+            encoder_b_trainable=True,
+            projections_trainable=True,
+        ).to(torch.float64)
+
+        x = torch.randn(10, 9, dtype=torch.float64)
+        out = model(x)
+
+        loss = out["logits_A"].sum() + out["logits_B"].sum()
+        loss.backward()
+
+        # head_A should have no gradients
+        for param in model.head_A.parameters():
+            assert param.grad is None or torch.all(param.grad == 0)
+
+        # head_B should have gradients
+        has_grad_B = False
+        for param in model.head_B.parameters():
+            if param.grad is not None and torch.any(param.grad != 0):
+                has_grad_B = True
+                break
+        assert has_grad_B
+
+        # projections should have gradients
+        has_grad_proj = False
+        for param in model.projections.proj_A.parameters():
+            if param.grad is not None and torch.any(param.grad != 0):
+                has_grad_proj = True
+                break
+        assert has_grad_proj

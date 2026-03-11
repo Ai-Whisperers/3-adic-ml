@@ -460,3 +460,34 @@ The TensorBoard logger is particularly well-done, providing rich visualization c
 
 **Audit completed**: 2025-01-23
 **Auditor**: Claude Opus 4.5
+
+---
+
+## Addendum (2026-02-26 Audit)
+
+**Auditor**: Claude Opus 4.6
+
+### Stale Information Corrections
+
+1. **`coverage_evaluator.py` no longer exists.** This audit references it throughout (sections 3, exports table, etc.). The file has been removed. `evaluate_coverage` and `CoverageEvaluator` are no longer in the codebase.
+
+2. **Scope line is outdated.** Current files: `checkpoint.py` (56 lines), `checkpoint_validator.py` (94 lines), `hardware_monitor.py` (262 lines), `tensorboard_logger.py` (275 lines). Total ~700 lines.
+
+3. **Export table is outdated.** `__init__.py` no longer exports `evaluate_coverage`, `CoverageEvaluator`, or `CheckpointCompatibilityError`. Current exports: `load_checkpoint_compat`, `get_model_state_dict`, `validate_training_config`, `TensorBoardLogger`, `HardwareMonitor`.
+
+4. **Missing file: `hardware_monitor.py`** (262 lines). Not in original audit. Contains `HardwareMonitor` class for GPU/RAM monitoring with graceful fallbacks.
+
+5. **TensorBoard logger was substantially rewritten.** Stale V5.x methods (`log_epoch`, `_log_padic_losses`, `log_hyperbolic_batch`, `log_hyperbolic_epoch`) were removed in commit `e2b74b0`. Current: 275 lines (was 573).
+
+### New Issues Found (2026-02-26)
+
+| Issue | Severity | Location | Description |
+|-------|----------|----------|-------------|
+| checkpoint_validator.py is dead code | MODERATE | entire file (94 lines) | `validate_training_config()` never called by train.py; contradicts train.py on anchor checkpoint requirement |
+| No tests for any utils/ file | HIGH | — | Zero test coverage for checkpoint, validator, hardware_monitor, tensorboard_logger |
+| `weights_only=False` security risk | LOW | checkpoint.py:36 | Allows arbitrary code execution from untrusted checkpoints |
+| `_compute_3adic_depth` duplication | LOW | tensorboard_logger.py | Still duplicates `TERNARY.valuation` |
+
+### Updated Rating
+
+**Rating**: 6.5/10 (was 8.5/10 — downgraded for stale file references, zero test coverage, 94 lines dead code)
