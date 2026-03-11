@@ -109,11 +109,9 @@ statenet:
 
   # Coverage thresholds (encoder_a control)
   coverage:
-    fix_threshold: 0.995          # Fix encoder when coverage drops below
-    train_threshold: 1.0          # Allow training when coverage above
-    floor: 0.95
-
-  # Hierarchy plateau detection (encoder_b control)
+    fix_threshold: 0.4           # Fix encoder when hyperbolic coverage drops below 0.4 (poor manifold use)
+    train_threshold: 0.6         # Allow training when hyperbolic coverage above 0.6 (good manifold use)
+    floor: 0.3
   hierarchy:
     plateau_threshold: 0.0005
     plateau_patience: 10

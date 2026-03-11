@@ -68,7 +68,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.config.paths import RUNS_DIR, CHECKPOINTS_DIR
 from src.config import StateNetConfig
 from src.core import TERNARY
-from src.geometry import poincare_distance, get_riemannian_optimizer
+from src.geometry import poincare_distance, get_riemannian_optimizer, hyperbolic_radius
 from src.losses import CombinedLoss
 from src.models import (
     TernaryVAEV6Controllable,
@@ -412,6 +412,18 @@ def compute_coverage(logits: torch.Tensor, targets: torch.Tensor) -> float:
         correct_per_sample = (preds == targets.long()).float().mean(dim=1)
         perfect = (correct_per_sample == 1.0).float().mean().item()
         return perfect
+
+
+def compute_hyperbolic_coverage(z_hyp: torch.Tensor, curvature: float = 1.0) -> float:
+    """Compute hyperbolic coverage via radial entropy/spread."""
+    with torch.no_grad():
+        radii = hyperbolic_radius(z_hyp, c=curvature).clamp(min=0.01, max=0.99)
+        hist = torch.histc(radii, bins=10, min=0.0, max=1.0)
+        probs = (hist / hist.sum().clamp(min=1)) + 1e-10
+        probs = probs / probs.sum()
+        entropy = -(probs * torch.log(probs)).sum()
+        max_entropy = torch.log(torch.tensor(10, dtype=torch.float64))
+        return (entropy / max_entropy).item()
 
 
 def compute_tree_coherence(
@@ -1099,6 +1111,7 @@ def train(
             model.eval()
             val_acc_sum = 0.0
             val_coverage_sum = 0.0
+            val_hyperbolic_coverage_sum = 0.0
             val_batches = 0
             z_A_all = []
             z_B_all = []
@@ -1114,6 +1127,7 @@ def train(
 
                     val_acc_sum += compute_accuracy(logits, batch_ops)
                     val_coverage_sum += compute_coverage(logits, batch_ops)
+                    val_hyperbolic_coverage_sum += compute_hyperbolic_coverage(out["z_A_hyp"], curvature)
                     val_batches += 1
 
                     # Collect both VAE embeddings for separate hierarchy computation
@@ -1122,7 +1136,9 @@ def train(
                     idx_all.append(batch_idx)
 
             avg_val_acc = val_acc_sum / val_batches
+            avg_val_acc = val_acc_sum / val_batches
             avg_val_coverage = val_coverage_sum / val_batches
+            avg_hyperbolic_coverage = val_hyperbolic_coverage_sum / val_batches
 
             # Hierarchy metrics for both VAEs (seed varies per epoch, but reproducible)
             z_A_cat = torch.cat(z_A_all)
@@ -1159,7 +1175,7 @@ def train(
                 # V6.0: LRController - unified control via optimizer LR
                 metrics = TrainingMetrics(
                     epoch=epoch,
-                    coverage=avg_val_coverage,
+                    coverage=avg_hyperbolic_coverage,
                     hierarchy_a=hier_metrics_A["hierarchy"],
                     hierarchy_b=hier_metrics_B["hierarchy"],
                     dist_corr_a=hier_metrics_A["dist_corr"],
