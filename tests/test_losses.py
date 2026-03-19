@@ -247,10 +247,10 @@ class TestGradientFlowRichHierarchy:
         logits = logits.clone().requires_grad_(True)
 
         loss_fn = RichHierarchyLoss()
-        out = loss_fn(z_hyp, indices, logits, targets)
+        raw, _ = loss_fn(z_hyp, indices, logits=logits, targets=targets)
 
         # Sum all components
-        total = out["hierarchy"] + out["coverage"] + out["separation"]
+        total = raw["hierarchy"] + raw["coverage"] + raw["separation"]
         total.backward()
 
         assert z_hyp.grad is not None, "z_hyp gradient not computed"
@@ -269,9 +269,9 @@ class TestGradientFlowRichHierarchy:
         targets = torch.randint(-1, 2, (batch_size, 9))
 
         loss_fn = RichHierarchyLoss()
-        out = loss_fn(z_hyp, indices, logits, targets)
+        raw, _ = loss_fn(z_hyp, indices, logits=logits, targets=targets)
 
-        out["hierarchy"].backward()
+        raw["hierarchy"].backward()
 
         assert z_hyp.grad is not None
         assert z_hyp.grad.abs().sum() > 1e-10
@@ -282,9 +282,9 @@ class TestGradientFlowRichHierarchy:
         logits = logits.clone().requires_grad_(True)
 
         loss_fn = RichHierarchyLoss()
-        out = loss_fn(z_hyp, indices, logits, targets)
+        raw, _ = loss_fn(z_hyp, indices, logits=logits, targets=targets)
 
-        out["coverage"].backward()
+        raw["coverage"].backward()
 
         assert logits.grad is not None
         assert logits.grad.abs().sum() > 1e-10
@@ -450,7 +450,7 @@ class TestLossNonNegativityRichHierarchy:
         z_hyp, indices, logits, targets = sample_batch_with_reconstruction
 
         loss_fn = RichHierarchyLoss()
-        out = loss_fn(z_hyp, indices, logits, targets)
+        out, _ = loss_fn(z_hyp, indices, logits=logits, targets=targets)
 
         assert out["hierarchy"] >= 0
 
@@ -459,7 +459,7 @@ class TestLossNonNegativityRichHierarchy:
         z_hyp, indices, logits, targets = sample_batch_with_reconstruction
 
         loss_fn = RichHierarchyLoss()
-        out = loss_fn(z_hyp, indices, logits, targets)
+        out, _ = loss_fn(z_hyp, indices, logits=logits, targets=targets)
 
         assert out["coverage"] >= 0
 
@@ -468,7 +468,7 @@ class TestLossNonNegativityRichHierarchy:
         z_hyp, indices, logits, targets = sample_batch_with_reconstruction
 
         loss_fn = RichHierarchyLoss()
-        out = loss_fn(z_hyp, indices, logits, targets)
+        out, _ = loss_fn(z_hyp, indices, logits=logits, targets=targets)
 
         assert out["separation"] >= 0
 
@@ -477,7 +477,7 @@ class TestLossNonNegativityRichHierarchy:
         z_hyp, indices, logits, targets = sample_batch_with_reconstruction
 
         loss_fn = RichHierarchyLoss()
-        out = loss_fn(z_hyp, indices, logits, targets)
+        out, _ = loss_fn(z_hyp, indices, logits=logits, targets=targets)
 
         assert torch.isfinite(out["hierarchy"])
         assert torch.isfinite(out["coverage"])
@@ -638,7 +638,7 @@ class TestTargetRadiusMonotonicity:
         logits = torch.randn(2, 9, 3, dtype=torch.float64)
         targets = torch.randint(-1, 2, (2, 9))
 
-        out = loss_fn(z_hyp, indices, logits, targets)
+        out, _ = loss_fn(z_hyp, indices, logits=logits, targets=targets)
         assert out["separation"] > 0.0
 
 
@@ -803,7 +803,7 @@ class TestEdgeCasesBatchSize:
         assert loss == 0.0
 
         # RichHierarchyLoss
-        out = RichHierarchyLoss()(z_hyp, indices, logits, targets)
+        out, _ = RichHierarchyLoss()(z_hyp, indices, logits=logits, targets=targets)
         assert torch.isfinite(out["hierarchy"])
         assert torch.isfinite(out["coverage"])
         assert torch.isfinite(out["separation"])
@@ -878,7 +878,7 @@ class TestEdgeCasesNearBoundary:
             loss, _ = LossClass()(z_hyp, indices)
             assert torch.isfinite(loss), f"{LossClass.__name__} not finite at boundary"
 
-        out = RichHierarchyLoss()(z_hyp, indices, logits, targets)
+        out, _ = RichHierarchyLoss()(z_hyp, indices, logits=logits, targets=targets)
         assert torch.isfinite(out["hierarchy"])
         assert torch.isfinite(out["coverage"])
         assert torch.isfinite(out["separation"])

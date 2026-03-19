@@ -95,14 +95,10 @@ class TestCombinedLossInstantiation:
     """Test CombinedLoss config-driven instantiation."""
 
     def test_empty_config(self):
-        """Verify empty config creates fallback coverage loss."""
-        loss_fn = CombinedLoss({}, curvature=1.0)
-
-        assert loss_fn.rich_hierarchy is None
-        assert loss_fn.radial_loss is None
-        assert loss_fn.geodesic_loss is None
-        assert loss_fn.rank_loss is None
-        assert loss_fn.monotonic_loss is None
+        """Verify empty config raises ValueError (all losses disabled)."""
+        import pytest
+        with pytest.raises(ValueError, match="all losses are disabled"):
+            CombinedLoss({}, curvature=1.0)
 
     def test_rich_hierarchy_only(self, rich_hierarchy_config):
         """Verify RichHierarchyLoss instantiation."""
@@ -168,12 +164,13 @@ class TestCombinedLossForward:
         loss_fn = CombinedLoss(rich_hierarchy_config, curvature=1.0)
         losses = loss_fn(z_hyp, indices, logits, targets, epoch=0)
 
-        # Manual computation
+        # Manual computation (detail values are floats from metrics dict)
         detail = losses['rich_hierarchy_detail']
-        expected = (
+        expected = torch.tensor(
             5.0 * detail['hierarchy'] +
             1.0 * detail['coverage'] +
-            3.0 * detail['separation']
+            3.0 * detail['separation'],
+            dtype=torch.float64,
         )
 
         assert torch.allclose(losses['total'], expected, atol=1e-10)
@@ -641,17 +638,10 @@ class TestCombinedLossEdgeCases:
     """Test CombinedLoss edge cases."""
 
     def test_no_losses_enabled(self, sample_inputs):
-        """Verify fallback to coverage loss when no losses enabled."""
-        z_hyp, indices, logits, targets = sample_inputs
-
-        config = {}  # No losses enabled
-
-        loss_fn = CombinedLoss(config, curvature=1.0)
-        losses = loss_fn(z_hyp, indices, logits, targets, epoch=0)
-
-        assert 'total' in losses
-        assert 'coverage' in losses
-        assert torch.isfinite(losses['total'])
+        """Verify empty config raises ValueError (no losses active = no gradients)."""
+        import pytest
+        with pytest.raises(ValueError, match="all losses are disabled"):
+            CombinedLoss({}, curvature=1.0)
 
     def test_logits_shape_27(self, sample_inputs):
         """Verify (B, 27) logits format works."""

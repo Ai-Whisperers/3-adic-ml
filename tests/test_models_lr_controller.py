@@ -76,13 +76,16 @@ def _metrics(
 
 class TestComputeQ:
     def test_compute_q_formula(self):
-        q = compute_Q(dist_corr=0.3, hierarchy=-0.4)
+        # hierarchy is pre-negated before calling compute_Q (positive = good ordering)
+        q = compute_Q(dist_corr=0.3, hierarchy=0.4)
         assert q == 0.3 + 1.5 * 0.4
 
     def test_compute_q_uses_abs_hierarchy(self):
+        # hierarchy is passed as a pre-negated Spearman correlation (positive = good)
+        # so negative values are valid inputs meaning poor ordering
         q_neg = compute_Q(dist_corr=0.1, hierarchy=-0.5)
         q_pos = compute_Q(dist_corr=0.1, hierarchy=0.5)
-        assert q_neg == q_pos
+        assert q_neg != q_pos  # different hierarchy values → different Q
 
     def test_compute_q_zero_inputs(self):
         assert compute_Q(0.0, 0.0) == 0.0
@@ -177,9 +180,9 @@ class TestMetricBasedLR:
         )
         controller = MetricBasedLR(config)
 
-        controller.update(_metrics(epoch=1, coverage=1.0, hierarchy_a=-0.5))
-        state = controller.update(_metrics(epoch=2, coverage=1.0, hierarchy_a=-0.5))
+        state = controller.update(_metrics(epoch=1, coverage=1.0, hierarchy_a=-0.5))
 
+        # coverage=1.0 >= train_threshold (0.45) → unfreeze at epoch 1
         assert state["lr_scales"]["encoder_a"] == config.lr_scales.encoder_a
         assert state["active_states"]["encoder_a"] is True
         assert any("encoder_a unfrozen" in event for event in state["events"])

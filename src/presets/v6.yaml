@@ -153,7 +153,7 @@ loss:
     max_target_distance: 3.0
     n_pairs: 2000
     use_smooth_l1: true
-    weight: 2.0
+    weight: 0.5
 
   # Global rank loss (soft ordering violations)
   rank:
