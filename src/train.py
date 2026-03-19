@@ -256,6 +256,8 @@ class ModelAuditor:
             n_projection_layers=model_cfg.get("projection_layers", 2),
             projection_dropout=model_cfg.get("projection_dropout", 0.1),
             learnable_curvature=model_cfg.get("learnable_curvature", False),
+            init_identity=model_cfg.get("init_identity", True),
+            tangent_scale_init=model_cfg.get("tangent_scale", 0.1),
             encoder_a_trainable=encoder_a_trainable,
             encoder_b_trainable=encoder_b_trainable,
             projections_trainable=projections_trainable,
@@ -549,9 +551,10 @@ def compute_hierarchy_metrics(
         radii = poincare_distance(z_hyp, origin, c=curvature).cpu().numpy()
         valuations = TERNARY.valuation(indices).cpu().numpy()
 
-        # Hierarchy: Spearman correlation between valuation and radius
-        # Negative correlation is good (high valuation = low radius = near origin)
-        hierarchy = spearmanr(valuations, radii).correlation
+        # Hierarchy: negated Spearman correlation between valuation and radius.
+        # High valuation → low radius (near origin), so raw correlation is negative.
+        # We negate so positive values indicate good hierarchy (range -1..1, 1 = perfect).
+        hierarchy = -spearmanr(valuations, radii).correlation
         if np.isnan(hierarchy):
             hierarchy = 0.0
 
@@ -807,15 +810,18 @@ def train(
     # Training controller (LR=0 for frozen components)
     lr_controller = None
 
-    if statenet_cfg.get("enabled", False):
+    if statenet_cfg.get("enabled", True):
         sn_config = StateNetConfig.from_dict(statenet_cfg)
 
-        # Merge option_c LR scales if present
+        # Merge option_c LR scales if present — go through LRScales constructor
+        # to preserve __post_init__ validation (direct field assignment bypasses it)
         if option_c_cfg.get("enabled", True):
-            sn_config.lr_scales.encoder_a = option_c_cfg.get("encoder_a_lr_scale", 0.05)
-            sn_config.lr_scales.encoder_b = option_c_cfg.get("encoder_b_lr_scale", 0.1)
-            sn_config.lr_scales.projections = option_c_cfg.get(
-                "projections_lr_scale", 1.0
+            from src.config.statenet_config import LRScales
+            sn_config.lr_scales = LRScales(
+                encoder_a=option_c_cfg.get("encoder_a_lr_scale", sn_config.lr_scales.encoder_a),
+                encoder_b=option_c_cfg.get("encoder_b_lr_scale", sn_config.lr_scales.encoder_b),
+                projections=option_c_cfg.get("projections_lr_scale", sn_config.lr_scales.projections),
+                decoders=sn_config.lr_scales.decoders,
             )
 
         lr_controller = MetricBasedLR(sn_config)
@@ -1032,11 +1038,23 @@ def train(
             try:
                 with torch.amp.autocast("cuda", enabled=use_amp):
                     out = model(batch_ops)
-                    z_hyp = out.get("z_A_hyp", out.get("z_B_hyp"))
-                    logits = out.get("logits_A", out.get("logits"))
+                    z_A_hyp = out["z_A_hyp"]
+                    z_B_hyp = out["z_B_hyp"]
+                    logits_A = out.get("logits_A", out.get("logits"))
+                    logits_B = out.get("logits_B", logits_A)
 
-                    losses = loss_fn(z_hyp, batch_idx, logits, batch_ops, epoch=epoch)
-                    loss = losses["total"]
+                    # VAE-A: full loss (coverage + hierarchy)
+                    losses = loss_fn(
+                        z_A_hyp, batch_idx, logits_A, batch_ops, epoch=epoch,
+                        mu=out.get("mu_A"), logvar=out.get("logvar_A"),
+                    )
+                    # VAE-B: hierarchy losses on z_B_hyp + coverage on logits_B
+                    losses_B = loss_fn(
+                        z_B_hyp, batch_idx, logits_B, batch_ops, epoch=epoch,
+                        mu=out.get("mu_B"), logvar=out.get("logvar_B"),
+                    )
+                    # Combine: both VAEs contribute to total loss
+                    loss = losses["total"] + losses_B["total"]
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
@@ -1070,7 +1088,7 @@ def train(
                 raise
 
             train_loss_sum += loss.item()
-            train_acc_sum += compute_accuracy(logits, batch_ops)
+            train_acc_sum += compute_accuracy(logits_A, batch_ops)
             n_batches += 1
             global_step += 1
 
@@ -1139,7 +1157,6 @@ def train(
                     idx_all.append(batch_idx)
 
             avg_val_acc = val_acc_sum / val_batches
-            avg_val_acc = val_acc_sum / val_batches
             avg_val_coverage = val_coverage_sum / val_batches
             avg_hyperbolic_coverage = val_hyperbolic_coverage_sum / val_batches
 
@@ -1178,7 +1195,7 @@ def train(
                 # V6.0: LRController - unified control via optimizer LR
                 metrics = TrainingMetrics(
                     epoch=epoch,
-                    coverage=avg_hyperbolic_coverage,
+                    coverage=avg_val_acc,  # per-digit accuracy (not perfect-sample rate)
                     hierarchy_a=hier_metrics_A["hierarchy"],
                     hierarchy_b=hier_metrics_B["hierarchy"],
                     dist_corr_a=hier_metrics_A["dist_corr"],
@@ -1187,16 +1204,49 @@ def train(
                 )
                 controller_state = lr_controller.update(metrics)
 
-                # Apply LR scales to optimizer (the key Option C mechanism)
-                # Use the scheduler's current LR so controller scales compose
-                # with cosine annealing rather than overriding it
-                current_base_lr = scheduler.get_last_lr()[0]
-                update_optimizer_lr_scales(
-                    optimizer, current_base_lr, controller_state["lr_scales"]
-                )
+                # Apply LR scales to optimizer (the key Option C mechanism).
+                # scheduler.get_last_lr()[0] returns the already-scaled LR for
+                # encoder_a (base_lr * encoder_a_scale * cosine_factor), not the
+                # raw cosine-annealed base. Recover the cosine factor by dividing
+                # by the scheduler's stored base for that group, then multiply by
+                # the true base_lr so controller scales are applied to the right value.
+                cosine_factor = scheduler.get_last_lr()[0] / scheduler.base_lrs[0]
+                current_base_lr = base_lr * cosine_factor
+                new_scales = controller_state["lr_scales"]
+                update_optimizer_lr_scales(optimizer, current_base_lr, new_scales)
+
+                # Sync requires_grad with controller decisions.
+                # LR=0 prevents weight updates but gradients still compute through
+                # frozen components, wasting GPU memory and compute each backward pass.
+                # Toggling requires_grad stops gradient computation at the source.
+                prev_a = any(p.requires_grad for p in model.head_A.parameters())
+                prev_b = any(p.requires_grad for p in model.head_B.parameters())
+                prev_p = any(p.requires_grad for p in model.projections.parameters())
+                new_a = new_scales.get('encoder_a', 0.0) > 0
+                new_b = new_scales.get('encoder_b', 0.0) > 0
+                new_p = new_scales.get('projections', 0.0) > 0
+                model.set_encoder_a_trainable(new_a)
+                model.set_encoder_b_trainable(new_b)
+                model.set_projections_trainable(new_p)
+                # Zero stale momentum when a component unfreezes.
+                # Accumulated exp_avg/exp_avg_sq from before freeze are stale
+                # and cause a momentum spike on the first post-unfreeze update.
+                if (not prev_a and new_a) or (not prev_b and new_b) or (not prev_p and new_p):
+                    for group in optimizer.param_groups:
+                        gname = group.get('name', '')
+                        if ((gname == 'encoder_a' and not prev_a and new_a) or
+                            (gname == 'encoder_b' and not prev_b and new_b) or
+                            (gname == 'projections' and not prev_p and new_p)):
+                            for p in group['params']:
+                                if p in optimizer.state:
+                                    st = optimizer.state[p]
+                                    if 'exp_avg' in st:
+                                        st['exp_avg'].zero_()
+                                    if 'exp_avg_sq' in st:
+                                        st['exp_avg_sq'].zero_()
 
                 # Format summary from LR scales
-                scales = controller_state["lr_scales"]
+                scales = new_scales
                 train_summary = f"A:{scales.get('encoder_a', 0):.2f} B:{scales.get('encoder_b', 0):.2f} P:{scales.get('projections', 0):.2f}"
 
             # Grokking detection
@@ -1327,22 +1377,30 @@ def train(
             # Track best metrics (use VAE-A as primary)
             if hier_metrics_A["Q"] > best_Q:
                 best_Q = hier_metrics_A["Q"]
-                torch.save(
-                    {
-                        "epoch": epoch,
-                        "model_state_dict": model.state_dict(),
-                        "Q": best_Q,
-                        "hierarchy_A": hier_metrics_A["hierarchy"],
-                        "hierarchy_B": hier_metrics_B["hierarchy"],
-                        "coverage": avg_val_coverage,
-                    },
-                    ckpt_dir / "best_Q.pt",
-                )
+                ckpt_payload = {
+                    "epoch": epoch,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "Q": best_Q,
+                    "hierarchy_A": hier_metrics_A["hierarchy"],
+                    "hierarchy_B": hier_metrics_B["hierarchy"],
+                    "coverage": avg_val_coverage,
+                }
+                if lr_controller is not None:
+                    ckpt_payload["controller_state"] = {
+                        "active": dict(lr_controller._active),
+                        "best_q": lr_controller._best_q,
+                        "coverage_history": list(lr_controller._coverage_history),
+                        "hierarchy_a_history": list(lr_controller._hierarchy_a_history),
+                        "hierarchy_b_history": list(lr_controller._hierarchy_b_history),
+                    }
+                torch.save(ckpt_payload, ckpt_dir / "best_Q.pt")
 
             if avg_val_coverage > best_coverage:
                 best_coverage = avg_val_coverage
 
-            if hier_metrics_A["hierarchy"] < best_hierarchy:  # More negative is better
+            if hier_metrics_A["hierarchy"] > best_hierarchy:  # Higher is better (negated Spearman)
                 best_hierarchy = hier_metrics_A["hierarchy"]
 
             # Print progress
@@ -1380,31 +1438,45 @@ def train(
 
         # Periodic checkpoint
         if epoch % save_every == 0 and epoch > 0:
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                },
-                ckpt_dir / f"epoch_{epoch}.pt",
-            )
+            periodic_ckpt = {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+            }
+            if lr_controller is not None:
+                periodic_ckpt["controller_state"] = {
+                    "active": dict(lr_controller._active),
+                    "best_q": lr_controller._best_q,
+                    "coverage_history": list(lr_controller._coverage_history),
+                    "hierarchy_a_history": list(lr_controller._hierarchy_a_history),
+                    "hierarchy_b_history": list(lr_controller._hierarchy_b_history),
+                }
+            torch.save(periodic_ckpt, ckpt_dir / f"epoch_{epoch}.pt")
 
         # Periodic memory cleanup
         if device.type == "cuda" and epoch % empty_cache_freq == 0 and epoch > 0:
             torch.cuda.empty_cache()
 
     # Final checkpoint
-    torch.save(
-        {
-            "epoch": epochs,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "best_Q": best_Q,
-            "best_hierarchy": best_hierarchy,
-            "best_coverage": best_coverage,
-        },
-        ckpt_dir / "final.pt",
-    )
+    final_ckpt = {
+        "epoch": epochs,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+        "best_Q": best_Q,
+        "best_hierarchy": best_hierarchy,
+        "best_coverage": best_coverage,
+    }
+    if lr_controller is not None:
+        final_ckpt["controller_state"] = {
+            "active": dict(lr_controller._active),
+            "best_q": lr_controller._best_q,
+            "coverage_history": list(lr_controller._coverage_history),
+            "hierarchy_a_history": list(lr_controller._hierarchy_a_history),
+            "hierarchy_b_history": list(lr_controller._hierarchy_b_history),
+        }
+    torch.save(final_ckpt, ckpt_dir / "final.pt")
 
     # Close TensorBoard logger
     tb_logger.close()

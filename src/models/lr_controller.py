@@ -47,23 +47,44 @@ from src.config.statenet_config import StateNetConfig
 def compute_Q(dist_corr: float, hierarchy: float) -> float:
     """Compute conserved structure capacity Q.
 
-    Q = dist_corr + 1.5 × |hierarchy|
+    Q = dist_corr + 1.5 × hierarchy
 
+    hierarchy is the negated Spearman correlation (positive = good ordering).
     Higher Q indicates better structure learning.
     """
-    return dist_corr + 1.5 * abs(hierarchy)
+    return dist_corr + 1.5 * hierarchy
 
 
 @dataclass
 class TrainingMetrics:
-    """Snapshot of metrics for LR decisions."""
+    """Snapshot of metrics for LR decisions.
+
+    All bounded metrics must be in [-1, 1]:
+      - coverage: per-digit reconstruction accuracy in [0, 1]
+      - hierarchy_a/b: Spearman correlation in [-1, 1]
+      - dist_corr_a: distance correlation in [-1, 1]
+    """
     epoch: int
-    coverage: float
-    hierarchy_a: float
-    hierarchy_b: float
+    coverage: float          # per-digit accuracy in [0, 1]
+    hierarchy_a: float       # Spearman corr in [-1, 1]
+    hierarchy_b: float       # Spearman corr in [-1, 1]
     dist_corr_a: float = 0.0
     q_value: float = 0.0
     grad_norm_projections: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name in ("coverage", "hierarchy_a", "hierarchy_b", "dist_corr_a"):
+            v = getattr(self, name)
+            if not isinstance(v, (int, float)):
+                raise TypeError(
+                    f"TrainingMetrics.{name} must be a scalar float, got {type(v).__name__}"
+                )
+            if not (-1.0 <= float(v) <= 1.0):
+                raise ValueError(
+                    f"TrainingMetrics.{name}={v} is out of range [-1, 1]. "
+                    f"Check that the metric is computed correctly and matches "
+                    f"the expected scale (per-digit accuracy or correlation)."
+                )
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any], epoch: int = 0) -> "TrainingMetrics":
@@ -160,7 +181,7 @@ class MetricBasedLR(LRController):
         return epoch - self._last_change[component] >= self.config.timing.hysteresis_epochs
 
     def _update_histories(self, metrics: TrainingMetrics):
-        """Update rolling histories."""
+        """Update rolling histories and advance plateau counters once per epoch."""
         window = self.config.timing.window_size
 
         self._coverage_history.append(metrics.coverage)
@@ -177,6 +198,15 @@ class MetricBasedLR(LRController):
         self._hierarchy_b_history = self._hierarchy_b_history[-window:]
         self._grad_norm_history = self._grad_norm_history[-window:]
         self._q_history = self._q_history[-(window * 2):]  # Longer for Q
+
+        # Advance stall counter here (single write path per epoch, not in gate methods)
+        if len(self._hierarchy_a_history) >= window:
+            recent_a = self._hierarchy_a_history[-window:]
+            improvement_a = abs(recent_a[-1]) - abs(recent_a[0])
+            if improvement_a < self.config.hierarchy.plateau_threshold:
+                self._hierarchy_a_stall_count += 1
+            else:
+                self._hierarchy_a_stall_count = 0
 
     def _compute_coverage_gate(self, metrics: TrainingMetrics) -> Tuple[float, Optional[str]]:
         """Compute soft coverage gate for encoder_a.
@@ -197,31 +227,28 @@ class MetricBasedLR(LRController):
                 event = "encoder_a frozen (coverage drop)"
                 return (0.0, event)
         else:
-            # Currently frozen - check if should activate
-            if metrics.coverage >= cfg.train_threshold:
-                # Also check hierarchy stall
-                if self._is_hierarchy_a_stalled():
-                    self._active['encoder_a'] = True
-                    self._last_change['encoder_a'] = metrics.epoch
-                    event = "encoder_a unfrozen (hierarchy stall)"
-                    return (self.config.lr_scales.encoder_a, event)
+            # Currently frozen - unfreeze when coverage recovers OR hierarchy stalls
+            # (stall without coverage means encoder_a needs to train to break the stall)
+            coverage_ok = metrics.coverage >= cfg.train_threshold
+            hierarchy_stalled = self._is_hierarchy_a_stalled()
+            if coverage_ok or hierarchy_stalled:
+                self._active['encoder_a'] = True
+                self._last_change['encoder_a'] = metrics.epoch
+                reason = "coverage recovered" if coverage_ok else "hierarchy stall"
+                event = f"encoder_a unfrozen ({reason})"
+                return (self.config.lr_scales.encoder_a, event)
 
         return (self.config.lr_scales.encoder_a if self._active['encoder_a'] else 0.0, event)
 
     def _is_hierarchy_a_stalled(self) -> bool:
-        """Check if VAE-A hierarchy has plateaued."""
-        window = self.config.timing.window_size
-        if len(self._hierarchy_a_history) < window:
+        """Check if VAE-A hierarchy has plateaued.
+
+        Pure predicate — reads stall count only. Counter is advanced once per
+        epoch in _update_histories to prevent double-increment when this method
+        is called multiple times per update cycle.
+        """
+        if len(self._hierarchy_a_history) < self.config.timing.window_size:
             return False
-
-        recent = self._hierarchy_a_history[-window:]
-        improvement = abs(recent[-1]) - abs(recent[0])
-
-        if improvement < self.config.hierarchy.plateau_threshold:
-            self._hierarchy_a_stall_count += 1
-        else:
-            self._hierarchy_a_stall_count = 0
-
         return self._hierarchy_a_stall_count >= self.config.hierarchy.stall_patience
 
     def _compute_hierarchy_gate(self, metrics: TrainingMetrics) -> Tuple[float, Optional[str]]:
@@ -253,13 +280,20 @@ class MetricBasedLR(LRController):
                     event = f"encoder_b frozen (plateau {self._hierarchy_b_plateau_count} epochs)"
                     return (0.0, event)
         else:
-            # Check if hierarchy degraded
-            if abs(self._hierarchy_b_history[-1]) < abs(self._hierarchy_b_history[-2]) - 0.01:
-                self._active['encoder_b'] = True
-                self._hierarchy_b_plateau_count = 0
-                self._last_change['encoder_b'] = metrics.epoch
-                event = "encoder_b unfrozen (hierarchy degraded)"
-                return (self.config.lr_scales.encoder_b, event)
+            # Unfreeze only on sustained degradation: net decline > 2% over window/2 steps.
+            # plateau_threshold is for stagnation (0.0005 scale), not decline — use a
+            # fixed meaningful threshold (0.02 on correlation scale) to avoid noise oscillation.
+            _DEGRADATION_THRESHOLD = 0.02
+            half_win = max(2, self.config.timing.window_size // 2)
+            if len(self._hierarchy_b_history) >= half_win:
+                recent = self._hierarchy_b_history[-half_win:]
+                net_change = abs(recent[-1]) - abs(recent[0])
+                if net_change < -_DEGRADATION_THRESHOLD:
+                    self._active['encoder_b'] = True
+                    self._hierarchy_b_plateau_count = 0
+                    self._last_change['encoder_b'] = metrics.epoch
+                    event = "encoder_b unfrozen (sustained hierarchy degradation)"
+                    return (self.config.lr_scales.encoder_b, event)
 
         return (self.config.lr_scales.encoder_b if self._active['encoder_b'] else 0.0, event)
 

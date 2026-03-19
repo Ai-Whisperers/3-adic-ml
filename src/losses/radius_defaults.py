@@ -99,7 +99,11 @@ def auto_share_radius_config(
     radius_sources = {}
     for block_name, block_cfg in loss_configs.items():
         if "inner_radius" in block_cfg or "outer_radius" in block_cfg:
-            radius_sources[block_name] = RadiusConfig.from_dict(block_cfg)
+            rc = RadiusConfig.from_dict(block_cfg)
+            valid, msg = rc.validate()
+            if not valid:
+                raise ValueError(f"[RadiusDefaults] Invalid radii in '{block_name}': {msg}")
+            radius_sources[block_name] = rc
 
     # Determine the shared radius config
     if len(radius_sources) == 0:

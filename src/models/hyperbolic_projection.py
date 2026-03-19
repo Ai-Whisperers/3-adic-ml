@@ -55,7 +55,8 @@ class HyperbolicProjection(nn.Module):
         hidden_dim: int = 64,
         max_radius: float = 0.95,
         curvature: float = 1.0,
-        init_identity: bool = True,
+        init_identity: bool = False,
+        tangent_scale_init: float = 0.1,
         n_layers: int = 1,
         dropout: float = 0.0,
         learnable_curvature: bool = False,
@@ -68,11 +69,25 @@ class HyperbolicProjection(nn.Module):
             max_radius: Maximum radius constraint (applied after expmap)
             curvature: Hyperbolic curvature parameter
             init_identity: If True, initialize tangent_net as identity
+            tangent_scale_init: Initial value for learnable tangent_scale (default 0.1)
             n_layers: Number of hidden layers
             dropout: Dropout rate
             learnable_curvature: If True, curvature is learnable
         """
         super().__init__()
+        if not (0.0 < max_radius < 1.0):
+            raise ValueError(
+                f"HyperbolicProjection: max_radius must be in (0, 1) for a valid "
+                f"Poincaré ball constraint, got {max_radius}"
+            )
+        if curvature <= 0.0:
+            raise ValueError(
+                f"HyperbolicProjection: curvature must be > 0, got {curvature}"
+            )
+        if not (0.0 <= tangent_scale_init):
+            raise ValueError(
+                f"HyperbolicProjection: tangent_scale_init must be >= 0, got {tangent_scale_init}"
+            )
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
         self.max_radius = max_radius
@@ -99,6 +114,15 @@ class HyperbolicProjection(nn.Module):
                 layers.append(nn.Dropout(dropout))
         layers.append(nn.Linear(hidden_dim, latent_dim))
         self.tangent_net = nn.Sequential(*layers)
+
+        # Tangent scale: controls initial magnitude of tangent vectors entering expmap0.
+        # Encoder outputs have norm ~4.0; expmap0(tanh) saturates for large norms.
+        # tangent_scale_init=0.1 gives tangent norm ~0.4 → expmap0 radius ~0.38,
+        # well within target range [inner_radius, outer_radius].
+        # Value is passed from config (model.tangent_scale in v6.yaml).
+        self.tangent_scale = nn.Parameter(
+            torch.tensor(tangent_scale_init, dtype=torch.float64)
+        )
 
         if init_identity:
             self._init_identity()
@@ -127,8 +151,10 @@ class HyperbolicProjection(nn.Module):
         # Enforce float64 precision
         z_tangent = z_tangent.to(torch.float64)
 
-        # Transform in tangent space (residual: preserves input structure)
-        z_transformed = z_tangent + self.tangent_net(z_tangent)
+        # Scale tangent vectors + residual transform
+        # tangent_scale is learned; init=0.1 prevents expmap0 saturation at init
+        z_scaled = self.tangent_scale * z_tangent
+        z_transformed = z_scaled + self.tangent_net(z_scaled)
 
         # Project to manifold via expmap0 (true hyperbolic projection)
         c = self.curvature.item() if hasattr(self.curvature, 'item') else self.curvature
@@ -166,7 +192,8 @@ class HyperbolicProjection(nn.Module):
         # Enforce float64 precision
         z_tangent = z_tangent.to(torch.float64)
 
-        z_transformed = z_tangent + self.tangent_net(z_tangent)
+        z_scaled = self.tangent_scale * z_tangent
+        z_transformed = z_scaled + self.tangent_net(z_scaled)
         c = self.curvature.item() if hasattr(self.curvature, 'item') else self.curvature
         z_hyp = exp_map_zero(z_transformed, c=c)
 
@@ -199,6 +226,8 @@ class DualHyperbolicProjection(nn.Module):
         n_layers: int = 1,
         dropout: float = 0.0,
         learnable_curvature: bool = False,
+        init_identity: bool = False,
+        tangent_scale_init: float = 0.1,
     ):
         """Initialize DualHyperbolicProjection.
 
@@ -210,6 +239,8 @@ class DualHyperbolicProjection(nn.Module):
             n_layers: Number of hidden layers
             dropout: Dropout rate
             learnable_curvature: If True, curvature is learnable
+            init_identity: If True, initialize tangent_net as identity (zero residual)
+            tangent_scale_init: Initial value for learnable tangent_scale parameter
         """
         super().__init__()
         self.n_layers = n_layers
@@ -225,6 +256,8 @@ class DualHyperbolicProjection(nn.Module):
             n_layers=n_layers,
             dropout=dropout,
             learnable_curvature=learnable_curvature,
+            init_identity=init_identity,
+            tangent_scale_init=tangent_scale_init,
         )
 
         # VAE-B projection (separate)
@@ -236,6 +269,8 @@ class DualHyperbolicProjection(nn.Module):
             n_layers=n_layers,
             dropout=dropout,
             learnable_curvature=False,  # Share curvature with A
+            init_identity=init_identity,
+            tangent_scale_init=tangent_scale_init,
         )
 
     def forward(

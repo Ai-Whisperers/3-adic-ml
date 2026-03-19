@@ -43,14 +43,12 @@ model:
   # Projection network (tangent space transform before expmap0)
   projection_layers: 2
   projection_dropout: 0.1
+  init_identity: true   # Identity init: tangent_net starts as zero residual (empirically better norms)
+  tangent_scale: 0.1    # Initial tangent_scale value; learned during training
 
   # Encoder/Decoder architecture
   encoder_type: improved  # SiLU + LayerNorm
   decoder_type: improved
-  encoder_dropout: 0.1
-  decoder_dropout: 0.1
-  logvar_min: -10.0
-  logvar_max: 2.0
 
 # =============================================================================
 # Riemannian Optimization (V6.0 Feature)
@@ -109,8 +107,8 @@ statenet:
 
   # Coverage thresholds (encoder_a control)
   coverage:
-    fix_threshold: 0.4           # Fix encoder when hyperbolic coverage drops below 0.4 (poor manifold use)
-    train_threshold: 0.6         # Allow training when hyperbolic coverage above 0.6 (good manifold use)
+    fix_threshold: 0.35          # Fix encoder when per-digit accuracy drops below 0.35 (near random)
+    train_threshold: 0.45        # Allow training when per-digit accuracy above 0.45 (above random)
     floor: 0.3
   hierarchy:
     plateau_threshold: 0.0005
@@ -122,11 +120,6 @@ statenet:
     grad_threshold: 0.005
     grad_patience: 5
     patience_ceiling: 20
-
-  # Threshold annealing (Q-gated)
-  annealing:
-    enabled: true
-    step: 0.002
 
   # Timing configuration
   timing:
@@ -142,16 +135,15 @@ loss:
     enabled: true
     hierarchy_weight: 5.0
     coverage_weight: 1.0
-    richness_weight: 2.5
     separation_weight: 3.0
     inner_radius: 0.08
-    outer_radius: 0.70
+    outer_radius: 0.85
 
   # Radial targets (MSE to target radii based on 3-adic valuation)
   radial:
     enabled: true
     # Note: inner_radius/outer_radius automatically shared from rich_hierarchy
-    radial_weight: 5.0
+    weight: 5.0
     margin_weight: 0.5
   # Geodesic loss (Poincaré distance alignment)
   geodesic:
@@ -170,12 +162,6 @@ loss:
     temperature: 0.1
     n_pairs: 2000
 
-  # Zero-structure loss
-  zero_structure:
-    enabled: true
-    valuation_weight: 0.5
-    sparsity_weight: 0.3
- 
   # Monotonic radial ordering
   monotonic:
     enabled: true
@@ -186,9 +172,10 @@ loss:
   # Hyperbolic KL divergence (curvature-corrected, optional)
   # Uses conformal factor λ(x) for proper Poincaré geometry
   hyperbolic_kl:
-    enabled: false  # Enable for β-VAE style regularization
-    beta: 1.0       # KL weight (β > 1 for disentanglement)
-    free_bits: 0.0  # Minimum KL per dimension
+    enabled: true   # Required: makes this a true VAE (not a deterministic AE)
+    beta: 0.1       # Conservative: prevents KL dominating hierarchy losses
+    weight: 0.01    # Low weight: hierarchy structure takes priority
+    free_bits: 0.5  # Minimum KL per dim: prevents posterior collapse
 
 # =============================================================================
 # Training Configuration

@@ -1,3 +1,4 @@
+from .base import HierarchyLossBase
 from .padic_geodesic import (
     PAdicGeodesicLoss,
     RadialHierarchyLoss,
@@ -9,6 +10,8 @@ from .combined import CombinedLoss
 from .hyperbolic_kl import HyperbolicKLDivergence, StandardKLDivergence
 
 __all__ = [
+    # Abstract base
+    "HierarchyLossBase",
     # P-adic geodesic losses
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",

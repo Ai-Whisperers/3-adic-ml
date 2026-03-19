@@ -26,10 +26,22 @@ from typing import Any, Dict
 
 @dataclass
 class CoverageThresholds:
-    """Thresholds for encoder_A (coverage-gated) control."""
-    fix_threshold: float = 0.995      # Below this: freeze encoder_A
-    train_threshold: float = 1.0      # Above this + stalled: unfreeze
-    floor: float = 0.95               # Minimum allowed (annealing limit)
+    """Thresholds for encoder_A (coverage-gated) control.
+
+    All thresholds are compared against per-digit reconstruction accuracy in [0, 1].
+    Invariant: 0 <= fix_threshold < train_threshold <= 1.0
+    """
+    fix_threshold: float = 0.35       # Below this: freeze encoder_A (near random=0.33)
+    train_threshold: float = 0.45     # Above this + stalled: unfreeze
+    floor: float = 0.3                # Minimum allowed (annealing limit)
+
+    def __post_init__(self) -> None:
+        if not (0.0 <= self.fix_threshold < self.train_threshold <= 1.0):
+            raise ValueError(
+                f"CoverageThresholds: fix_threshold={self.fix_threshold} must be < "
+                f"train_threshold={self.train_threshold}, both in [0, 1]. "
+                f"These compare against per-digit reconstruction accuracy."
+            )
 
 
 @dataclass
@@ -60,11 +72,20 @@ class TimingConfig:
 
 @dataclass
 class LRScales:
-    """Learning rate multipliers per component."""
+    """Learning rate multipliers per component. All must be in (0, 1]."""
     encoder_a: float = 0.05           # Slow learner (coverage anchor)
     encoder_b: float = 0.10           # Medium learner (hierarchy)
     projections: float = 1.0          # Fast adapter
     decoders: float = 1.0             # Always full LR
+
+    def __post_init__(self) -> None:
+        for name in ("encoder_a", "encoder_b", "projections", "decoders"):
+            v = getattr(self, name)
+            if not (0.0 < v <= 1.0):
+                raise ValueError(
+                    f"LRScales.{name}={v} must be in (0, 1]. "
+                    f"Use statenet.enabled=false to disable the controller entirely."
+                )
 
 
 @dataclass
@@ -120,6 +141,14 @@ class StateNetConfig:
         Returns:
             StateNetConfig instance
         """
+        _known_keys = {'enabled', 'coverage', 'hierarchy', 'controller', 'timing', 'lr_scales', 'initial'}
+        unknown = set(d.keys()) - _known_keys
+        if unknown:
+            raise ValueError(
+                f"StateNetConfig.from_dict: unknown config keys {unknown}. "
+                f"Valid keys: {_known_keys}. Check for typos in your YAML."
+            )
+
         config = cls()
 
         # Enable flag

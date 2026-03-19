@@ -25,7 +25,7 @@ than two at boundary.
 Single responsibility: Unified p-adic geodesic alignment.
 """
 
-from typing import Tuple
+from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
@@ -33,6 +33,7 @@ import torch.nn.functional as F
 
 from ..core import TERNARY
 from ..geometry import poincare_distance, hyperbolic_radius
+from .base import HierarchyLossBase
 
 
 def _exponential_target_radii(
@@ -84,7 +85,7 @@ def _euclidean_to_hyperbolic_radius(r_euclid: torch.Tensor) -> torch.Tensor:
     return 2.0 * torch.atanh(r_euclid)
 
 
-class PAdicGeodesicLoss(nn.Module):
+class PAdicGeodesicLoss(HierarchyLossBase):
     """Unified P-Adic Geodesic Loss.
 
     THE KEY V5.11 INSIGHT: In hyperbolic geometry, distance ordering and
@@ -121,6 +122,11 @@ class PAdicGeodesicLoss(nn.Module):
             seed: Random seed for reproducible pair sampling
         """
         super().__init__()
+        self._validate_positive(curvature, "curvature", self.__class__.__name__)
+        self._validate_positive(max_target_distance, "max_target_distance", self.__class__.__name__)
+        self._validate_positive(valuation_scale, "valuation_scale", self.__class__.__name__)
+        if n_pairs < 1:
+            raise ValueError(f"PAdicGeodesicLoss: n_pairs must be >= 1, got {n_pairs}")
         self.curvature = curvature
         self.max_target = max_target_distance
         self.valuation_scale = valuation_scale
@@ -218,7 +224,7 @@ class PAdicGeodesicLoss(nn.Module):
         return loss, metrics
 
 
-class RadialHierarchyLoss(nn.Module):
+class RadialHierarchyLoss(HierarchyLossBase):
     """Radial Hierarchy Loss - direct radius enforcement.
 
     While PAdicGeodesicLoss handles hierarchy implicitly via geodesics,
@@ -262,6 +268,11 @@ class RadialHierarchyLoss(nn.Module):
                 margins are half the per-level radius step. Range: [0.3, 1.0]
         """
         super().__init__()
+        self._validate_radii(inner_radius, outer_radius, self.__class__.__name__)
+        self._validate_positive(curvature, "curvature", self.__class__.__name__)
+        self._validate_weight(margin_weight, "margin_weight", self.__class__.__name__)
+        if max_valuation < 1:
+            raise ValueError(f"RadialHierarchyLoss: max_valuation must be >= 1, got {max_valuation}")
         self.inner_radius = inner_radius
         self.outer_radius = outer_radius
         self.max_valuation = max_valuation
@@ -304,8 +315,8 @@ class RadialHierarchyLoss(nn.Module):
         actual_radius = hyperbolic_radius(z_hyp, c=self.curvature)
 
         # Compute target radius using exponential p-adic mapping (via precomputed LUT)
-        v_clamped = valuations.long().clamp(0, self.max_valuation)
-        target_radius = self._target_radii[v_clamped]
+        v_clamped = valuations.long().clamp(0, self.max_valuation).cpu()
+        target_radius = self._target_radii[v_clamped].to(device)
 
         # Weighted loss (high-valuation points are rarer, more important)
         if self.valuation_weighting:
@@ -350,10 +361,10 @@ class RadialHierarchyLoss(nn.Module):
             if higher_v_mask.any():
                 # Expected margin: difference in exponential target radii
                 # (p-adic structure → larger margins at low valuation, smaller at high)
-                vi_clamped = v_i[higher_v_mask].long().clamp(0, self.max_valuation)
-                vj_clamped = v_j[higher_v_mask].long().clamp(0, self.max_valuation)
-                target_r_j = self._target_radii[vj_clamped]
-                target_r_i = self._target_radii[vi_clamped]
+                vi_clamped = v_i[higher_v_mask].long().clamp(0, self.max_valuation).cpu()
+                vj_clamped = v_j[higher_v_mask].long().clamp(0, self.max_valuation).cpu()
+                target_r_j = self._target_radii[vj_clamped].to(device)
+                target_r_i = self._target_radii[vi_clamped].to(device)
                 expected_margin = (target_r_j - target_r_i) * self.margin_step_factor
 
                 # Actual difference: r_j - r_i (should be positive)
@@ -394,7 +405,7 @@ class RadialHierarchyLoss(nn.Module):
         return total_loss, metrics
 
 
-class GlobalRankLoss(nn.Module):
+class GlobalRankLoss(HierarchyLossBase):
     """Global Rank Loss - enforces monotonic radius ordering by valuation.
 
     Unlike RadialHierarchyLoss which uses point-wise MSE and sampled pair margins,
@@ -428,6 +439,10 @@ class GlobalRankLoss(nn.Module):
             seed: Random seed for reproducible pair sampling
         """
         super().__init__()
+        self._validate_positive(temperature, "temperature", self.__class__.__name__)
+        self._validate_positive(curvature, "curvature", self.__class__.__name__)
+        if n_pairs < 1:
+            raise ValueError(f"GlobalRankLoss: n_pairs must be >= 1, got {n_pairs}")
         self.temperature = temperature
         self.n_pairs = n_pairs
         self.use_all_pairs = use_all_pairs
@@ -551,7 +566,7 @@ class GlobalRankLoss(nn.Module):
         return loss, metrics
 
 
-class MonotonicRadialLoss(nn.Module):
+class MonotonicRadialLoss(HierarchyLossBase):
     """Monotonic Radial Loss - enforces strict per-level radius ordering.
 
     V5.11.4 IMPROVEMENT: Instead of sampling random pairs, this loss:
@@ -595,6 +610,10 @@ class MonotonicRadialLoss(nn.Module):
                 Default 0.5 gives equal importance. Range: [0.0, 1.0]
         """
         super().__init__()
+        self._validate_radii(inner_radius, outer_radius, self.__class__.__name__)
+        self._validate_positive(curvature, "curvature", self.__class__.__name__)
+        self._validate_positive(temperature, "temperature", self.__class__.__name__)
+        self._validate_weight(target_loss_weight, "target_loss_weight", self.__class__.__name__)
         self.inner_radius = inner_radius
         self.outer_radius = outer_radius
         self.max_valuation = max_valuation
@@ -682,15 +701,15 @@ class MonotonicRadialLoss(nn.Module):
         violations = margins - radius_diffs  # positive when violated
 
         if self.use_soft_margin:
-            # Soft hinge: smooth approximation of max(0, x)
-            # softplus(x/temp) * temp ≈ max(0, x) as temp → 0
-            loss = F.softplus(violations / self.temperature).mean() * self.temperature
+            # Soft hinge: softplus(beta=1/temperature) gives near-ReLU sharpness
+            # beta=1/0.05=20 → sharp gradient at violation boundary, smooth elsewhere
+            loss = F.softplus(violations, beta=1.0 / self.temperature).mean()
         else:
             # Hard hinge
             loss = F.relu(violations).mean()
 
         # Also add a gentle pull toward exponential target radii per level
-        target_radii = target_lut[torch.tensor(levels_present, dtype=torch.long)]
+        target_radii = target_lut[torch.tensor(levels_present, dtype=torch.long)].to(device)
 
         target_loss = F.mse_loss(level_means, target_radii)
 
@@ -728,7 +747,7 @@ class MonotonicRadialLoss(nn.Module):
         return total_loss, metrics
 
 
-class RichHierarchyLoss(nn.Module):
+class RichHierarchyLoss(HierarchyLossBase):
     """Rich Hierarchy Loss - Unified Training Objective.
 
     Combines:
@@ -740,18 +759,24 @@ class RichHierarchyLoss(nn.Module):
     """
 
     def __init__(
-        self, inner_radius=0.1, outer_radius=0.85, curvature=1.0, separation_margin=0.01
-    ):
+        self,
+        inner_radius: float = 0.1,
+        outer_radius: float = 0.85,
+        curvature: float = 1.0,
+        separation_margin: float = 0.01,
+    ) -> None:
         """Initialize RichHierarchyLoss.
 
         Args:
-            inner_radius: Target radius for highest valuation (v=9)
-            outer_radius: Target radius for lowest valuation (v=0)
-            curvature: Hyperbolic curvature for poincare_distance
-            separation_margin: Minimum margin enforced between adjacent valuation levels.
-                Prevents level collapse. Default 0.01 in normalized ball [0,1]. Range: [0.005, 0.05]
+            inner_radius: Target radius for highest valuation (v=9), must be in (0, 1)
+            outer_radius: Target radius for lowest valuation (v=0), must be in (0, 1)
+            curvature: Hyperbolic curvature, must be > 0
+            separation_margin: Minimum margin between adjacent levels, must be >= 0
         """
         super().__init__()
+        self._validate_radii(inner_radius, outer_radius, self.__class__.__name__)
+        self._validate_positive(curvature, "curvature", self.__class__.__name__)
+        self._validate_weight(separation_margin, "separation_margin", self.__class__.__name__)
         self.inner_radius = inner_radius
         self.outer_radius = outer_radius
         self.curvature = curvature
@@ -764,13 +789,32 @@ class RichHierarchyLoss(nn.Module):
         )
         self.register_buffer("target_radii", target_radii)
 
-    def forward(self, z_hyp, indices_batch, logits, targets):
+    def forward(
+        self,
+        z_hyp: torch.Tensor,
+        batch_indices: torch.Tensor,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        """Compute rich hierarchy loss.
+
+        Args:
+            z_hyp: Points on Poincaré ball (B, latent_dim), float64
+            batch_indices: Ternary operation indices (B,)
+            **kwargs: Must contain 'logits' (B, 9, 3) or (B, 27) and 'targets' (B, 9)
+
+        Returns:
+            loss: Weighted scalar loss (hierarchy + coverage + separation)
+            metrics: Dict with 'hierarchy', 'coverage', 'separation' float values
+        """
+        logits = kwargs["logits"]
+        targets = kwargs["targets"]
+        indices_batch = batch_indices
         device = z_hyp.device
 
         # Use hyperbolic radius (distance from origin), not Euclidean norm
         radii = hyperbolic_radius(z_hyp, c=self.curvature)
         # Use precomputed hyperbolic target radii from __init__
-        target_radii = self.target_radii
+        target_radii = self.target_radii.to(device)
 
         valuations = TERNARY.valuation(indices_batch).long().to(device)
 
@@ -839,12 +883,21 @@ class RichHierarchyLoss(nn.Module):
             violation = F.relu(mean_radii[i + 1] - mean_radii[i] + level_margin)
             separation_loss = separation_loss + violation
 
-        # Return raw components - CombinedLoss applies weights from config
-        return {
+        # Return (scalar_loss=zero placeholder, components_dict).
+        # CombinedLoss reads individual components and applies config weights.
+        # The zero scalar is intentional: CombinedLoss owns the weighting.
+        metrics: Dict[str, float] = {
+            "hierarchy": hierarchy_loss.item(),
+            "coverage": coverage_loss.item(),
+            "separation": separation_loss.item(),
+        }
+        # Pass raw tensors under _tensors key for CombinedLoss gradient flow
+        _raw = {
             "hierarchy": hierarchy_loss,
             "coverage": coverage_loss,
             "separation": separation_loss,
         }
+        return _raw, metrics
 
 
 __all__ = [

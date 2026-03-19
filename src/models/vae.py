@@ -269,6 +269,8 @@ class TernaryVAEV6(nn.Module):
         n_projection_layers: int = 1,
         projection_dropout: float = 0.0,
         learnable_curvature: bool = False,
+        init_identity: bool = True,
+        tangent_scale_init: float = 0.1,
     ):
         super().__init__()
         self.latent_dim = latent_dim
@@ -291,6 +293,8 @@ class TernaryVAEV6(nn.Module):
             n_layers=n_projection_layers,
             dropout=projection_dropout,
             learnable_curvature=learnable_curvature,
+            init_identity=init_identity,
+            tangent_scale_init=tangent_scale_init,
         )
 
         # Decoders (input from tangent space via logmap0)
