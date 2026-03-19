@@ -41,12 +41,11 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import yaml
 from scipy.stats import spearmanr
 from torch.utils.data import DataLoader, TensorDataset
@@ -65,22 +64,21 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Internal imports
-from src.config.paths import RUNS_DIR, CHECKPOINTS_DIR
 from src.config import StateNetConfig
+from src.config.paths import RUNS_DIR
 from src.core import TERNARY
-from src.geometry import poincare_distance, get_riemannian_optimizer, hyperbolic_radius
+from src.geometry import get_riemannian_optimizer, hyperbolic_radius, poincare_distance
 from src.losses import CombinedLoss
 from src.models import (
-    TernaryVAEV6Controllable,
-    compute_Q,
     MetricBasedLR,
+    TernaryVAEV6Controllable,
     TrainingMetrics,
-    update_optimizer_lr_scales,
+    compute_Q,
     get_optimizer_grad_stats,
+    update_optimizer_lr_scales,
 )
-from src.utils.checkpoint import load_checkpoint_compat, get_model_state_dict
-from src.utils import TensorBoardLogger, TENSORBOARD_AVAILABLE, HardwareMonitor
-
+from src.utils import HardwareMonitor, TensorBoardLogger
+from src.utils.checkpoint import get_model_state_dict, load_checkpoint_compat
 
 # =============================================================================
 # DETERMINISM
@@ -143,7 +141,7 @@ class DataAuditor:
     def prepare_data(
         self,
         val_frac: float = 0.1,
-        device: torch.device = torch.device("cpu"),
+        device: torch.device = None,
     ) -> Tuple[TensorDataset, TensorDataset, torch.Tensor]:
         """Generate data, split, and validate.
 
@@ -154,6 +152,8 @@ class DataAuditor:
         Returns:
             Tuple of (train_dataset, val_dataset, all_indices)
         """
+        if device is None:
+            device = torch.device("cpu")
         print("\n[AUDIT] Data Integrity Check...")
 
         # Generate all operations (uses cached LUT from TERNARY singleton)
@@ -175,8 +175,8 @@ class DataAuditor:
         idx_val = all_indices[val_idx]
 
         # Leakage check
-        train_set = set(tuple(x.tolist()) for x in X_train)
-        val_set = set(tuple(x.tolist()) for x in X_val)
+        train_set = {tuple(x.tolist()) for x in X_train}
+        val_set = {tuple(x.tolist()) for x in X_val}
         overlap = train_set.intersection(val_set)
 
         self.audit_log["n_train"] = len(X_train)
@@ -193,9 +193,9 @@ class DataAuditor:
         # Value distribution check
         vals, counts = torch.unique(X_train, return_counts=True)
         dist = counts.float() / counts.sum()
-        self.audit_log["value_distribution"] = dict(zip(vals.tolist(), dist.tolist()))
+        self.audit_log["value_distribution"] = dict(zip(vals.tolist(), dist.tolist(), strict=False))
         print(
-            f"  [OK] Value distribution: {dict(zip(vals.tolist(), [f'{d:.2%}' for d in dist.tolist()]))}"
+            f"  [OK] Value distribution: {dict(zip(vals.tolist(), [f'{d:.2%}' for d in dist.tolist()], strict=False))}"
         )
 
         # Create datasets
@@ -462,7 +462,7 @@ def compute_tree_coherence(
         child_positions = []
         parent_positions = []
 
-        for pos, (idx, parent_idx) in enumerate(zip(indices, parent_indices)):
+        for pos, (_idx, parent_idx) in enumerate(zip(indices, parent_indices, strict=False)):
             parent_val = parent_idx.item()
             if parent_val < 0:  # Skip root
                 continue
@@ -941,7 +941,7 @@ def train(
 
     # Config for enhanced logging
     histogram_every = logging_cfg.get("histogram_every", 10)
-    embedding_every = logging_cfg.get("embedding_every", 50)
+
     enhanced_cfg = logging_cfg.get("enhanced_metrics", {})
     log_batch_metrics = enhanced_cfg.get("enabled", False)
     log_gradients = enhanced_cfg.get("log_gradients", False)
@@ -1003,7 +1003,6 @@ def train(
 
     # Global batch counter for TensorBoard
     global_step = 0
-    total_batches = len(train_loader)
 
     # Epoch iterator (with or without tqdm)
     epoch_iter = (
@@ -1158,7 +1157,6 @@ def train(
 
             avg_val_acc = val_acc_sum / val_batches
             avg_val_coverage = val_coverage_sum / val_batches
-            avg_hyperbolic_coverage = val_hyperbolic_coverage_sum / val_batches
 
             # Hierarchy metrics for both VAEs (seed varies per epoch, but reproducible)
             z_A_cat = torch.cat(z_A_all)

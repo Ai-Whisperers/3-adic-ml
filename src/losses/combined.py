@@ -36,24 +36,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.core import TERNARY
-from src.geometry import poincare_distance
+from .hyperbolic_kl import HyperbolicKLDivergence
 from .padic_geodesic import (
-    PAdicGeodesicLoss,
-    RadialHierarchyLoss,
     GlobalRankLoss,
     MonotonicRadialLoss,
+    PAdicGeodesicLoss,
+    RadialHierarchyLoss,
     RichHierarchyLoss,
 )
 from .radius_defaults import (
-    RadiusConfig,
-    DEFAULT_INNER_RADIUS,
-    DEFAULT_OUTER_RADIUS,
     auto_share_radius_config,
     compare_radius_configs,
 )
-from .hyperbolic_kl import HyperbolicKLDivergence
-
 
 
 class CombinedLoss(nn.Module):
@@ -457,11 +451,14 @@ class CombinedLoss(nn.Module):
         # 6. KL Divergence (makes this a true VAE)
         if self.kl_loss is not None and mu is not None and logvar is not None:
             kl_out = self.kl_loss(mu, logvar, z_hyp)
-            losses['kl'] = kl_out
             if self.use_learnable_weights and hasattr(self, 'log_sigma_kl'):
-                total = total + self._weighted_loss(kl_out, self.log_sigma_kl)
+                kl_contribution = self._weighted_loss(kl_out, self.log_sigma_kl)
+                losses['kl'] = kl_contribution
+                total = total + kl_contribution
             else:
-                total = total + self.kl_weight * kl_out
+                kl_contribution = self.kl_weight * kl_out
+                losses['kl'] = kl_contribution
+                total = total + kl_contribution
 
         # 7. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:

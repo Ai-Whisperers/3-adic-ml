@@ -11,9 +11,8 @@ Key features:
 - Cross-block validation to catch configuration inconsistencies
 """
 
-from typing import Optional, Tuple, Dict, Any
 from dataclasses import dataclass
-
+from typing import Any, Dict, Tuple
 
 # ============================================================================
 # CENTRALIZED DEFAULTS
@@ -71,7 +70,7 @@ class RadiusConfig:
                 f"inner_radius ({self.inner_radius}) must be < outer_radius ({self.outer_radius})",
             )
         if self.inner_radius >= 1.0 or self.outer_radius >= 1.0:
-            return False, f"Radii must be < 1.0 for valid Poincaré ball coordinates"
+            return False, "Radii must be < 1.0 for valid Poincaré ball coordinates"
         return True, "Valid"
 
 
@@ -153,7 +152,7 @@ def compare_radius_configs(configs: Dict[str, RadiusConfig]) -> Tuple[bool, str]
     configs_list = list(configs.values())
     first = configs_list[0]
 
-    for block_name, config in configs.items():
+    for _block_name, config in configs.items():
         if (
             config.inner_radius != first.inner_radius
             or config.outer_radius != first.outer_radius
