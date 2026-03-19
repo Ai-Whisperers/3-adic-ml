@@ -247,9 +247,23 @@ class TestGradientFlowRichHierarchy:
         logits = logits.clone().requires_grad_(True)
 
         loss_fn = RichHierarchyLoss()
-        raw, _ = loss_fn(z_hyp, indices, logits=logits, targets=targets)
+        raw, metrics = loss_fn(z_hyp, indices, logits=logits, targets=targets)
 
-        # Sum all components
+        # Contract: 'hierarchy', 'coverage', 'separation' are required public keys.
+        # CombinedLoss.forward() indexes these directly — changing them is a
+        # breaking API change.
+        assert "hierarchy" in raw, "required key 'hierarchy' missing from raw output"
+        assert "coverage" in raw, "required key 'coverage' missing from raw output"
+        assert "separation" in raw, "required key 'separation' missing from raw output"
+
+        # Contract: all raw values must be differentiable tensors
+        for key, val in raw.items():
+            assert isinstance(val, torch.Tensor), f"raw['{key}'] must be a Tensor"
+
+        # Contract: metrics values must be numeric scalars (for logging)
+        for key, val in metrics.items():
+            assert isinstance(val, (int, float)), f"metrics['{key}'] must be numeric"
+
         total = raw["hierarchy"] + raw["coverage"] + raw["separation"]
         total.backward()
 

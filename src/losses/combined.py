@@ -30,7 +30,7 @@ Usage:
     # loss_fn.get_learned_weights()  # returns current effective weights
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 import torch.nn as nn
@@ -80,12 +80,22 @@ class CombinedLoss(nn.Module):
             weight: 0.3
     """
 
+    # Class-level attribute annotations for mypy type narrowing.
+    # These are set in _init_losses(); declaring here makes isinstance checks
+    # and Optional[X] narrowing visible to the type checker.
+    rich_hierarchy: Optional[RichHierarchyLoss]
+    radial_loss: Optional[RadialHierarchyLoss]
+    geodesic_loss: Optional[PAdicGeodesicLoss]
+    rank_loss: Optional[GlobalRankLoss]
+    monotonic_loss: Optional[MonotonicRadialLoss]
+    kl_loss: Optional[HyperbolicKLDivergence]
+
     def __init__(
         self,
         loss_config: Dict[str, Any],
         curvature: float = 1.0,
         device: Optional[torch.device] = None,
-    ):
+    ) -> None:
         """Initialize CombinedLoss from config.
 
         Args:
@@ -114,7 +124,7 @@ class CombinedLoss(nn.Module):
         if device is not None:
             self.to(device)
 
-    def _init_losses(self):
+    def _init_losses(self) -> None:
         """Initialize loss modules based on config."""
 
         # Initialize losses
@@ -264,7 +274,7 @@ class CombinedLoss(nn.Module):
                         f"CombinedLoss: rich_hierarchy.{k}_weight is negative ({w})."
                     )
 
-    def _init_learnable_weights(self):
+    def _init_learnable_weights(self) -> None:
         """Initialize learnable log-sigma parameters for uncertainty weighting.
 
         Uses homoscedastic uncertainty weighting (Kendall et al. 2018):
@@ -365,7 +375,7 @@ class CombinedLoss(nn.Module):
         epoch: int = 0,
         mu: Optional[torch.Tensor] = None,
         logvar: Optional[torch.Tensor] = None,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> Dict[str, Any]:
         """Compute combined loss.
 
         Args:
@@ -505,7 +515,7 @@ class CombinedLoss(nn.Module):
             # Unsupported shape - return zero loss with warning
             return torch.tensor(0.0, device=device, dtype=torch.float64)
 
-    def get_enabled_losses(self) -> list:
+    def get_enabled_losses(self) -> List[str]:
         """Return list of enabled loss names."""
         enabled = []
         if self.rich_hierarchy is not None:

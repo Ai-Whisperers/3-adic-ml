@@ -36,10 +36,9 @@ Usage:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
-import torch.nn as nn
 
 from src.config.statenet_config import StateNetConfig
 
@@ -139,7 +138,7 @@ class MetricBasedLR(LRController):
     Key difference from StateNet: outputs are CONTINUOUS, not binary.
     """
 
-    def __init__(self, config: StateNetConfig):
+    def __init__(self, config: StateNetConfig) -> None:
         """Initialize metric-based controller.
 
         Args:
@@ -180,7 +179,7 @@ class MetricBasedLR(LRController):
         """Check hysteresis constraint."""
         return epoch - self._last_change[component] >= self.config.timing.hysteresis_epochs
 
-    def _update_histories(self, metrics: TrainingMetrics):
+    def _update_histories(self, metrics: TrainingMetrics) -> None:
         """Update rolling histories and advance plateau counters once per epoch."""
         window = self.config.timing.window_size
 

@@ -25,14 +25,14 @@ than two at boundary.
 Single responsibility: Unified p-adic geodesic alignment.
 """
 
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 import torch.nn.functional as F
 
 from ..core import TERNARY
 from ..geometry import hyperbolic_radius, poincare_distance
-from .base import HierarchyLossBase
+from .base import HierarchyLossBase, MetricsDict, RichHierarchyLossBase
 
 
 def _exponential_target_radii(
@@ -147,8 +147,11 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         return self.max_target * torch.exp(-valuation / self.valuation_scale)
 
     def forward(
-        self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
-    ) -> Tuple[torch.Tensor, dict]:
+        self,
+        z_hyp: torch.Tensor,
+        batch_indices: torch.Tensor,
+        **kwargs: Any,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
         """Compute unified geodesic loss.
 
         Args:
@@ -292,8 +295,11 @@ class RadialHierarchyLoss(HierarchyLossBase):
         )
         self.register_buffer('_target_radii', target_radii)
     def forward(
-        self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
-    ) -> Tuple[torch.Tensor, dict]:
+        self,
+        z_hyp: torch.Tensor,
+        batch_indices: torch.Tensor,
+        **kwargs: Any,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
         """Compute radial hierarchy loss.
 
         Args:
@@ -450,8 +456,11 @@ class GlobalRankLoss(HierarchyLossBase):
         self.generator.manual_seed(seed)
 
     def forward(
-        self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
-    ) -> Tuple[torch.Tensor, dict]:
+        self,
+        z_hyp: torch.Tensor,
+        batch_indices: torch.Tensor,
+        **kwargs: Any,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
         """Compute global rank loss.
 
         Args:
@@ -631,8 +640,11 @@ class MonotonicRadialLoss(HierarchyLossBase):
         )
         self.register_buffer('_target_radii', target_radii)
     def forward(
-        self, z_hyp: torch.Tensor, batch_indices: torch.Tensor
-    ) -> Tuple[torch.Tensor, dict]:
+        self,
+        z_hyp: torch.Tensor,
+        batch_indices: torch.Tensor,
+        **kwargs: Any,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
         """Compute monotonic radial loss.
 
         Args:
@@ -746,7 +758,7 @@ class MonotonicRadialLoss(HierarchyLossBase):
         return total_loss, metrics
 
 
-class RichHierarchyLoss(HierarchyLossBase):
+class RichHierarchyLoss(RichHierarchyLossBase):
     """Rich Hierarchy Loss - Unified Training Objective.
 
     Combines:
@@ -792,8 +804,8 @@ class RichHierarchyLoss(HierarchyLossBase):
         self,
         z_hyp: torch.Tensor,
         batch_indices: torch.Tensor,
-        **kwargs,
-    ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        **kwargs: Any,
+    ) -> Tuple[Dict[str, torch.Tensor], MetricsDict]:
         """Compute rich hierarchy loss.
 
         Args:

@@ -80,12 +80,12 @@ class TestComputeQ:
         q = compute_Q(dist_corr=0.3, hierarchy=0.4)
         assert q == 0.3 + 1.5 * 0.4
 
-    def test_compute_q_uses_abs_hierarchy(self):
-        # hierarchy is passed as a pre-negated Spearman correlation (positive = good)
-        # so negative values are valid inputs meaning poor ordering
+    def test_compute_q_signed_hierarchy_matters(self):
+        # Contract: hierarchy is pre-negated Spearman before calling compute_Q.
+        # Positive hierarchy = good ordering. Negative = poor ordering → lower Q.
         q_neg = compute_Q(dist_corr=0.1, hierarchy=-0.5)
         q_pos = compute_Q(dist_corr=0.1, hierarchy=0.5)
-        assert q_neg != q_pos  # different hierarchy values → different Q
+        assert q_neg < q_pos  # poor ordering → lower Q
 
     def test_compute_q_zero_inputs(self):
         assert compute_Q(0.0, 0.0) == 0.0

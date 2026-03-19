@@ -3,41 +3,53 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0
 # See LICENSE file in the repository root for full license text.
 
-"""Abstract base class for all hierarchy losses.
+"""Abstract base classes for all hierarchy losses.
 
-Enforces a consistent interface contract across all loss implementations:
-- forward() always returns (torch.Tensor, dict) — scalar loss + metrics dict
-- All constructors validate their parameters at construction time
-- __repr__ is meaningful for inspection
+Two contracts are defined here:
 
-This prevents the silent divergence found in v6.2 audit where RichHierarchyLoss
-returned only a dict while all other losses returned (tensor, dict), causing
-CombinedLoss to handle it as a special case and making interface assumptions
-invisible to static analysis.
+HierarchyLossBase
+    The standard contract: forward() returns (scalar_tensor, metrics_dict).
+    Used by PAdicGeodesicLoss, RadialHierarchyLoss, GlobalRankLoss,
+    MonotonicRadialLoss.
+
+RichHierarchyLossBase
+    The component contract: forward() returns (component_tensors, metrics_dict).
+    Used by RichHierarchyLoss only, because CombinedLoss applies its own
+    weights to each component rather than receiving a pre-weighted scalar.
+
+MetricsDict
+    Type alias for the metrics return value. Values are numeric scalars
+    (int or float) safe for logging. No gradient tracking.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple, Union
 
 import torch
 import torch.nn as nn
 
+# ------------------------------------------------------------------
+# Shared type aliases
+# ------------------------------------------------------------------
+
+# Metrics dicts contain int or float scalars for logging.
+# Union[int, float] is used rather than float because counts like
+# n_pairs and margin_violations are integers.
+MetricsDict = Dict[str, Union[int, float]]
+
 
 class HierarchyLossBase(ABC, nn.Module):
-    """Abstract base for all p-adic hierarchy losses.
+    """Abstract base for p-adic hierarchy losses returning a scalar loss.
 
     Contract:
-        forward(z_hyp, batch_indices, **kwargs) -> Tuple[torch.Tensor, Dict]
-            z_hyp:         Points on Poincaré ball (batch, latent_dim)
-            batch_indices: Operation indices used for 3-adic valuation (batch,)
-            **kwargs:      Loss-specific additional inputs (logits, targets, epoch, etc.)
+        forward(z_hyp, batch_indices, **kwargs) -> Tuple[Tensor, MetricsDict]
 
             Returns:
-                loss:    Scalar tensor, differentiable, on z_hyp.device
-                metrics: Dict of float scalars for logging (detached, no grad)
+                loss:    Scalar differentiable tensor on z_hyp.device
+                metrics: MetricsDict — numeric logging values, no gradient
 
     Validation:
-        All subclasses must call _validate_radii() and _validate_positive()
+        All subclasses must call _validate_radii(), _validate_positive(), etc.
         from their __init__ before any computation.
     """
 
@@ -49,8 +61,8 @@ class HierarchyLossBase(ABC, nn.Module):
         self,
         z_hyp: torch.Tensor,
         batch_indices: torch.Tensor,
-        **kwargs,
-    ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        **kwargs: Any,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
         """Compute loss and return (scalar_loss, metrics_dict).
 
         Args:
@@ -60,7 +72,7 @@ class HierarchyLossBase(ABC, nn.Module):
 
         Returns:
             loss: Scalar differentiable tensor on z_hyp.device
-            metrics: Dict[str, float] — logging values, no gradient
+            metrics: MetricsDict — logging values, no gradient
         """
 
     # ------------------------------------------------------------------
@@ -69,11 +81,6 @@ class HierarchyLossBase(ABC, nn.Module):
 
     @staticmethod
     def _validate_radii(inner_radius: float, outer_radius: float, cls_name: str) -> None:
-        """Validate Poincaré ball radius parameters.
-
-        Raises:
-            ValueError: If radii are outside valid range or inverted.
-        """
         if not (0.0 < inner_radius < 1.0):
             raise ValueError(
                 f"{cls_name}: inner_radius must be in (0, 1), got {inner_radius}"
@@ -89,11 +96,6 @@ class HierarchyLossBase(ABC, nn.Module):
 
     @staticmethod
     def _validate_positive(value: float, name: str, cls_name: str) -> None:
-        """Validate that a parameter is strictly positive.
-
-        Raises:
-            ValueError: If value <= 0.
-        """
         if value <= 0.0:
             raise ValueError(
                 f"{cls_name}: {name} must be positive, got {value}"
@@ -101,11 +103,6 @@ class HierarchyLossBase(ABC, nn.Module):
 
     @staticmethod
     def _validate_weight(value: float, name: str, cls_name: str) -> None:
-        """Validate that a loss weight is non-negative.
-
-        Raises:
-            ValueError: If value < 0 (negative weights invert gradients).
-        """
         if value < 0.0:
             raise ValueError(
                 f"{cls_name}: {name} must be >= 0 (negative weights invert gradients), got {value}"
@@ -113,12 +110,51 @@ class HierarchyLossBase(ABC, nn.Module):
 
     @staticmethod
     def _validate_probability(value: float, name: str, cls_name: str) -> None:
-        """Validate that a value is in [0, 1].
-
-        Raises:
-            ValueError: If value outside [0, 1].
-        """
         if not (0.0 <= value <= 1.0):
             raise ValueError(
                 f"{cls_name}: {name} must be in [0, 1], got {value}"
             )
+
+
+class RichHierarchyLossBase(HierarchyLossBase):
+    """Abstract base for losses that return per-component tensors.
+
+    Unlike HierarchyLossBase (which returns a pre-weighted scalar),
+    subclasses return a dict of raw component tensors so that CombinedLoss
+    can apply its own configurable weights to each component.
+
+    Contract:
+        forward(z_hyp, batch_indices, **kwargs)
+            -> Tuple[Dict[str, Tensor], MetricsDict]
+
+            Returns:
+                raw: Dict mapping component name -> differentiable tensor
+                     e.g. {"hierarchy": t, "coverage": t, "separation": t}
+                metrics: MetricsDict — float/int logging values, no gradient
+    """
+
+    @abstractmethod
+    def forward(  # type: ignore[override]
+        self,
+        z_hyp: torch.Tensor,
+        batch_indices: torch.Tensor,
+        **kwargs: Any,
+    ) -> Tuple[Dict[str, torch.Tensor], MetricsDict]:
+        """Return component tensors and metrics.
+
+        Args:
+            z_hyp: Points on Poincaré ball, shape (B, latent_dim), float64
+            batch_indices: Ternary operation indices, shape (B,), int64
+            **kwargs: Must contain 'logits' and 'targets'
+
+        Returns:
+            raw: Component tensors — each differentiable, on z_hyp.device
+            metrics: MetricsDict — logging values, no gradient
+        """
+
+
+__all__ = [
+    "HierarchyLossBase",
+    "RichHierarchyLossBase",
+    "MetricsDict",
+]
