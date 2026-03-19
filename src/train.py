@@ -807,6 +807,17 @@ def train(
     loss_fn = CombinedLoss(loss_cfg, curvature=curvature, device=device)
     print(f"  Loss functions: {loss_fn.get_enabled_losses()}")
 
+    # VAE-B loss: hierarchy-only (no coverage/reconstruction).
+    # VAE-B's z_B_hyp is shaped for hierarchy; applying coverage loss creates a
+    # gradient conflict: decoder_B must simultaneously reconstruct AND encode hierarchy.
+    # Fix: zero out coverage in rich_hierarchy for VAE-B.
+    loss_cfg_b = {k: dict(v) if isinstance(v, dict) else v for k, v in loss_cfg.items()}
+    if "rich_hierarchy" in loss_cfg_b and isinstance(loss_cfg_b["rich_hierarchy"], dict):
+        loss_cfg_b["rich_hierarchy"] = dict(loss_cfg_b["rich_hierarchy"])
+        loss_cfg_b["rich_hierarchy"]["coverage_weight"] = 0.0
+    loss_fn_b = CombinedLoss(loss_cfg_b, curvature=curvature, device=device)
+    print(f"  Loss functions (VAE-B, no coverage): {loss_fn_b.get_enabled_losses()}")
+
     # Training controller (LR=0 for frozen components)
     lr_controller = None
 
@@ -832,7 +843,8 @@ def train(
     # Optimizer
     # Include loss_fn parameters when learnable weights are enabled
     loss_params = (
-        list(loss_fn.parameters()) if loss_cfg.get("learnable_weights", False) else []
+        list(loss_fn.parameters()) + list(loss_fn_b.parameters())
+        if loss_cfg.get("learnable_weights", False) else []
     )
     if loss_params:
         print(f"  Learnable loss weights: {len(loss_params)} parameters")
@@ -1047,8 +1059,10 @@ def train(
                         z_A_hyp, batch_idx, logits_A, batch_ops, epoch=epoch,
                         mu=out.get("mu_A"), logvar=out.get("logvar_A"),
                     )
-                    # VAE-B: hierarchy losses on z_B_hyp + coverage on logits_B
-                    losses_B = loss_fn(
+                    # VAE-B: hierarchy-only (no coverage/reconstruction).
+                    # coverage_weight=0.0 in loss_fn_b prevents gradient conflict
+                    # between reconstruction objective and hierarchy shaping.
+                    losses_B = loss_fn_b(
                         z_B_hyp, batch_idx, logits_B, batch_ops, epoch=epoch,
                         mu=out.get("mu_B"), logvar=out.get("logvar_B"),
                     )

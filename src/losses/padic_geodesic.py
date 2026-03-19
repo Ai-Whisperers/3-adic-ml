@@ -28,11 +28,10 @@ Single responsibility: Unified p-adic geodesic alignment.
 from typing import Dict, Tuple
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 from ..core import TERNARY
-from ..geometry import poincare_distance, hyperbolic_radius
+from ..geometry import hyperbolic_radius, poincare_distance
 from .base import HierarchyLossBase
 
 
@@ -818,19 +817,30 @@ class RichHierarchyLoss(HierarchyLossBase):
 
         valuations = TERNARY.valuation(indices_batch).long().to(device)
 
-        # 1. Hierarchy loss (MSE to target radius)
+        # 1. Hierarchy loss (MSE on mean radius + within-level variance)
+        # Mean-only MSE leaves per-level scatter unpunished (CV up to 34% at v=3),
+        # directly limiting Spearman Q. Adding variance_loss tightens each level.
         hierarchy_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
+        variance_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
         present_levels = torch.unique(valuations)
 
         for v in present_levels:
             mask = valuations == v
-            if mask.sum() > 0:
-                mean_r = radii[mask].mean()
+            level_radii = radii[mask]
+            if level_radii.numel() > 0:
+                mean_r = level_radii.mean()
                 target_r = target_radii[int(v.item())]
                 hierarchy_loss = hierarchy_loss + (mean_r - target_r) ** 2
+                if level_radii.numel() > 1:
+                    variance_loss = variance_loss + level_radii.var()
 
-        if len(present_levels) > 0:
-            hierarchy_loss = hierarchy_loss / len(present_levels)
+        n_levels = len(present_levels)
+        if n_levels > 0:
+            hierarchy_loss = hierarchy_loss / n_levels
+            variance_loss = variance_loss / n_levels
+        # Fold variance penalty into hierarchy_loss (weight 0.1 keeps it subordinate
+        # to the mean-MSE term but provides non-zero gradient signal to tighten clusters)
+        hierarchy_loss = hierarchy_loss + 0.1 * variance_loss
 
         # 2. Coverage loss (Reconstruction)
         # logits shape: (B, 9, 3) or (B, 27) depending on decoder
@@ -890,6 +900,7 @@ class RichHierarchyLoss(HierarchyLossBase):
             "hierarchy": hierarchy_loss.item(),
             "coverage": coverage_loss.item(),
             "separation": separation_loss.item(),
+            "variance": variance_loss.item(),
         }
         # Pass raw tensors under _tensors key for CombinedLoss gradient flow
         _raw = {
