@@ -379,19 +379,161 @@ Debug: log `target_tangent[v]` and compare to `||mu||.mean()` per valuation leve
 **If hierarchy_A collapses**: prior weight too high, overpowering MonotonicRadialLoss.
 Reduce `valuation_prior.weight` or increase `monotonic.weight`.
 
-### Phase 3: Per-Valuation σ Targets (After Phase 2)
+### Phase 3: Adaptive Geometry Constraints (After Phase 2)
 
-If dist_corr plateaus below 0.70 after Phase 1+2, implement per-valuation variance targets:
+**Context (2026-03-21 update):** Phase 1 completed. Empirical results show dist_corr
+plateaus at ~0.885, not 0.40 as originally projected. Theoretical maximum with perfect
+radii is 0.9925 (confirmed by simulation). The gap (0.885→0.9925) is entirely within-level
+radial variance — points at the same valuation level are spread instead of tightly clustered.
+
+The Q=2.2 target requires dist_corr≥0.944. This is achievable, but manual weight tuning
+(scatter_weight=0.3→0.8, radial_weight=0.5→1.5) is a brittle proxy for what the system
+actually needs: **self-regulating geometric constraints per valuation level**.
+
+---
+
+#### Phase 3A: Per-Valuation σ Targets in Tangent Space
+
+Complete the prior: `ValuationPriorLoss` currently constrains `‖μ‖` but not `σ`.
+`HyperbolicKLDivergence(variance_only=True)` keeps a uniform variance penalty.
+The correct prior is `N(target_tangent[v], σ_target[v]²)` — variance should also
+decay with valuation (high-v points near origin need tighter σ).
 
 ```python
-# In ValuationPriorLoss:
-sigma_target = sigma_base * exp(-v * sigma_scale)  # e.g. sigma_base=0.5, sigma_scale=0.3
+# In ValuationPriorLoss or a new VariancePriorLoss:
+sigma_target[v] = sigma_base * exp(-v * sigma_scale)  # e.g. base=0.5, scale=0.3
 var_target = sigma_target ** 2
-# KL term: 0.5 * (var/var_target + mu_prior_err - log(var/var_target) - 1)
+
+# Replace variance_only KL with:
+# KL_var = 0.5 * (λ² * σ² / var_target - log(σ² / var_target) - 1)
+# KL_mean = (‖μ‖ - target_tangent[v])² / var_target   ← already ValuationPriorLoss
 ```
 
-This replaces `N(0, I)` variance penalty with `N(target_tangent[v], sigma_target[v]²)` — a
-fully valuation-conditioned Gaussian prior.
+This completes the prior: both posterior mean and variance are valuation-conditioned.
+
+**Files:** `src/losses/hyperbolic_kl.py` (new `per_valuation_variance` mode),
+`src/losses/padic_geodesic.py` (`ValuationPriorLoss.forward` — add σ term).
+
+---
+
+#### Phase 3B: Lagrangian Dual Adaptive Weighting (Replaces Manual Tuning)
+
+**The root problem with fixed weights:** every weight in v6.yaml is a manually tuned
+proxy for a constraint. When the system drifts (e.g. within-level variance increases after
+an LR restart), no automatic mechanism corrects it. We tune once, observe, tune again —
+this loop is the bottleneck.
+
+**The correct formulation is constrained optimisation:**
+
+```
+minimise  reconstruction(θ) + hierarchy(θ)
+subject to  scatter_v(θ) ≤ ε_scatter    for each v = 0..9
+            margin_v(θ) ≥ min_margin     for each v = 0..8
+            ‖μ‖_v ≈ target_tangent[v]    for each v = 0..9
+```
+
+The Lagrangian turns each constraint into a self-scaling penalty. The dual variables
+λ_v **automatically increase** when a constraint is violated and decrease when satisfied —
+replacing the manual weight tuning loop entirely.
+
+**Dual ascent update rule (gradient ascent on λ):**
+
+```python
+# After each epoch's validation metrics:
+for v in range(10):
+    scatter_violation_v = max(0, within_level_std_v - eps_scatter)
+    margin_violation_v  = max(0, min_margin - level_gap_v)
+    prior_violation_v   = abs(mean_mu_norm_v - target_tangent_v)
+
+    lambda_scatter[v] += lr_dual * scatter_violation_v
+    lambda_margin[v]  += lr_dual * margin_violation_v
+    lambda_prior[v]   += lr_dual * prior_violation_v
+
+    lambda_scatter[v] = max(0, lambda_scatter[v])  # KKT: λ ≥ 0
+```
+
+**Implementation architecture:**
+
+```
+New module: src/losses/lagrangian.py
+─────────────────────────────────────
+class LagrangianDualState:
+    """Stores and updates dual variables for per-level geometric constraints."""
+
+    def __init__(self, n_levels=10, lr_dual=0.01):
+        self.lambda_scatter = torch.zeros(n_levels)   # within-level radial tightness
+        self.lambda_margin  = torch.zeros(n_levels)   # inter-level separation
+        self.lambda_prior   = torch.zeros(n_levels)   # tangent-space mean targets
+        self.lr_dual = lr_dual
+
+    def update(self, scatter_violations, margin_violations, prior_violations):
+        """Called once per epoch after validation metrics. Not differentiable."""
+        self.lambda_scatter = (self.lambda_scatter + self.lr_dual * scatter_violations).clamp(min=0)
+        self.lambda_margin  = (self.lambda_margin  + self.lr_dual * margin_violations).clamp(min=0)
+        self.lambda_prior   = (self.lambda_prior   + self.lr_dual * prior_violations).clamp(min=0)
+
+    def get_weights(self) -> Dict[str, Tensor]:
+        """Returns current effective weights for each loss component."""
+        return {
+            'scatter_v': self.lambda_scatter,  # shape (10,)
+            'margin_v':  self.lambda_margin,
+            'prior_v':   self.lambda_prior,
+        }
+```
+
+**Where violation signals come from (all already exist in the codebase):**
+
+| Violation | Source | Already computed? |
+|-----------|--------|-------------------|
+| `scatter_v` (within-level std) | `GlobalRankLoss.metrics['scatter_loss']` | Partially — global only. Needs per-v split. |
+| `margin_v` (inter-level gap) | `MonotonicRadialLoss.metrics['r_v0'..'r_v9']` | Yes — level means logged every epoch |
+| `prior_v` (μ norm vs target) | `ValuationPriorLoss.metrics['vp_mu_norm_v0'..'v4']` | Partial — first 5 levels only |
+| `level_hierarchy_v` | `compute_hierarchy_metrics()['level_hierarchy']` | Yes — full per-v dict |
+
+**Changes required per component:**
+
+1. **`GlobalRankLoss`**: split `scatter_loss` by valuation level → return `scatter_v[0..9]`
+   - Currently: single scalar. Needs: per-level `(r_i - r_j)²` mean for each same-v group.
+   - One new inner loop, ~15 lines.
+
+2. **`MonotonicRadialLoss`**: already returns `r_v0..r_v9`. Add per-level violation array.
+   - Compute `gap_v = r[v] - r[v+1]` and `violation_v = max(0, min_margin - gap_v)`.
+   - Already ~90% there.
+
+3. **`ValuationPriorLoss`**: extend per-level metrics from 5 to all 10 levels.
+   - Trivial: change `range(min(5, ...))` to `range(self.max_valuation + 1)`.
+
+4. **`LagrangianDualState`** (new): ~50 lines, no PyTorch autograd needed (dual updates
+   are not differentiated through; they are outer-loop parameter updates like meta-learning).
+
+5. **`train.py`**: after validation, extract per-level violations → call `dual_state.update()`
+   → pass `dual_state.get_weights()` into loss_fn on next epoch.
+   - Requires `CombinedLoss.set_dual_weights(weights)` or passing λ_v directly to loss calls.
+
+6. **`CombinedLoss`**: add optional `dual_weights` parameter to `forward()`. When present,
+   scale per-level components. When absent, fall back to fixed weights (backward compatible).
+
+**Why not use `learnable_weights: true` (Kendall uncertainty weighting)?**
+
+The existing system learns `log_sigma` per loss by gradient of the primal objective. It
+minimises total weighted loss, not constraint violations. Two critical differences:
+
+| | Kendall (existing) | Lagrangian dual (proposed) |
+|---|---|---|
+| **Update rule** | Gradient of primal loss | Gradient of dual (violation magnitude) |
+| **Granularity** | One σ per loss function | One λ per constraint per level |
+| **Behaviour** | Reduces weight on hard losses (escape) | Increases weight on violated constraints (enforce) |
+| **Guarantee** | Minimises weighted sum | Converges to constrained optimum (under convexity) |
+| **Failure mode** | σ→∞ collapses any loss | λ→∞ if constraint is fundamentally infeasible |
+
+The Lagrangian dual is adversarial to the primal: it actively increases pressure on
+violated constraints instead of learning to ignore them.
+
+**When to implement:** After Phase 2 validation confirms Q>2.15 but dist_corr still
+below 0.944. Current manual weight tuning (radial 1.5, scatter 0.8) is the interim fix.
+Phase 3B removes the need for that tuning entirely.
+
+---
 
 ### Phase 4: Architectural (Long Term)
 
@@ -407,6 +549,8 @@ Requires new `EncoderHead` variant — do not touch existing V6 encoder until V7
 **4C: Dual VAE prior differentiation**
 Separate `ValuationPriorLoss` weights for A vs B.
 VAE-A: low weight (coverage priority). VAE-B: full weight (hierarchy priority).
+With Phase 3B in place, this becomes: separate `lambda_prior_A[v]` and `lambda_prior_B[v]`
+dual variables, each adapting independently to their VAE's constraint violations.
 
 ---
 
@@ -417,9 +561,9 @@ VAE-A: low weight (coverage priority). VAE-B: full weight (hierarchy priority).
 | `_exponential_target_radii()` | Already correct — use it from `ValuationPriorLoss` |
 | `expmap0` in `HyperbolicProjection` | Correct geoopt implementation |
 | `MonotonicRadialLoss` | Works on z_hyp — orthogonal to prior fix, complements it |
-| `scatter_weight` in `GlobalRankLoss` | Already added (Fix 5C), handles angular scatter |
+| `scatter_weight` in `GlobalRankLoss` | Now 0.8 (raised from 0.3 for within-level tightness) |
 | `RichHierarchyLoss` with `variance_weight=0.5` | Already added (Fix 5A), keep |
-| `geodesic.weight=0.5` | Already reduced (Fix 5B), don't increase |
+| `geodesic.weight` | Now 2.0 (raised from 0.5); primary driver of dist_corr |
 | `tangent_scale` parameter | Learnable, working — leave alone |
 | `learnable_curvature` | Required for `target_tangent` recalculation to matter |
 | VAE-B loss wiring | Already fixed in V6.2, don't touch |
@@ -454,17 +598,27 @@ on the most important objective.
 
 ## 9. Success Criteria
 
-| Metric | Current | After Phase 1 | After Phase 2 | After Phase 3 |
-|--------|---------|---------------|---------------|---------------|
-| `r_v0` | ~0.72 (plateau) | 0.82–0.88 | 0.85±0.02 | 0.85±0.01 |
-| `dist_corr` | 0.40 | 0.60–0.70 | 0.70–0.80 | 0.80–0.90 |
-| `hierarchy_A` | 0.836 | ≥ 0.83 | ≥ 0.83 | ≥ 0.85 |
-| `Q` | 2.141 | 2.3–2.5 | 2.5–2.7 | ≥ 2.7 |
-| KL (wrong-direction %) | 80% | 0% | 0% | 0% |
-| within-level std (v=0) | ~0.15 | 0.08–0.10 | 0.05–0.08 | ≤ 0.03 |
+*Updated 2026-03-21: Phase 1 completed. Actual results vs. original projections.*
 
-Q=2.2 target is reachable after Phase 1 with the right weight tuning.
-Q≥2.5 requires Phase 2. Q≥3.0 requires Phase 4B (attention encoder).
+| Metric | Before Phase 1 | After Phase 1 (actual) | Phase 3 target | Theoretical max |
+|--------|---------------|----------------------|----------------|-----------------|
+| `dist_corr` | 0.882 (plateau) | 0.885 (marginal gain) | ≥ 0.944 | 0.9925 |
+| `hierarchy_A` | 0.836 | 0.838 (saturated) | ≥ 0.838 | ~0.84 |
+| `Q` | 2.141 | 2.145 (marginal gain) | ≥ 2.20 | ~2.49 |
+| `KL wrong-direction` | 100% | 0% | 0% | 0% |
+| within-level std (v=0) | unknown | unknown | ≤ 0.05 | 0 |
+| convergence speed | Q=2.0 at ep≈60 | Q=1.67 at ep20 (faster) | — | — |
+
+**Key revision from original projections:**
+- dist_corr was NOT at 0.40 — it was already at 0.882. The original projection was wrong.
+- Phase 1 (ValuationPriorLoss) improved convergence speed but did not raise the ceiling.
+- The Q=2.141 ceiling is a within-level radial variance problem, not a prior direction problem.
+- Theoretical max confirmed at 0.9925 — Q=2.2 is achievable, Q≥2.4 is achievable.
+- Phase 3B (Lagrangian dual) is the principled path to Q≥2.2 without further manual tuning.
+
+Q=2.2 requires dist_corr≥0.944 (holding hier=0.838). Currently 0.059 below that.
+Q≥2.4 requires dist_corr≥0.962 — achievable with tight within-level clustering.
+Q≥2.5 likely requires Phase 4A or 4B (structural inductive bias in encoder).
 
 ---
 
