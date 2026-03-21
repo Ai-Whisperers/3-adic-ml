@@ -160,8 +160,10 @@ class TestTernaryVAEV6:
         # Copy weights so they are identical
         model2.load_state_dict(model1.state_dict())
 
-        # Change curvature of model2
-        model2.projections.proj_A.curvature.data.fill_(2.0)
+        # Change curvature used by logmap0 in decoder path
+        # model.curvature is the plain float passed to log_map_zero(); changing it
+        # changes the decoder's tangent input without touching expmap manifold.
+        model2.curvature = 2.0
 
         x = torch.randn(10, 9, dtype=torch.float64)
 

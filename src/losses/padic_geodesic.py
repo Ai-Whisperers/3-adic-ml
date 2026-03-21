@@ -25,9 +25,10 @@ than two at boundary.
 Single responsibility: Unified p-adic geodesic alignment.
 """
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from ..core import TERNARY
@@ -433,6 +434,7 @@ class GlobalRankLoss(HierarchyLossBase):
         use_all_pairs: bool = False,
         curvature: float = 1.0,
         seed: int = 42,
+        scatter_weight: float = 0.0,
     ):
         """Initialize GlobalRankLoss.
 
@@ -442,16 +444,21 @@ class GlobalRankLoss(HierarchyLossBase):
             use_all_pairs: If True, use all O(n²) pairs (expensive but exact)
             curvature: Hyperbolic curvature for poincare_distance (V5.12.2)
             seed: Random seed for reproducible pair sampling
+            scatter_weight: Weight for within-level scatter penalty. For same-valuation
+                pairs (v_i == v_j), penalises (r_i - r_j)^2. Direct differentiable
+                proxy for dist_corr improvement. Default 0.0 (disabled); 0.3 recommended.
         """
         super().__init__()
         self._validate_positive(temperature, "temperature", self.__class__.__name__)
         self._validate_positive(curvature, "curvature", self.__class__.__name__)
         if n_pairs < 1:
             raise ValueError(f"GlobalRankLoss: n_pairs must be >= 1, got {n_pairs}")
+        self._validate_weight(scatter_weight, "scatter_weight", self.__class__.__name__)
         self.temperature = temperature
         self.n_pairs = n_pairs
         self.use_all_pairs = use_all_pairs
         self.curvature = curvature
+        self.scatter_weight = scatter_weight
         self.generator = torch.Generator()
         self.generator.manual_seed(seed)
 
@@ -558,6 +565,23 @@ class GlobalRankLoss(HierarchyLossBase):
 
         loss = weighted_violations.mean()
 
+        # Within-level scatter penalty: for same-valuation pairs, push radii together.
+        # This is the direct differentiable proxy for dist_corr: dist_corr measures
+        # Spearman(|r_i - r_j|, |v_i - v_j|), so same-v pairs (|v_i - v_j|=0) should
+        # have |r_i - r_j|=0. The diff_mask above excludes these pairs from the ranking
+        # loss — we handle them here separately.
+        scatter_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
+        if self.scatter_weight > 0.0:
+            # Use original (unfiltered) pair tensors: v_i_full, r_i_full before diff_mask
+            v_i_full = valuations[i_idx]
+            v_j_full = valuations[j_idx]
+            r_i_full = radii[i_idx]
+            r_j_full = radii[j_idx]
+            same_v_mask = v_i_full == v_j_full
+            if same_v_mask.any():
+                scatter_loss = ((r_i_full[same_v_mask] - r_j_full[same_v_mask]) ** 2).mean()
+                loss = loss + self.scatter_weight * scatter_loss
+
         # Metrics
         with torch.no_grad():
             hard_violations = (signed_r_diff < 0).double().sum().item()
@@ -569,6 +593,7 @@ class GlobalRankLoss(HierarchyLossBase):
             "n_violations": int(hard_violations),
             "violation_rate": violation_rate,
             "mean_signed_diff": signed_r_diff.mean().item(),
+            "scatter_loss": scatter_loss.item(),
         }
 
         return loss, metrics
@@ -775,6 +800,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         outer_radius: float = 0.85,
         curvature: float = 1.0,
         separation_margin: float = 0.01,
+        variance_weight: float = 0.1,
     ) -> None:
         """Initialize RichHierarchyLoss.
 
@@ -783,15 +809,20 @@ class RichHierarchyLoss(RichHierarchyLossBase):
             outer_radius: Target radius for lowest valuation (v=0), must be in (0, 1)
             curvature: Hyperbolic curvature, must be > 0
             separation_margin: Minimum margin between adjacent levels, must be >= 0
+            variance_weight: Weight for within-level radius variance penalty.
+                Higher values tighten clusters per valuation level, directly
+                improving dist_corr. Default 0.1 (original); 0.5 recommended.
         """
         super().__init__()
         self._validate_radii(inner_radius, outer_radius, self.__class__.__name__)
         self._validate_positive(curvature, "curvature", self.__class__.__name__)
         self._validate_weight(separation_margin, "separation_margin", self.__class__.__name__)
+        self._validate_weight(variance_weight, "variance_weight", self.__class__.__name__)
         self.inner_radius = inner_radius
         self.outer_radius = outer_radius
         self.curvature = curvature
         self.separation_margin = separation_margin
+        self.variance_weight = variance_weight
         # Precompute target radii in hyperbolic distance units
         target_radii = _euclidean_to_hyperbolic_radius(
             _exponential_target_radii(
@@ -850,27 +881,33 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         if n_levels > 0:
             hierarchy_loss = hierarchy_loss / n_levels
             variance_loss = variance_loss / n_levels
-        # Fold variance penalty into hierarchy_loss (weight 0.1 keeps it subordinate
-        # to the mean-MSE term but provides non-zero gradient signal to tighten clusters)
-        hierarchy_loss = hierarchy_loss + 0.1 * variance_loss
+        # Fold variance penalty into hierarchy_loss.
+        # variance_weight controls within-level tightening; higher values drive dist_corr.
+        # At plateau, mean-MSE gradient ≈ 0 so variance_loss becomes the primary radial signal.
+        hierarchy_loss = hierarchy_loss + self.variance_weight * variance_loss
 
         # 2. Coverage loss (Reconstruction)
-        # logits shape: (B, 9, 3) or (B, 27) depending on decoder
-        # targets are in {-1, 0, 1}, shift to {0, 1, 2} for cross_entropy
-        targets_shifted = (targets + 1).long()
-
-        if logits.shape[-1] == 3:  # (B, 9, 3)
-            coverage_loss = F.cross_entropy(
-                logits.view(-1, 3),
-                targets_shifted.view(-1),
-            )
-        elif logits.shape[-1] == 27:  # (B, 27) flattened
-            coverage_loss = F.cross_entropy(
-                logits.view(-1, 9, 3).permute(0, 2, 1),  # (B, 3, 9)
-                targets_shifted,  # (B, 9) - no clamp, data must be valid
-            )
-        else:
+        # logits may be None when coverage_weight=0.0 (e.g. VAE-B loss_fn_b).
+        # Guard here avoids running F.cross_entropy for a term that will be
+        # multiplied by zero in CombinedLoss — eliminating wasted forward compute.
+        if logits is None:
             coverage_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
+        else:
+            # logits shape: (B, 9, 3) or (B, 27) depending on decoder
+            # targets are in {-1, 0, 1}, shift to {0, 1, 2} for cross_entropy
+            targets_shifted = (targets + 1).long()
+            if logits.shape[-1] == 3:  # (B, 9, 3)
+                coverage_loss = F.cross_entropy(
+                    logits.view(-1, 3),
+                    targets_shifted.view(-1),
+                )
+            elif logits.shape[-1] == 27:  # (B, 27) flattened
+                coverage_loss = F.cross_entropy(
+                    logits.view(-1, 9, 3).permute(0, 2, 1),  # (B, 3, 9)
+                    targets_shifted,  # (B, 9) - no clamp, data must be valid
+                )
+            else:
+                coverage_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
 
         # 3. Separation loss (Margin between levels)
         separation_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
@@ -923,10 +960,113 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         return _raw, metrics
 
 
+class ValuationPriorLoss(nn.Module):
+    """Valuation-conditioned radial prior operating in tangent space.
+
+    Replaces the N(0,I) mean term of KL with a target that pulls ||μ||
+    toward target_tangent[v₃(i)] per sample, based on the 3-adic valuation
+    of the corresponding operation index.
+
+    target_tangent[v] = arctanh(r_euclid[v]) / sqrt(c)
+
+    This is the inverse of geoopt's expmap0 formula:
+        ||expmap0(v)||_euclid = tanh(sqrt(c) * ||v||)
+    So the tangent norm needed to reach a given Euclidean radius is:
+        ||v|| = arctanh(r_euclid) / sqrt(c)
+
+    Why tangent space (not post-expmap):
+    - μ is in tangent space BEFORE reparameterization and expmap0
+    - Gradient path is clean: no expmap Jacobian, no max_radius clamping
+    - This directly corrects the μ→0 pull from standard KL
+
+    Use in conjunction with HyperbolicKLDivergence(variance_only=True) to
+    avoid double-counting: KL handles σ, this handles μ.
+    """
+
+    def __init__(
+        self,
+        curvature: float = 1.0,
+        inner_radius: float = 0.08,
+        outer_radius: float = 0.85,
+        scale: float = 3.0,
+        max_valuation: int = 9,
+    ):
+        super().__init__()
+        self.curvature_init = curvature
+        self.inner_radius = inner_radius
+        self.outer_radius = outer_radius
+        self.scale = scale
+        self.max_valuation = max_valuation
+        # Precompute Euclidean target radii (fixed by geometry, not by curvature)
+        target_r_euclid = _exponential_target_radii(
+            max_valuation, inner_radius, outer_radius, scale
+        )
+        self.register_buffer('target_r_euclid', target_r_euclid)  # (max_v+1,)
+
+    def forward(
+        self,
+        mu: torch.Tensor,
+        batch_indices: torch.Tensor,
+        curvature: Optional[float] = None,
+    ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        """Compute valuation-conditioned mean prior loss.
+
+        Args:
+            mu: Tangent space posterior means, shape (B, d), float64
+            batch_indices: Ternary operation indices, shape (B,)
+            curvature: Current curvature (use model's if learnable). Falls
+                       back to curvature_init if None.
+
+        Returns:
+            loss: Scalar MSE((||μ||, target_tangent[v]))
+            metrics: Logging dict with mean norms per valuation level
+        """
+        import math
+
+        if curvature is None:
+            curvature = self.curvature_init
+
+        mu = mu.to(torch.float64)
+        device = mu.device
+
+        # Compute target tangent norms from current curvature
+        # target_tangent[v] = arctanh(r_euclid[v]) / sqrt(c)
+        sqrt_c = math.sqrt(max(curvature, 1e-6))
+        target_r = self.target_r_euclid.to(device)  # (max_v+1,)
+        target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c  # (max_v+1,)
+
+        # Get valuation per sample using precomputed LUT
+        valuations = TERNARY.valuation(batch_indices).long().clamp(0, self.max_valuation)
+        target_norms = target_tangent_norms[valuations.cpu()].to(device)  # (B,)
+
+        # ||μ|| per sample
+        mu_norms = torch.norm(mu, dim=-1)  # (B,)
+
+        loss = F.mse_loss(mu_norms, target_norms)
+
+        # Metrics: mean norm per valuation level (diagnostic)
+        with torch.no_grad():
+            mean_mu_norm = mu_norms.mean().item()
+            mean_target = target_norms.mean().item()
+            # Per-level breakdown for the first few levels
+            metrics: Dict[str, float] = {
+                'vp_mean_mu_norm': mean_mu_norm,
+                'vp_mean_target': mean_target,
+                'vp_gap': abs(mean_mu_norm - mean_target),
+            }
+            for v in range(min(5, self.max_valuation + 1)):
+                mask = valuations == v
+                if mask.any():
+                    metrics[f'vp_mu_norm_v{v}'] = mu_norms[mask].mean().item()
+
+        return loss, metrics
+
+
 __all__ = [
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",
     "GlobalRankLoss",
     "MonotonicRadialLoss",
     "RichHierarchyLoss",
+    "ValuationPriorLoss",
 ]

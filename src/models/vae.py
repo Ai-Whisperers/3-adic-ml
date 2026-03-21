@@ -52,7 +52,6 @@ import torch.nn as nn
 from src.geometry import log_map_zero
 from src.models.hyperbolic_projection import DualHyperbolicProjection
 
-
 # =============================================================================
 # EncoderHead: Modular encoder with trainability control
 # =============================================================================
@@ -108,7 +107,9 @@ class EncoderHead(nn.Module):
         """
         h = self.backbone(x)
         mu = self.fc_mu(h)
-        logvar = self.fc_logvar(h)
+        # Clamp logvar to prevent σ explosion: exp(0.5*logvar) stays in [exp(-5), exp(1)]
+        # Unclamped logvar→+∞ gives σ→∞, making z_tangent = μ + σε arbitrarily large.
+        logvar = self.fc_logvar(h).clamp(-10.0, 2.0)
         return mu, logvar
 
     def set_trainable(self, trainable: bool) -> None:
@@ -340,11 +341,15 @@ class TernaryVAEV6(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor, decode_b: bool = True
+    ) -> Dict[str, torch.Tensor]:
         """Forward pass through both VAEs.
 
         Args:
             x: Input ternary operations (B, 9) with values in {-1, 0, 1}
+            decode_b: If False, skip decoder_B (saves ~15% compute when
+                      VAE-B loss has coverage_weight=0.0 and logits_B unused)
 
         Returns:
             Dict with logits, latents, and hyperbolic projections
@@ -362,10 +367,13 @@ class TernaryVAEV6(nn.Module):
 
         # Map back to tangent space for decoder (logmap0)
         z_A_dec = log_map_zero(z_A_hyp, c=self.curvature, max_norm=self.max_radius)
-        z_B_dec = log_map_zero(z_B_hyp, c=self.curvature, max_norm=self.max_radius)
 
         logits_A = self.decoder_A(z_A_dec)
-        logits_B = self.decoder_B(z_B_dec)
+        if decode_b:
+            z_B_dec = log_map_zero(z_B_hyp, c=self.curvature, max_norm=self.max_radius)
+            logits_B = self.decoder_B(z_B_dec)
+        else:
+            logits_B = None  # decoder_B skipped; coverage must be disabled in caller
 
         return {
             "logits": logits_A,

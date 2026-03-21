@@ -133,9 +133,10 @@ loss:
   # PRIMARY: Rich Hierarchy Loss (unified hierarchy + coverage + separation)
   rich_hierarchy:
     enabled: true
-    hierarchy_weight: 5.0
+    hierarchy_weight: 7.0
     coverage_weight: 1.0
     separation_weight: 3.0
+    variance_weight: 0.5
     inner_radius: 0.08
     outer_radius: 0.85
 
@@ -143,24 +144,25 @@ loss:
   radial:
     enabled: true
     # Note: inner_radius/outer_radius automatically shared from rich_hierarchy
-    weight: 5.0
+    weight: 1.0
     margin_weight: 0.5
   # Geodesic loss (Poincaré distance alignment)
   geodesic:
     enabled: true
-    phase_start_epoch: 30  # Start after initial convergence
+    phase_start_epoch: 10
     curvature: 1.0
     max_target_distance: 3.0
     n_pairs: 2000
     use_smooth_l1: true
-    weight: 0.5
+    weight: 0.5  # Reduced from 2.0: drives angular structure, not Q metric
 
-  # Global rank loss (soft ordering violations)
+  # Global rank loss (soft ordering violations + within-level scatter)
   rank:
     enabled: true
     weight: 0.5
     temperature: 0.1
     n_pairs: 2000
+    scatter_weight: 0.3  # Penalises |r_i - r_j|^2 for same-valuation pairs
 
   # Monotonic radial ordering
   monotonic:
@@ -172,10 +174,20 @@ loss:
   # Hyperbolic KL divergence (curvature-corrected, optional)
   # Uses conformal factor λ(x) for proper Poincaré geometry
   hyperbolic_kl:
-    enabled: true   # Required: makes this a true VAE (not a deterministic AE)
-    beta: 0.1       # Conservative: prevents KL dominating hierarchy losses
-    weight: 0.01    # Low weight: hierarchy structure takes priority
-    free_bits: 0.5  # Minimum KL per dim: prevents posterior collapse
+    enabled: true         # Required: makes this a true VAE (not a deterministic AE)
+    beta: 0.1             # Conservative: prevents KL dominating hierarchy losses
+    weight: 0.01          # Low weight: hierarchy structure takes priority
+    free_bits: 0.5        # Minimum KL per dim: prevents posterior collapse
+    variance_only: true   # Disable μ² term: ValuationPriorLoss handles mean target
+
+  # Valuation-conditioned prior (Phase 1: corrects wrong-direction KL gradient)
+  # Replaces N(0,I) mean pull with pull toward target_tangent[v₃(i)] per sample.
+  # target_tangent[v] = arctanh(r_euclid[v]) / sqrt(c)
+  # v=0 target ≈ 1.256, v=9 target ≈ 0.08 — matches exponential radial hierarchy.
+  valuation_prior:
+    enabled: true
+    weight: 1.0   # MSE((||μ||, target)) — same scale as hierarchy losses
+    scale: 3.0    # Exponential decay rate (matches _exponential_target_radii)
 
 # =============================================================================
 # Training Configuration

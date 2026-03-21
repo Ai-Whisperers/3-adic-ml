@@ -43,6 +43,7 @@ from .padic_geodesic import (
     PAdicGeodesicLoss,
     RadialHierarchyLoss,
     RichHierarchyLoss,
+    ValuationPriorLoss,
 )
 from .radius_defaults import (
     auto_share_radius_config,
@@ -89,6 +90,7 @@ class CombinedLoss(nn.Module):
     rank_loss: Optional[GlobalRankLoss]
     monotonic_loss: Optional[MonotonicRadialLoss]
     kl_loss: Optional[HyperbolicKLDivergence]
+    valuation_prior: Optional[ValuationPriorLoss]
 
     def __init__(
         self,
@@ -133,22 +135,22 @@ class CombinedLoss(nn.Module):
         self.geodesic_loss = None
         self.rank_loss = None
         self.monotonic_loss = None
-        
+
         # Collect enabled loss configs for radius sharing
         loss_configs = {}
         for name in ['rich_hierarchy', 'radial', 'monotonic']:
             cfg = self.config.get(name, {})
             if cfg.get('enabled', False):
                 loss_configs[name] = cfg
-        
+
         # Auto-share radius hyperparameters across all radial losses
         radius_configs = auto_share_radius_config(loss_configs)
-        
+
         # Validate consistency
         consistent, msg = compare_radius_configs(radius_configs)
         if not consistent:
             print(f"[CombinedLoss] {msg}")
-        
+
         # RichHierarchyLoss (primary unified loss)
         rich_cfg = self.config.get('rich_hierarchy', {})
         if rich_cfg.get('enabled', False):
@@ -158,6 +160,7 @@ class CombinedLoss(nn.Module):
                 outer_radius=radius_cfg.outer_radius,
                 curvature=self.curvature,
                 separation_margin=rich_cfg.get('separation_margin', 0.01),
+                variance_weight=rich_cfg.get('variance_weight', 0.1),
             )
             self.rich_hierarchy_weights = {
                 'hierarchy': rich_cfg.get('hierarchy_weight', 5.0),
@@ -208,6 +211,7 @@ class CombinedLoss(nn.Module):
                 n_pairs=rank_cfg.get('n_pairs', 2000),
                 curvature=self.curvature,
                 seed=44,  # Distinct seed: avoids identical pairs with geodesic_loss (42) and radial_loss (43)
+                scatter_weight=rank_cfg.get('scatter_weight', 0.0),
             )
             self.rank_weight = rank_cfg.get('weight', 0.5)
         else:
@@ -236,16 +240,35 @@ class CombinedLoss(nn.Module):
                 curvature=self.curvature,
                 beta=kl_cfg.get('beta', 1.0),
                 free_bits=kl_cfg.get('free_bits', 0.0),
+                variance_only=kl_cfg.get('variance_only', False),
             )
             self.kl_weight = kl_cfg.get('weight', 0.01)
         else:
             self.kl_loss = None
             self.kl_weight = 0.0
 
+        # ValuationPriorLoss (replaces N(0,I) mean term with valuation-conditioned prior)
+        vp_cfg = self.config.get('valuation_prior', {})
+        if vp_cfg.get('enabled', False):
+            # Share inner/outer radius from rich_hierarchy if available
+            rh_cfg = self.config.get('rich_hierarchy', {})
+            inner_r = vp_cfg.get('inner_radius', rh_cfg.get('inner_radius', 0.08))
+            outer_r = vp_cfg.get('outer_radius', rh_cfg.get('outer_radius', 0.85))
+            self.valuation_prior = ValuationPriorLoss(
+                curvature=self.curvature,
+                inner_radius=inner_r,
+                outer_radius=outer_r,
+                scale=vp_cfg.get('scale', 3.0),
+            )
+            self.valuation_prior_weight = vp_cfg.get('weight', 1.0)
+        else:
+            self.valuation_prior = None
+            self.valuation_prior_weight = 0.0
+
         # Guard: at least one loss must be enabled, or training will be gradient-free
         active = [
             self.rich_hierarchy, self.radial_loss, self.geodesic_loss,
-            self.rank_loss, self.monotonic_loss, self.kl_loss,
+            self.rank_loss, self.monotonic_loss, self.kl_loss, self.valuation_prior,
         ]
         if not any(x is not None for x in active):
             raise ValueError(
@@ -375,6 +398,7 @@ class CombinedLoss(nn.Module):
         epoch: int = 0,
         mu: Optional[torch.Tensor] = None,
         logvar: Optional[torch.Tensor] = None,
+        curvature: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Compute combined loss.
 
@@ -386,6 +410,8 @@ class CombinedLoss(nn.Module):
             epoch: Current epoch (for phase-gated losses)
             mu: Mean of approximate posterior (B, latent_dim) for KL divergence
             logvar: Log-variance of approximate posterior (B, latent_dim) for KL
+            curvature: Current curvature value (pass model's learned curvature when
+                       learnable_curvature=True). Falls back to init-time curvature.
 
         Returns:
             Dict with 'total' loss and individual loss components
@@ -396,9 +422,16 @@ class CombinedLoss(nn.Module):
 
         # 1. RichHierarchyLoss (if enabled)
         # Returns (raw_tensors_dict, metrics_dict) per HierarchyLossBase contract.
+        # Pass logits=None when coverage_weight=0.0: skips the F.cross_entropy
+        # forward inside RichHierarchyLoss, eliminating wasted compute when
+        # coverage is deliberately disabled (e.g. loss_fn_b for VAE-B).
         if self.rich_hierarchy is not None:
+            _call_logits = (
+                logits if self.rich_hierarchy_weights.get('coverage', 0.0) > 0.0
+                else None
+            )
             rich_raw, rich_metrics = self.rich_hierarchy(
-                z_hyp, indices, logits=logits, targets=targets
+                z_hyp, indices, logits=_call_logits, targets=targets
             )
 
             if self.use_learnable_weights:
@@ -470,7 +503,17 @@ class CombinedLoss(nn.Module):
                 losses['kl'] = kl_contribution
                 total = total + kl_contribution
 
-        # 7. Fallback: Basic coverage loss if no rich_hierarchy
+        # 7. ValuationPriorLoss (valuation-conditioned μ prior)
+        # Requires mu and indices. Uses current curvature when learnable.
+        if self.valuation_prior is not None and mu is not None:
+            cur_c = curvature if curvature is not None else self.curvature
+            vp_out, vp_metrics = self.valuation_prior(mu, indices, curvature=cur_c)
+            vp_contribution = self.valuation_prior_weight * vp_out
+            losses['valuation_prior'] = vp_contribution
+            losses['valuation_prior_metrics'] = vp_metrics
+            total = total + vp_contribution
+
+        # 9. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:
             coverage_loss = self._compute_coverage_loss(logits, targets)
             losses['coverage'] = coverage_loss
@@ -530,6 +573,8 @@ class CombinedLoss(nn.Module):
             enabled.append('monotonic')
         if self.kl_loss is not None:
             enabled.append('kl')
+        if self.valuation_prior is not None:
+            enabled.append('valuation_prior')
         return enabled
 
     def get_learned_weights(self) -> Dict[str, float]:

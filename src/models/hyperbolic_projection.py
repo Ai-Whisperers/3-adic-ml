@@ -23,7 +23,7 @@ Reference:
   Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
 """
 
-from typing import Tuple, Union
+from typing import Tuple, Union, cast
 
 import geoopt
 import torch
@@ -133,8 +133,8 @@ class HyperbolicProjection(nn.Module):
     def _init_identity(self):
         """Initialize tangent_net as identity (zero residual)."""
         with torch.no_grad():
-            self.tangent_net[-1].weight.zero_()
-            self.tangent_net[-1].bias.zero_()
+            cast(nn.Linear, self.tangent_net[-1]).weight.zero_()
+            cast(nn.Linear, self.tangent_net[-1]).bias.zero_()
 
     def forward(
         self, z_tangent: torch.Tensor, as_manifold: bool = False
@@ -156,9 +156,12 @@ class HyperbolicProjection(nn.Module):
         z_scaled = self.tangent_scale * z_tangent
         z_transformed = z_scaled + self.tangent_net(z_scaled)
 
-        # Project to manifold via expmap0 (true hyperbolic projection)
-        c = self.curvature.item() if hasattr(self.curvature, 'item') else self.curvature
-        z_hyp = exp_map_zero(z_transformed, c=c)
+        # Project to manifold via expmap0 using model's own manifold instance.
+        # Using self.manifold.expmap() instead of the global exp_map_zero() cache
+        # ensures gradients flow through self.manifold.c (learnable curvature).
+        # The global cache uses a detached float key and returns a static manifold.
+        origin = torch.zeros_like(z_transformed)
+        z_hyp = self.manifold.expmap(origin, z_transformed)
 
         # Apply max_radius constraint (explicit float64 for numerical stability)
         norm = torch.norm(z_hyp, dim=-1, keepdim=True)
@@ -194,8 +197,8 @@ class HyperbolicProjection(nn.Module):
 
         z_scaled = self.tangent_scale * z_tangent
         z_transformed = z_scaled + self.tangent_net(z_scaled)
-        c = self.curvature.item() if hasattr(self.curvature, 'item') else self.curvature
-        z_hyp = exp_map_zero(z_transformed, c=c)
+        origin = torch.zeros_like(z_transformed)
+        z_hyp = self.manifold.expmap(origin, z_transformed)
 
         # Apply max_radius constraint (explicit float64 for numerical stability)
         norm = torch.norm(z_hyp, dim=-1, keepdim=True)

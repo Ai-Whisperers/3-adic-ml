@@ -33,22 +33,22 @@ Usage:
 """
 
 import argparse
+from dataclasses import dataclass
+from datetime import datetime
 import json
 import os
+from pathlib import Path
 import random
 import sys
 import time
-from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
+from scipy.stats import spearmanr
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 import yaml
-from scipy.stats import spearmanr
-from torch.utils.data import DataLoader, TensorDataset
 
 # tqdm for progress bars (optional)
 try:
@@ -164,7 +164,7 @@ class DataAuditor:
         # Deterministic split
         rng = np.random.default_rng(self.seed)
         perm = rng.permutation(n)
-        n_val = max(1, int(round(n * val_frac)))
+        n_val = max(1, round(n * val_frac))
 
         val_idx = perm[:n_val]
         train_idx = perm[n_val:]
@@ -783,17 +783,47 @@ def train(
 
     # Create data loaders with reproducible seeding
     num_workers = train_cfg.get("num_workers", 4)
-    # Seed the DataLoader's shuffle generator for deterministic batch ordering
-    shuffle_generator = torch.Generator()
-    shuffle_generator.manual_seed(seed)
+
+    # Stratified valuation sampler: up-weights high-valuation samples (v=9 has
+    # only 1/19683 natural frequency; without stratification these levels are
+    # nearly absent from every batch, starving the hierarchy loss of rare examples).
+    #
+    # Weight formula: 1 / count^0.5  (square-root inverse frequency)
+    # Rationale: 3-adic level counts follow a geometric series (count_v ≈ 3^(9-v)).
+    # Full inverse (1/count = 3^v) gives ratio v=9:v=0 of 13122x — v=9 appears
+    # ~1848x/epoch from 1 unique sample, causing severe overfitting.
+    # log(count) collapses to linear-in-v for geometric series, giving only ~13x
+    # ratio — v=9 still nearly absent per batch.
+    # sqrt(1/count) = 3^(v/2) preserves geometric structure at half the exponent:
+    # ratio ~114x, ~50 samples/level/batch, v=0 each seen ~0.64x/epoch (not 0.15x).
+    train_indices = train_ds.tensors[1]  # second element is the index tensor
+    train_valuations = TERNARY.valuation(train_indices)
+    level_counts = torch.bincount(train_valuations, minlength=TERNARY.MAX_VALUATION + 1)
+    sample_weights = torch.zeros(len(train_ds), dtype=torch.float64)
+    for level in range(TERNARY.MAX_VALUATION + 1):
+        mask = train_valuations == level
+        if level_counts[level] > 0:
+            sample_weights[mask] = 1.0 / (level_counts[level].item() ** 0.5)
+    # Warn if highest valuation level is absent from train split (landed in val)
+    absent = [v for v in range(TERNARY.MAX_VALUATION + 1) if level_counts[v] == 0]
+    if absent:
+        print(f"  [WARN] Stratified sampler: valuation levels {absent} absent from "
+              f"train split (in val set). Those levels will not appear in batches.")
+    stratified_generator = torch.Generator()
+    stratified_generator.manual_seed(seed)
+    stratified_sampler = WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(train_ds),
+        replacement=True,
+        generator=stratified_generator,
+    )
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
-        shuffle=True,
+        sampler=stratified_sampler,
         pin_memory=torch.cuda.is_available(),
         num_workers=num_workers,
         worker_init_fn=worker_init_fn if num_workers > 0 else None,
-        generator=shuffle_generator,
     )
     val_loader = DataLoader(
         val_ds,
@@ -1048,16 +1078,20 @@ def train(
 
             try:
                 with torch.amp.autocast("cuda", enabled=use_amp):
-                    out = model(batch_ops)
+                    out = model(batch_ops, decode_b=False)
                     z_A_hyp = out["z_A_hyp"]
                     z_B_hyp = out["z_B_hyp"]
                     logits_A = out.get("logits_A", out.get("logits"))
-                    logits_B = out.get("logits_B", logits_A)
+                    logits_B = out.get("logits_B")  # None when decode_b=False
+
+                    # Get current curvature for ValuationPriorLoss (learnable c)
+                    current_curvature = model.projections.get_curvature()
 
                     # VAE-A: full loss (coverage + hierarchy)
                     losses = loss_fn(
                         z_A_hyp, batch_idx, logits_A, batch_ops, epoch=epoch,
                         mu=out.get("mu_A"), logvar=out.get("logvar_A"),
+                        curvature=current_curvature,
                     )
                     # VAE-B: hierarchy-only (no coverage/reconstruction).
                     # coverage_weight=0.0 in loss_fn_b prevents gradient conflict
@@ -1065,6 +1099,7 @@ def train(
                     losses_B = loss_fn_b(
                         z_B_hyp, batch_idx, logits_B, batch_ops, epoch=epoch,
                         mu=out.get("mu_B"), logvar=out.get("logvar_B"),
+                        curvature=current_curvature,
                     )
                     # Combine: both VAEs contribute to total loss
                     loss = losses["total"] + losses_B["total"]
@@ -1604,7 +1639,7 @@ def main():
     # Data audit
     data_auditor = DataAuditor(args.seed)
     val_frac = config.get("training", {}).get("val_frac", 0.1)
-    train_ds, val_ds, all_indices = data_auditor.prepare_data(val_frac, device)
+    train_ds, val_ds, _ = data_auditor.prepare_data(val_frac, device)
 
     # Model audit
     model_auditor = ModelAuditor(config, device)

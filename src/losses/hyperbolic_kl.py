@@ -55,12 +55,14 @@ class HyperbolicKLDivergence(nn.Module):
         beta: float = 1.0,
         free_bits: float = 0.0,
         reduction: str = "mean",
+        variance_only: bool = False,
     ):
         super().__init__()
         self.curvature = curvature
         self.beta = beta
         self.free_bits = free_bits
         self.reduction = reduction
+        self.variance_only = variance_only
 
     def forward(
         self,
@@ -91,13 +93,23 @@ class HyperbolicKLDivergence(nn.Module):
         var = torch.exp(logvar)
 
         # Curvature-corrected KL divergence per dimension:
-        # KL_d = 0.5 * (λ² * σ² + μ² - log(σ²) - 1)
-        kl_per_dim = 0.5 * (
-            conf_factor.pow(2) * var +  # Scaled variance term
-            mu.pow(2) -                  # Mean squared term
-            logvar -                     # Log-variance term
-            1.0                          # Dimension term
-        )
+        # Full:          KL_d = 0.5 * (λ² * σ² + μ² - log(σ²) - 1)
+        # Variance-only: KL_d = 0.5 * (λ² * σ²       - log(σ²) - 1)
+        # variance_only=True when ValuationPriorLoss handles the mean term,
+        # preventing double-counting of the μ→0 gradient.
+        if self.variance_only:
+            kl_per_dim = 0.5 * (
+                conf_factor.pow(2) * var +  # Scaled variance term
+                -logvar -                    # Log-variance term
+                1.0                          # Dimension term
+            )
+        else:
+            kl_per_dim = 0.5 * (
+                conf_factor.pow(2) * var +  # Scaled variance term
+                mu.pow(2) -                  # Mean squared term
+                logvar -                     # Log-variance term
+                1.0                          # Dimension term
+            )
 
         # Apply free bits (minimum KL per dimension)
         if self.free_bits > 0:
@@ -117,7 +129,7 @@ class HyperbolicKLDivergence(nn.Module):
         return self.beta * kl
 
     def extra_repr(self) -> str:
-        return f"curvature={self.curvature}, beta={self.beta}, free_bits={self.free_bits}"
+        return f"curvature={self.curvature}, beta={self.beta}, free_bits={self.free_bits}, variance_only={self.variance_only}"
 
 
 class StandardKLDivergence(nn.Module):
