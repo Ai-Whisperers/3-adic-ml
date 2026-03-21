@@ -144,7 +144,7 @@ loss:
   radial:
     enabled: true
     # Note: inner_radius/outer_radius automatically shared from rich_hierarchy
-    weight: 1.0
+    weight: 0.5   # Reduced from 1.0: compensates geodesic increase in gradient budget
     margin_weight: 0.5
   # Geodesic loss (Poincaré distance alignment)
   geodesic:
@@ -154,7 +154,7 @@ loss:
     max_target_distance: 3.0
     n_pairs: 2000
     use_smooth_l1: true
-    weight: 0.5  # Reduced from 2.0: drives angular structure, not Q metric
+    weight: 2.0  # Increased from 0.5: primary driver of dist_corr (was 30x weaker than hierarchy)
 
   # Global rank loss (soft ordering violations + within-level scatter)
   rank:
