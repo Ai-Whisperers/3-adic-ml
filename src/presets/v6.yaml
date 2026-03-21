@@ -133,7 +133,7 @@ loss:
   # PRIMARY: Rich Hierarchy Loss (unified hierarchy + coverage + separation)
   rich_hierarchy:
     enabled: true
-    hierarchy_weight: 7.0
+    hierarchy_weight: 5.0
     coverage_weight: 1.0
     separation_weight: 3.0
     variance_weight: 0.5
@@ -144,7 +144,7 @@ loss:
   radial:
     enabled: true
     # Note: inner_radius/outer_radius automatically shared from rich_hierarchy
-    weight: 0.5   # Reduced from 1.0: compensates geodesic increase in gradient budget
+    weight: 1.5   # Increased from 0.5: primary lever for within-level radial tightness
     margin_weight: 0.5
   # Geodesic loss (Poincaré distance alignment)
   geodesic:
@@ -162,7 +162,7 @@ loss:
     weight: 0.5
     temperature: 0.1
     n_pairs: 2000
-    scatter_weight: 0.3  # Penalises |r_i - r_j|^2 for same-valuation pairs
+    scatter_weight: 0.8  # Increased from 0.3: tighten within-level radial clustering
 
   # Monotonic radial ordering
   monotonic:
