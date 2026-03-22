@@ -8,16 +8,15 @@ These tests verify the mathematical foundation of the 3-adic VAE.
 Failures here indicate fundamental bugs that cascade through the entire system.
 """
 
+from pathlib import Path
+import sys
+
 import pytest
 import torch
-import numpy as np
-from itertools import combinations
 
-import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core import TERNARY, valuation, distance, target_radius
+from src.core import TERNARY
 
 
 class TestValuationFormula:
@@ -144,7 +143,7 @@ class TestUltrametricInequality:
         d_09 = TERNARY.distance(torch.tensor([0]), torch.tensor([9])).item()
 
         assert d_09 <= max(d_03, d_39) + 1e-10, (
-            f"Ultrametric violated for powers of 3"
+            "Ultrametric violated for powers of 3"
         )
 
 

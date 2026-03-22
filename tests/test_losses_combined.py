@@ -22,7 +22,6 @@ import torch
 
 from src.losses.combined import CombinedLoss
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -736,7 +735,11 @@ class TestRadiusSharing:
 
     def test_auto_share_uses_defaults_when_none_specified(self):
         """Verify defaults used when no block specifies radii."""
-        from src.losses.radius_defaults import auto_share_radius_config, DEFAULT_INNER_RADIUS, DEFAULT_OUTER_RADIUS
+        from src.losses.radius_defaults import (
+            DEFAULT_INNER_RADIUS,
+            DEFAULT_OUTER_RADIUS,
+            auto_share_radius_config,
+        )
 
         config = {
             'rich_hierarchy': {'enabled': True},

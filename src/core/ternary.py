@@ -94,11 +94,11 @@ class TernarySpace:
     PROP_LEVEL_RANK = 6      # Rank within same-valuation cohort
     N_PROPERTIES = 7         # Total number of properties
 
-    # Property names for introspection
-    PROPERTY_NAMES = [
+    # Property names for introspection (tuple: immutable, avoids RUF012 mutable default)
+    PROPERTY_NAMES = (
         'valuation', 'digit_count', 'digit_sum', 'first_nonzero',
         'last_nonzero', 'parent', 'level_rank'
-    ]
+    )
 
     def __init__(self):
         """Initialize precomputed lookup tables."""
@@ -205,8 +205,8 @@ class TernarySpace:
             props[n, self.PROP_PARENT] = parent
 
             # Level rank (position within same-valuation cohort)
-            props[n, self.PROP_LEVEL_RANK] = level_counters[v]
-            level_counters[v] += 1
+            props[n, self.PROP_LEVEL_RANK] = level_counters[int(v)]
+            level_counters[int(v)] += 1
 
         return props
 
@@ -619,7 +619,7 @@ class TernarySpace:
         """
         if level < 0 or level > self.MAX_VALUATION:
             return 0
-        return self._level_counts[level].item()
+        return int(self._level_counts[level].item())
 
     def properties(self, indices: torch.Tensor) -> dict:
         """Get all properties for indices as a dictionary.

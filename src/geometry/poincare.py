@@ -36,10 +36,10 @@ Reference:
 
 # geoopt is a required dependency
 import geoopt
-import torch
 from geoopt import ManifoldParameter, ManifoldTensor
 from geoopt import PoincareBall as GeooptPoincareBall
 from geoopt.optim import RiemannianAdam, RiemannianSGD
+import torch
 
 # Global manifold cache for efficiency - keyed by (curvature, device)
 _manifold_cache = {}

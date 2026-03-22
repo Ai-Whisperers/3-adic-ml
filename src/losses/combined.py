@@ -44,6 +44,7 @@ from .padic_geodesic import (
     RadialHierarchyLoss,
     RichHierarchyLoss,
     ValuationPriorLoss,
+    WithinLevelContrastiveLoss,
 )
 from .radius_defaults import (
     auto_share_radius_config,
@@ -91,6 +92,7 @@ class CombinedLoss(nn.Module):
     monotonic_loss: Optional[MonotonicRadialLoss]
     kl_loss: Optional[HyperbolicKLDivergence]
     valuation_prior: Optional[ValuationPriorLoss]
+    wlc_loss: Optional[WithinLevelContrastiveLoss]
 
     def __init__(
         self,
@@ -265,10 +267,22 @@ class CombinedLoss(nn.Module):
             self.valuation_prior = None
             self.valuation_prior_weight = 0.0
 
+        # WithinLevelContrastiveLoss (pull same-valuation points geodesically together)
+        wlc_cfg = self.config.get('within_level_contrastive', {})
+        if wlc_cfg.get('enabled', False):
+            self.wlc_loss = WithinLevelContrastiveLoss(
+                curvature=self.curvature,
+                max_pairs_per_level=wlc_cfg.get('max_pairs_per_level', 500),
+                weight=wlc_cfg.get('weight', 1.0),
+            )
+        else:
+            self.wlc_loss = None
+
         # Guard: at least one loss must be enabled, or training will be gradient-free
         active = [
             self.rich_hierarchy, self.radial_loss, self.geodesic_loss,
             self.rank_loss, self.monotonic_loss, self.kl_loss, self.valuation_prior,
+            self.wlc_loss,
         ]
         if not any(x is not None for x in active):
             raise ValueError(
@@ -565,7 +579,14 @@ class CombinedLoss(nn.Module):
                     losses['lagrangian_prior'] = lagrangian_prior_total
                     total = total + lagrangian_prior_total
 
-        # 9. Fallback: Basic coverage loss if no rich_hierarchy
+        # 9. Within-level contrastive loss (pull same-valuation points geodesically together)
+        if self.wlc_loss is not None:
+            wlc_out, wlc_metrics = self.wlc_loss(z_hyp, indices)
+            losses['within_level_contrastive'] = wlc_out
+            losses['wlc_metrics'] = wlc_metrics
+            total = total + wlc_out
+
+        # 11. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:
             coverage_loss = self._compute_coverage_loss(logits, targets)
             losses['coverage'] = coverage_loss
@@ -627,6 +648,8 @@ class CombinedLoss(nn.Module):
             enabled.append('kl')
         if self.valuation_prior is not None:
             enabled.append('valuation_prior')
+        if self.wlc_loss is not None:
+            enabled.append('within_level_contrastive')
         return enabled
 
     def get_learned_weights(self) -> Dict[str, float]:

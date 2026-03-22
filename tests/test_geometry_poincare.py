@@ -9,23 +9,22 @@ Numerical errors here corrupt all training since the manifold is the bridge
 from discrete 3-adic to continuous latent space.
 """
 
+from pathlib import Path
+import sys
+
 import pytest
 import torch
-import numpy as np
 
-import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.geometry import (
-    poincare_distance,
-    hyperbolic_radius,
     exp_map_zero,
-    log_map_zero,
-    lambda_x,
     get_manifold,
+    hyperbolic_radius,
+    lambda_x,
+    log_map_zero,
+    poincare_distance,
 )
-
 
 # Tolerances for numerical comparisons
 ATOL = 1e-6  # Absolute tolerance

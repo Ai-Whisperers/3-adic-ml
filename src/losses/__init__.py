@@ -9,6 +9,7 @@ from .padic_geodesic import (
     RadialHierarchyLoss,
     RichHierarchyLoss,
     ValuationPriorLoss,
+    WithinLevelContrastiveLoss,
 )
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "MonotonicRadialLoss",
     "RichHierarchyLoss",
     "ValuationPriorLoss",
+    "WithinLevelContrastiveLoss",
     # Combined loss
     "CombinedLoss",
     # KL divergences

@@ -1110,6 +1110,117 @@ class ValuationPriorLoss(nn.Module):
         return loss, metrics
 
 
+class WithinLevelContrastiveLoss(nn.Module):
+    """Within-level contrastive loss: pull same-valuation points geodesically together.
+
+    All current radial losses push points to a target radius but none minimise
+    the angular/geodesic spread *within* a level.  Two points at the same radius
+    but opposite directions have large hyperbolic distance – this loss closes that
+    gap directly.
+
+    For each valuation level v present in the batch, collect all point pairs
+    (i, j) with v₃(i) = v₃(j) = v and minimise their mean squared Poincaré distance:
+
+        L = Σ_v  w_v · mean_{pairs at v} d_hyp(z_i, z_j)²
+
+    where w_v is an optional per-level weight (default uniform).
+
+    Unlike the scatter penalty in GlobalRankLoss (which penalises radial variance),
+    this loss directly minimises the geodesic distance between same-level embeddings,
+    collapsing within-level spread in all directions.
+    """
+
+    def __init__(
+        self,
+        curvature: float = 1.0,
+        max_pairs_per_level: int = 500,
+        weight: float = 1.0,
+    ):
+        """Initialise WithinLevelContrastiveLoss.
+
+        Args:
+            curvature: Poincaré ball curvature c.
+            max_pairs_per_level: Cap on pairs sampled per valuation level per
+                forward pass (avoids O(n²) blow-up for v=0 which holds ~66% of
+                batch points).
+            weight: Global scalar weight applied to the returned loss.
+        """
+        super().__init__()
+        self.curvature = curvature
+        self.max_pairs_per_level = max_pairs_per_level
+        self.weight = weight
+
+    def forward(
+        self,
+        z_hyp: torch.Tensor,
+        indices: torch.Tensor,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
+        """Compute within-level contrastive loss.
+
+        Args:
+            z_hyp: Poincaré ball embeddings (B, latent_dim), float64.
+            indices: Operation indices (B,), used to compute valuations.
+
+        Returns:
+            (loss, metrics) where loss is a scalar tensor and metrics contains
+            per-level mean squared distances and pair counts.
+        """
+        device = z_hyp.device
+        valuations = TERNARY.valuation(indices)  # (B,)
+
+        total_loss = torch.zeros(1, device=device, dtype=z_hyp.dtype).squeeze()
+        n_levels_active = 0
+        metrics: MetricsDict = {}
+
+        for v in range(TERNARY.MAX_VALUATION + 1):
+            mask = (valuations == v).nonzero(as_tuple=True)[0]
+            n_v = mask.numel()
+            if n_v < 2:
+                continue
+
+            z_v = z_hyp[mask]  # (n_v, D)
+
+            # Build all pairs (upper triangle) then cap for efficiency
+            n_pairs = n_v * (n_v - 1) // 2
+            if n_pairs > self.max_pairs_per_level:
+                # Random subsample of pair indices
+                perm = torch.randperm(n_v, device=device)
+                # Take first sqrt(2*max_pairs) points to form ≤ max_pairs pairs
+                import math
+                n_take = min(n_v, int(math.ceil((2 * self.max_pairs_per_level) ** 0.5)) + 1)
+                perm = perm[:n_take]
+                z_v = z_v[perm]
+                n_v = z_v.size(0)
+
+            # Pairwise indices (upper triangle)
+            idx_i, idx_j = torch.triu_indices(n_v, n_v, offset=1, device=device)
+            if idx_i.numel() == 0:
+                continue
+
+            z_i = z_v[idx_i]  # (P, D)
+            z_j = z_v[idx_j]  # (P, D)
+
+            # Poincaré distance between each pair
+            d_sq = poincare_distance(z_i, z_j, c=self.curvature) ** 2  # (P,)
+            level_loss = d_sq.mean()
+
+            total_loss = total_loss + level_loss
+            n_levels_active += 1
+
+            with torch.no_grad():
+                metrics[f'wlc_d2_v{v}'] = level_loss.item()
+                metrics[f'wlc_n_pairs_v{v}'] = idx_i.numel()
+
+        if n_levels_active > 0:
+            total_loss = total_loss / n_levels_active
+
+        loss = self.weight * total_loss
+        metrics['wlc_loss'] = loss.item() if n_levels_active > 0 else 0.0
+        metrics['wlc_n_levels'] = n_levels_active
+
+        return loss, metrics
+
+
 __all__ = [
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",
@@ -1117,4 +1228,5 @@ __all__ = [
     "MonotonicRadialLoss",
     "RichHierarchyLoss",
     "ValuationPriorLoss",
+    "WithinLevelContrastiveLoss",
 ]

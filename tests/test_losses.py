@@ -18,19 +18,16 @@ import math
 
 import pytest
 import torch
-import torch.nn.functional as F
 
-from src.core import TERNARY
-from src.geometry import hyperbolic_radius, poincare_distance
+from src.geometry import hyperbolic_radius
 from src.losses.padic_geodesic import (
-    PAdicGeodesicLoss,
-    RadialHierarchyLoss,
-    _exponential_target_radii,
     GlobalRankLoss,
     MonotonicRadialLoss,
+    PAdicGeodesicLoss,
+    RadialHierarchyLoss,
     RichHierarchyLoss,
+    _exponential_target_radii,
 )
-
 
 # =============================================================================
 # Fixtures

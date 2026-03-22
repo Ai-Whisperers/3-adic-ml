@@ -17,8 +17,8 @@ Single responsibility: TensorBoard visualization only.
 
 from __future__ import annotations
 
-import random
 from pathlib import Path
+import random
 from typing import TYPE_CHECKING, Callable, Optional
 
 import torch

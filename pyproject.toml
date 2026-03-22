@@ -37,7 +37,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.3.0",
-    "pytest-cov>=4.1.0"
+    "pytest-cov>=4.1.0",
+    "ruff>=0.15.0",
+    "mypy>=1.9.0",
 ]
 viz = [
     "matplotlib>=3.7.0",
@@ -64,3 +66,81 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: marks tests that require GPU",
 ]
+
+# =============================================================================
+# Ruff — linter + formatter (replaces flake8, isort, pyupgrade)
+# =============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+exclude = ["venv", "local", "archive*", ".git", "__pycache__"]
+
+[tool.ruff.lint]
+# Active rule sets (progressive — extend as annotation debt is paid down)
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes (unused imports, undefined names)
+    "B",     # flake8-bugbear (common footguns)
+    "UP",    # pyupgrade (modernise syntax: Dict→dict, Optional→X|None, etc.)
+    "C4",    # flake8-comprehensions (list/set/dict comprehension style)
+    "I",     # isort
+    "RUF",   # ruff-native rules (e.g. unsorted __all__, mutable class defaults)
+]
+ignore = [
+    "E501",   # line-too-long: handled by formatter; float64 exprs make lines long
+    "B905",   # zip-without-explicit-strict: already addressed in train.py
+    "UP006",  # non-pep585-annotation: requires Python 3.9+; keep Dict/List for 3.10 compat
+    "UP007",  # non-pep604-annotation-union: Optional[X] → X|None — deferred
+    "UP045",  # non-pep604-annotation-optional: same family as UP007 — deferred
+    "UP035",  # deprecated-import (typing.Dict etc.) — deferred with UP006
+    "TRY003", # long exception messages — intentional for diagnostics
+    "RUF002", # ambiguous unicode in docstrings — math notation in docstrings
+    "RUF022", # unsorted __all__ — grouped by category intentionally
+]
+
+[tool.ruff.lint.per-file-ignores]
+# train.py inserts PROJECT_ROOT into sys.path before src/ imports — E402 is intentional
+"src/train.py" = ["E402"]
+# Test files use assignment for side-effect assertion; unused-variable is expected
+"tests/*.py" = ["F841", "RUF059"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+force-sort-within-sections = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# =============================================================================
+# Mypy — static type checker
+# =============================================================================
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true        # torch/geoopt stubs absent from venv
+no_strict_optional = false
+warn_return_any = false              # too noisy with torch tensor ops
+warn_unused_ignores = true
+disallow_untyped_defs = false        # deferred: __init__ methods unannotated
+check_untyped_defs = true
+explicit_package_bases = true        # avoids "found twice" errors on src/
+
+# Per-module overrides for known-noisy files
+[[tool.mypy.overrides]]
+module = "src.train"
+disallow_untyped_defs = false
+warn_return_any = false
+# tb_logger.is_available guards all writer; scheduler/tqdm unions are runtime-safe
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "src.losses.padic_geodesic"
+# _target_radii registered as buffer → Tensor|Module union; indexing is valid at runtime
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "src.utils.tensorboard_logger"
+# SummaryWriter type assigned via try/except import; misc/return-value are false positives
+ignore_errors = true

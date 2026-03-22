@@ -2,20 +2,20 @@ from .ternary import (
     # Core types
     TERNARY,
     TernarySpace,
-    # Basic operations
-    valuation,
-    distance,
-    distance_matrix,
-    to_ternary,
-    from_ternary,
-    target_radius,
     # Property accessors (Option B)
     digit_count,
     digit_sum,
+    distance,
+    distance_matrix,
     first_nonzero,
+    from_ternary,
     last_nonzero,
-    parent,
     level_rank,
+    parent,
+    target_radius,
+    to_ternary,
+    # Basic operations
+    valuation,
 )
 
 __all__ = [
@@ -24,7 +24,7 @@ __all__ = [
     "TernarySpace",
     # Basic operations
     "valuation",
-    "distance", 
+    "distance",
     "distance_matrix",
     "to_ternary",
     "from_ternary",

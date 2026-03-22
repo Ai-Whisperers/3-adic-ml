@@ -182,6 +182,14 @@ loss:
     free_bits: 0.5        # Minimum KL per dim: prevents posterior collapse
     variance_only: true   # Disable μ² term: ValuationPriorLoss handles mean target
 
+  # Within-level contrastive loss: pull same-valuation points geodesically together.
+  # Addresses the 0.839 hierarchy ceiling — all other losses are radial (push to target
+  # radius) but none minimises angular/geodesic spread within a level.
+  within_level_contrastive:
+    enabled: true
+    weight: 0.5           # Start conservative; hierarchy ceiling is at 0.839
+    max_pairs_per_level: 500
+
   # Lagrangian dual adaptive weighting (Phase 3B)
   # Dual variables increase pressure on violated per-level constraints (margin,
   # within-level scatter, μ-norm prior). NOT gradient-descent parameters —

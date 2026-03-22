@@ -10,28 +10,27 @@ These tests verify:
 3. Consistency between related operations
 """
 
+import math
+from pathlib import Path
+import sys
+
 import pytest
 import torch
-import math
 
-import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.geometry import (
-    poincare_distance,
-    hyperbolic_radius,
     exp_map_zero,
-    log_map_zero,
-    lambda_x,
     get_manifold,
-    project_to_poincare,
+    hyperbolic_radius,
+    lambda_x,
+    log_map_zero,
     mobius_add,
     parallel_transport,
-    geodesic,
+    poincare_distance,
     poincare_distance_matrix,
+    project_to_poincare,
 )
-
 
 ATOL = 1e-6
 RTOL = 1e-5

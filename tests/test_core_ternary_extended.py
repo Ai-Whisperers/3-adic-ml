@@ -11,11 +11,12 @@ These tests verify:
 4. No assumptions about specific values - only structural invariants
 """
 
+from pathlib import Path
+import sys
+
 import pytest
 import torch
 
-import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core import TERNARY
