@@ -250,6 +250,87 @@ weight=5.0 → hierarchy wins for mu[:, :4]. Mean drift on mu[:, 4:] is bounded.
 
 ---
 
+## V7 Pre-200-Epoch Checklist (outstanding items as of 2026-03-22)
+
+Four items identified before committing to the full 200-epoch run.
+
+---
+
+### Item A — Re-run diagnostic with variance_only:false  ⬜ TODO
+
+The `variance_only: false` fix (Concern 3) adds back the `||mu||²/2` penalty
+on ALL 32 dims, including mu[:, :4] (z_r). This directly opposes hierarchy
+losses for v=0 samples (which need large `linear_r(mu[:, :4])` ≈ 2.14 to
+reach r=0.85). The 40-epoch diagnostic was run BEFORE this fix. Must re-run
+`validate_v7_concerns.py` with the corrected config and confirm:
+- C1 Spear still ≈ −0.81 (KL pull on z_r doesn't overwhelm hierarchy)
+- r separation still monotonic by epoch 10
+- mu[:, 4:] norm stays bounded (fix worked)
+
+---
+
+### Item B — Add actual Spearman hierarchy / Q / accuracy to diagnostic  ⬜ TODO
+
+`validate_v7_concerns.py` measures r-separation as a proxy, but the training
+run will ultimately be judged on `hierarchy = -Spearman(valuation, radius)`
+and `Q = dist_corr + 1.5 * hierarchy`. These were never computed in the
+diagnostic. Need to add to the eval loop:
+- `spearmanr(val_vals, r_A)` — the true hierarchy metric
+- `dist_corr` via pairwise |r_i − r_j| vs |val_i − val_j|
+- Per-digit reconstruction accuracy (coverage)
+A 40-epoch preview of Q would confirm whether V7 is on track to exceed 2.163
+before committing to 200 epochs of GPU time.
+
+---
+
+### Item C — v=8 and v=9 invisible in val set  ⬜ TODO
+
+The diagnostic showed `nan` for v=8 and v=9 in the per-level r table.
+v=9 has 1 sample (n=0), v=8 has 3 samples — with a 10% random val split
+they rarely land in val. The train.py validation loop uses the same random
+split, so hierarchy metrics computed during training will also miss these
+levels in validation. This is not catastrophic (they are <0.02% of data),
+but it means the Spearman metric in training logs is computed on at most
+v=0…v=7, which slightly inflates the measured hierarchy. Verify that
+train.py's validation split is deterministic (seed=42) and check whether
+stratified sampling could be added.
+
+---
+
+### Item D — Decoder reliance on z_r dims over long training  ⬜ TODO
+
+Over 200 epochs, the decoder may learn to use z_r (4 dims) as a shortcut
+for coarse valuation-level discrimination, since z_r encodes a clean radial
+hierarchy signal. If decoder reliance on z_r grows, reconstruction gradients
+through z_r could start competing with hierarchy losses. No mechanism currently
+prevents this. Mitigation: monitor `||grad_decoder_A||` vs `||grad_linear_r||`
+during training to detect if decoder is "leaning on" the radial dims.
+If detected: detach z_r before passing to decoder (pass `z_r.detach() ⊕ z_θ`
+to decoder), keeping decoder fully blind to the radial scalar path.
+
+---
+
+### Item E — StateNet plateau detection calibrated for V6 hierarchy ≈ 0.84  ⬜ TODO
+
+`statenet.hierarchy.plateau_threshold: 0.0005` and `plateau_patience: 10` were
+tuned when hierarchy was plateauing near 0.839. In V7 hierarchy is expected to
+rise to ~0.95. The plateau detector may fire early (e.g., during the initial
+fast climb through 0.84→0.88) and freeze encoder_b before it finishes learning.
+Review whether these thresholds need to be relaxed for V7's steeper trajectory.
+
+---
+
+### Item F — scatter_weight=0.8 tuned for V6's irreducible scatter  ⬜ TODO
+
+`loss.rank.scatter_weight: 0.8` was increased from 0.3 specifically because
+within-level radial scatter was the bottleneck in V6 (though ultimately
+ineffective). In V7, within-level scatter should be near zero by construction
+(r = f(z_r) is tightly controlled). Keeping scatter_weight=0.8 may be harmless,
+but could add unnecessary gradient noise on z_r dims for same-valuation samples
+that are already well-clustered. Consider reducing to 0.3 (V6 default) for V7.
+
+---
+
 ### What NOT to Try Again
 
 These have been exhausted and will not improve Q:
