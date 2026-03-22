@@ -16,38 +16,40 @@ See `docs/audits/22-03-2026-Q-CEILING-ANALYSIS.md` for the full mathematical pro
 | Phase 3B | Lagrangian dual adaptive weighting | ✅ Done — no Q gain (ceiling confirmed) |
 | Phase 4A | Positional significance encoding (18-dim input) | ❌ Not started |
 | Phase 4B | FT-Transformer encoder | ❌ Not started |
-| **Phase 4C** | **Factored latent z_radial ⊕ z_identity (V7)** | ❌ Not started — **highest priority** |
+| **Phase 4C** | **Factored latent z_radial ⊕ z_identity (V7)** | ✅ Done — implemented 2026-03-22, awaiting training validation |
 
 ---
 
-## Step 1 — Fix the Geodesic Loss Objective (1 hour, potentially +0.04 dist_corr)
+## Step 1 — Fix the Geodesic Loss Objective ~~(1 hour, potentially +0.04 dist_corr)~~
 
-**The problem:** `PAdicGeodesicLoss` targets `v₃(|index_i − index_j|)` — the 3-adic
-valuation of the *difference* between operation indices. But `dist_corr` evaluates
-`|valuation(i) − valuation(j)|` — the absolute difference of *individual* valuations.
-These are different signals, and the mismatch means the geodesic loss is not directly
-optimizing the metric it's supposed to improve.
+**STATUS: ATTEMPTED AND CLOSED. Does not help. Reason documented below.**
 
-**The fix:** change `PAdicGeodesicLoss.forward()` to use individual valuation differences:
+**The attempted fix:** use `|val_i − val_j|` as the pair signal with linear target
+`d_target = max_dist * |val_diff| / max_valuation`. Implemented via
+`use_individual_valuation=True` config key. Ran 62 epochs. Q stayed at 2.157.
 
-```python
-# Before (current):
-diff = torch.abs(batch_indices[i_idx].long() - batch_indices[j_idx].long())
-valuation = TERNARY.valuation(diff).double()
+**Why it failed (post-mortem):**
 
-# After:
-v_i = TERNARY.valuation(batch_indices[i_idx]).double()
-v_j = TERNARY.valuation(batch_indices[j_idx]).double()
-valuation = torch.abs(v_i - v_j)  # direct individual valuation difference
-```
+1. **Wrong target direction for dominant pairs.** Linear target gives (v=0, v=1)
+   target=0.33, but actual level gap=1.06. The geodesic loss *compressed* the most
+   frequent cross-level pairs by 0.73 units, actively opposing the hierarchy losses
+   (weight 5.0 vs 2.0 — losses cancelled, no net Q change).
 
-**Expected outcome:** dist_corr improves from 0.903 toward ~0.93–0.94, potentially
-pushing Q from 2.163 to ~2.20. Low risk change — the old signal was correct for the
-3-adic ultrametric interpretation, but misaligned with the evaluation metric.
+2. **Wrong abstraction level.** `dist_corr` measures `Spearman(|radius_i − radius_j|,
+   |val_i − val_j|)` — pure RADIAL differences from origin. The geodesic loss pushes
+   POINCARÉ distances between pairs (radial + angular). These are decoupled once
+   within-level scatter is small: Poincaré compression happens via angular reduction,
+   which has zero effect on |radius_i − radius_j|. The radial hierarchy losses already
+   control individual radii. **The geodesic loss cannot directly improve dist_corr.**
 
-**Note:** This changes the semantic: the geodesic loss will now directly optimize
-what dist_corr measures, at the cost of no longer encoding the true 3-adic ultrametric
-structure. Whether that matters depends on research goals (pure 3-adic fidelity vs Q score).
+3. **Correct formula would still be redundant.** Even with `d_target = |r_target(v_i) −
+   r_target(v_j)|` (actual radius gaps from LUT — avoids compression), the loss would
+   be redundant with RadialHierarchyLoss + MonotonicRadialLoss which already enforce
+   individual radii at their targets.
+
+**Conclusion:** The geodesic loss objective mismatch is not the bottleneck for dist_corr.
+dist_corr is bounded by the same group-size structural limit as hierarchy. Step 1 is closed.
+Proceed to Step 3 (V7 factored latent).
 
 ---
 
@@ -69,9 +71,9 @@ of the prior design.
 
 ---
 
-## Step 3 — V7 Factored Latent Architecture (2–3 days, breaks Q ceiling)
+## Step 3 — V7 Factored Latent Architecture ✅ IMPLEMENTED 2026-03-22
 
-**This is the only change that can push Q beyond 2.2.**
+**This is the only change that can push Q beyond 2.2. Now implemented — run `python src/train.py --config src/presets/v7.yaml` to train.**
 
 ### The problem (proven)
 V6 uses one shared latent code for both hierarchy (radius) and reconstruction (direction).
@@ -100,22 +102,20 @@ encoder(x) → z_tangent (D dims)
 - Reconstruction loss → gradient flows through `z_θ` (and through `r` via decoder if needed)
 - `z_r` and `z_θ` can share encoder backbone or have separate heads
 
-### Implementation steps
+### Implementation (completed 2026-03-22)
 
-1. **`HyperbolicProjection`**: add `factored=True` mode:
-   - Split `z_tangent` into `z_r[:k]` and `z_theta[k:]`
-   - Compute `r = sigmoid(linear_r(z_r)) * max_radius`
-   - Compute `dir = F.normalize(z_theta, dim=-1)`
-   - Return `z_hyp = r.unsqueeze(-1) * dir`, plus expose `r` for loss routing
+Files changed:
+- `src/models/hyperbolic_projection.py`: `HyperbolicProjection(factored=True, radial_dims=4)`,
+  `DualHyperbolicProjection` passes params, returns 4-tuple `(z_A_hyp, z_B_hyp, r_A, r_B)`
+- `src/models/vae.py`: `TernaryVAEV6(factored=True, radial_dims=4)`, exposes `r_A`/`r_B` in output
+- `src/train.py`: reads `model.factored` and `model.radial_dims` from config
+- `src/presets/v7.yaml`: new V7 config
+- `tests/test_models_vae.py`: updated for new output keys
 
-2. **`CombinedLoss`**: route hierarchy losses to `r`, not `hyperbolic_radius(z_hyp)`:
-   - `radial_loss(r, valuations)` — direct MSE to target radius, no expmap needed
-   - `monotonic_loss(r, valuations)` — same
-   - `geodesic_loss(z_hyp, ...)` — unchanged (operates on Poincaré distances)
-
-3. **`VAE`**: expose `r` tensor in forward output dict
-
-4. **No changes needed to**: decoder, KL loss, coverage loss, training loop
+Key finding: **No changes needed to CombinedLoss**. Since `||z_hyp|| = r` with
+`d(||r*dir||)/d(z_θ) = 0` (F.normalize Jacobian orthogonality), hierarchy losses
+automatically have zero gradient to `z_θ` without any explicit routing change.
+Empirically verified: max grad on z_θ = 1e-10 when differentiating r.sum() w.r.t. z_tangent.
 
 ### Expected outcome
 - hierarchy: 0.839 → ~0.95 (radial scatter eliminated by construction)
@@ -162,9 +162,10 @@ engineering effort — defer until V7 factored latent is validated.
 ## Recommended Execution Order
 
 ```
-Today (1–2 hours):  Step 1 — fix geodesic loss objective → quick Q check
-This week:          Step 3 — V7 factored latent → break Q ceiling
-Optional cleanup:   Step 2 — Phase 3A σ targets (principled, low effort)
+DONE:               Step 1 — geodesic fix (closed, not the bottleneck)
+DONE:               Step 3 — V7 factored latent implemented
+Now:                Train V7: python src/train.py --config src/presets/v7.yaml
+Optional:           Step 2 — Phase 3A σ targets (principled, low effort)
 Future:             Steps 4, 5 — architectural improvements beyond V7
 ```
 
