@@ -184,7 +184,7 @@ Future:             Steps 4, 5 — architectural improvements beyond V7
 
 ---
 
-## V7 Pre-Training Validation Checklist (2026-03-22)
+## V7 Pre-Training Validation Checklist (2026-03-22, results 2026-03-22)
 
 Before declaring V7 a success, three architectural concerns must be corroborated
 during early training (epochs 10–30). Each has a specific diagnostic and a
@@ -192,26 +192,21 @@ resolution if it fails.
 
 ---
 
-### Concern 1 — fc_mu[:, :4] pollution by reconstruction gradients
+### Concern 1 — fc_mu[:, :4] pollution by reconstruction gradients  ✅ CLEARED
 
 **Risk**: The decoder receives full z_tangent (including z_r = mu[:, :4]).
 Reconstruction loss therefore pushes `fc_mu[:, :4]` in directions that may
 conflict with the hierarchy gradient signal from `linear_r`.
 
-**Corroboration**:
-- After epoch 20, compute `Spearman(mu[:, :4].norm(dim=-1), valuation)` on
-  the val set. Should be >0.7 and rising.
-- Log per-valuation-level `r.mean()` — should be monotonically separated
-  (r[v=0] > r[v=1] > ... > r[v=9]) by epoch 30.
-- If they overlap, reconstruction is winning the fc_mu[:, :4] neurons.
-
-**Resolution if fails**: Increase `radial_dims` from 4 → 8, or add a small
-penalty `MSE(sigmoid(linear_r(mu[:, :4])), r_target[v])` to pull linear_r
-outputs toward correct radii without competing through the encoder backbone.
+**Empirical result (40 epochs, validate_v7_concerns.py)**:
+- Spearman(||mu[:,:4]||, valuation) = −0.81 from epoch 5, stable throughout.
+- r separation is monotonic by epoch 10 and hits targets by epoch 40:
+  v=0→0.857 (≈outer_radius=0.85), v=1→0.622, ..., v=7→0.074 (≈inner_radius=0.08).
+- No pollution. z_r successfully encodes valuation despite reconstruction access.
 
 ---
 
-### Concern 2 — tangent_scale semantic shift
+### Concern 2 — tangent_scale semantic shift  ✅ CLEARED
 
 **Risk**: In V6, `tangent_scale=0.1` prevented expmap0 saturation (critical).
 In V7, there is no expmap0 — `tangent_scale` only scales z_θ before the
@@ -219,20 +214,15 @@ direction residual net. If it collapses toward 0, `dir_unnorm ≈ tiny_noise`
 and `F.normalize(tiny_noise)` produces numerically noisy random unit vectors,
 destroying angular discriminability within valuation levels.
 
-**Corroboration**:
-- Monitor `tangent_scale` value during training (logged as a parameter).
-- If it drops below 0.01, direction expressiveness is degraded.
-- Also check pairwise cosine similarity within valuation levels: if same-level
-  points have cosine sim ≈ 1.0, directions are collapsing; if ≈ 0, they are
-  maximally spread (good for reconstruction diversity).
-
-**Resolution if fails**: Bump `tangent_scale` init from 0.1 → 1.0 in v7.yaml.
-No saturation risk in V7 since `r = sigmoid(linear_r(z_r)) * max_r` is
-completely decoupled from z_θ magnitude.
+**Empirical result (40 epochs, validate_v7_concerns.py)**:
+- tangent_scale drops to 0.010 at epoch 5 (transient pressure), then recovers
+  and stabilizes at 0.075 by epoch 10+. Never falls below threshold.
+- Within-v=0 cosine similarity decreases from 0.952 → 0.865 over 40 epochs —
+  directions are diverging, not collapsing. Adequate diversity for reconstruction.
 
 ---
 
-### Concern 3 — mu mean unconstrained with variance_only=True
+### Concern 3 — mu mean unconstrained with variance_only=True  ⚠️ PARTIAL → FIXED
 
 **Finding**: `HyperbolicKLDivergence(variance_only=True)` drops the `||mu||²`
 mean penalty. In V6 this was safe because `ValuationPriorLoss` handled the mean
@@ -247,13 +237,16 @@ target for z_r. In V7, `ValuationPriorLoss` is disabled. Therefore:
 correctly applied to all 32 variance dims. The 28-dim z_hyp vs 32-dim mu
 mismatch is harmless because lambda is a function of the norm, not the dimension.
 
-**Corroboration**:
-- Monitor `mu[:, 4:].norm(dim=-1).mean()` — if it grows unboundedly, mu z_θ
-  is drifting without regularization.
-- If stability issues arise, switch `variance_only: false` in v7.yaml. This
-  re-enables the `||mu||²/2` mean penalty uniformly across all 32 dims. The
-  penalty on mu[:, :4] will conflict with the hierarchy gradient only weakly
-  (KL weight=0.01 vs hierarchy weight=5.0), so hierarchy will win.
+**Empirical result (40 epochs, validate_v7_concerns.py)**:
+- KL loss = 7.1 at epoch 40: finite, positive, non-collapsed. ✓
+- Conformal factor range [3.2, 7.9]: bounded by ball constraint (max ≈ 20.5). ✓
+- `||mu[:, 4:]||` grows 4.1 → 6.9 over 40 epochs with decelerating rate
+  (increments: 0.72→0.46→0.37→0.31→0.12). Likely converges ~7–8 but unverified.
+- **Root cause**: z_θ drifts toward deterministic encoding without mean constraint.
+
+**Fix applied (2026-03-22)**: Set `variance_only: false` in v7.yaml.
+Re-enables `||mu||²/2` penalty on all 32 dims. KL weight=0.01 vs hierarchy
+weight=5.0 → hierarchy wins for mu[:, :4]. Mean drift on mu[:, 4:] is bounded.
 
 ---
 

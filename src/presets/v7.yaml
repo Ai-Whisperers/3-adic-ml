@@ -157,7 +157,9 @@ loss:
     beta: 0.1
     weight: 0.01
     free_bits: 0.5
-    variance_only: true
+    variance_only: false  # V7: ValuationPriorLoss is disabled, so re-enable ||mu||² term
+                          # to prevent mu[:, 4:] (z_θ) drifting unboundedly.
+                          # KL weight=0.01 vs hierarchy weight=5.0 → hierarchy wins.
 
   within_level_contrastive:
     enabled: false
