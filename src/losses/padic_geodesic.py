@@ -518,25 +518,47 @@ class GlobalRankLoss(HierarchyLossBase):
             same = i_idx == j_idx
             j_idx[same] = (j_idx[same] + 1) % batch_size
 
-        # Get valuations and radii for pairs
-        v_i = valuations[i_idx]
-        v_j = valuations[j_idx]
-        r_i = radii[i_idx]
-        r_j = radii[j_idx]
+        # Get valuations and radii for ALL pairs (needed for scatter computation)
+        v_i_all = valuations[i_idx]
+        v_j_all = valuations[j_idx]
+        r_i_all = radii[i_idx]
+        r_j_all = radii[j_idx]
+
+        # Per-level scatter tensors for Lagrangian dual (computed for all pairs,
+        # regardless of scatter_weight — lambda controls whether gradient enters).
+        # scatter_tensor_v{v} = mean squared radial spread for same-valuation pairs at level v.
+        same_v_all = v_i_all == v_j_all
+        per_level_scatter_tensors: Dict[str, torch.Tensor] = {}
+        per_level_scatter_floats: Dict[str, float] = {}
+        if same_v_all.any():
+            for _v in range(10):
+                _v_mask = same_v_all & (v_i_all.long() == _v)
+                if _v_mask.any():
+                    sc_v = ((r_i_all[_v_mask] - r_j_all[_v_mask]) ** 2).mean()
+                    per_level_scatter_tensors[f"scatter_tensor_v{_v}"] = sc_v
+                    per_level_scatter_floats[f"scatter_v{_v}"] = sc_v.item()
 
         # Valuation difference: positive means i has higher valuation
-        v_diff = v_i - v_j
+        v_diff = v_i_all - v_j_all
 
         # Only consider pairs where valuations differ
         diff_mask = v_diff != 0
         if not diff_mask.any():
-            return torch.tensor(0.0, device=device, dtype=torch.float64), {
+            early_metrics: Dict[str, Any] = {
                 "n_violations": 0,
                 "n_pairs": 0,
+                **per_level_scatter_floats,
             }
+            early_metrics.update(per_level_scatter_tensors)
+            return torch.tensor(0.0, device=device, dtype=torch.float64), early_metrics
+
+        v_i = v_i_all
+        v_j = v_j_all
+        r_i = r_i_all
+        r_j = r_j_all
 
         v_diff = v_diff[diff_mask]
-        r_i = r_i[diff_mask]
+        r_i = r_i[diff_mask]  # now filtered
         r_j = r_j[diff_mask]
 
         # For pairs where v_i > v_j (v_diff > 0), we want r_i < r_j
@@ -565,22 +587,12 @@ class GlobalRankLoss(HierarchyLossBase):
 
         loss = weighted_violations.mean()
 
-        # Within-level scatter penalty: for same-valuation pairs, push radii together.
-        # This is the direct differentiable proxy for dist_corr: dist_corr measures
-        # Spearman(|r_i - r_j|, |v_i - v_j|), so same-v pairs (|v_i - v_j|=0) should
-        # have |r_i - r_j|=0. The diff_mask above excludes these pairs from the ranking
-        # loss — we handle them here separately.
+        # Within-level scatter penalty (aggregate, from scatter_weight config)
+        # Per-level tensors are already computed in per_level_scatter_tensors above.
         scatter_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
-        if self.scatter_weight > 0.0:
-            # Use original (unfiltered) pair tensors: v_i_full, r_i_full before diff_mask
-            v_i_full = valuations[i_idx]
-            v_j_full = valuations[j_idx]
-            r_i_full = radii[i_idx]
-            r_j_full = radii[j_idx]
-            same_v_mask = v_i_full == v_j_full
-            if same_v_mask.any():
-                scatter_loss = ((r_i_full[same_v_mask] - r_j_full[same_v_mask]) ** 2).mean()
-                loss = loss + self.scatter_weight * scatter_loss
+        if self.scatter_weight > 0.0 and same_v_all.any():
+            scatter_loss = ((r_i_all[same_v_all] - r_j_all[same_v_all]) ** 2).mean()
+            loss = loss + self.scatter_weight * scatter_loss
 
         # Metrics
         with torch.no_grad():
@@ -588,13 +600,16 @@ class GlobalRankLoss(HierarchyLossBase):
             n_pairs_used = len(v_diff)
             violation_rate = hard_violations / n_pairs_used if n_pairs_used > 0 else 0
 
-        metrics = {
+        metrics: Dict[str, Any] = {
             "n_pairs": n_pairs_used,
             "n_violations": int(hard_violations),
             "violation_rate": violation_rate,
             "mean_signed_diff": signed_r_diff.mean().item(),
             "scatter_loss": scatter_loss.item(),
+            **per_level_scatter_floats,
         }
+        # Add per-level scatter tensors outside no_grad to keep graph alive
+        metrics.update(per_level_scatter_tensors)
 
         return loss, metrics
 
@@ -752,6 +767,14 @@ class MonotonicRadialLoss(HierarchyLossBase):
         # Combined loss: margin enforcement + target guidance
         total_loss = loss + self.target_loss_weight * target_loss
 
+        # Per-level violation tensors for Lagrangian dual (remain in computation graph).
+        # gap_viol_tensor_v{v} = relu(margin - (r[v] - r[v+1])) for each adjacent pair.
+        # These are used by CombinedLoss.forward() when dual_weights is supplied.
+        per_gap_tensors: Dict[str, torch.Tensor] = {}
+        for i in range(n_levels - 1):
+            v_curr = levels_present[i]
+            per_gap_tensors[f"gap_viol_tensor_v{v_curr}"] = F.relu(violations[i])
+
         # Metrics
         with torch.no_grad():
             hard_violations = (violations > 0).sum().item()
@@ -765,7 +788,13 @@ class MonotonicRadialLoss(HierarchyLossBase):
                 for i in range(n_levels)
             }
 
-        metrics = {
+            # Float violation values per gap (for dual variable accumulation in train.py)
+            gap_viol_floats = {
+                f"gap_viol_v{levels_present[i]}": float(max(0.0, violations[i].item()))
+                for i in range(n_levels - 1)
+            }
+
+        metrics: Dict[str, Any] = {
             "n_levels": n_levels,
             "margin_violations": hard_violations,
             "mean_violation_magnitude": mean_violation,
@@ -778,7 +807,10 @@ class MonotonicRadialLoss(HierarchyLossBase):
                 radius_diffs.mean().item() if len(radius_diffs) > 0 else 0
             ),
             **level_radius_map,
+            **gap_viol_floats,
         }
+        # Tensor violations added outside no_grad to keep computation graph alive
+        metrics.update(per_gap_tensors)
 
         return total_loss, metrics
 
@@ -1044,20 +1076,36 @@ class ValuationPriorLoss(nn.Module):
 
         loss = F.mse_loss(mu_norms, target_norms)
 
-        # Metrics: mean norm per valuation level (diagnostic)
+        # Per-level gap tensors for Lagrangian dual (remain in computation graph).
+        # vp_gap_tensor_v{v} = |mean(||μ||_v) - target_v| for each level present.
+        per_level_gap_tensors: Dict[str, torch.Tensor] = {}
+        per_level_gaps: Dict[str, float] = {}
+        per_level_norms: Dict[str, float] = {}
+
+        for v in range(self.max_valuation + 1):
+            mask = valuations == v
+            if mask.any():
+                mu_norm_v = mu_norms[mask].mean()
+                target_v = target_tangent_norms[v]
+                gap_v = (mu_norm_v - target_v).abs()
+                per_level_gap_tensors[f'vp_gap_tensor_v{v}'] = gap_v
+                per_level_gaps[f'vp_gap_v{v}'] = gap_v.detach().item()
+                per_level_norms[f'vp_mu_norm_v{v}'] = mu_norm_v.detach().item()
+
+        # Metrics: aggregate values (logged every step)
         with torch.no_grad():
             mean_mu_norm = mu_norms.mean().item()
             mean_target = target_norms.mean().item()
-            # Per-level breakdown for the first few levels
-            metrics: Dict[str, float] = {
-                'vp_mean_mu_norm': mean_mu_norm,
-                'vp_mean_target': mean_target,
-                'vp_gap': abs(mean_mu_norm - mean_target),
-            }
-            for v in range(min(5, self.max_valuation + 1)):
-                mask = valuations == v
-                if mask.any():
-                    metrics[f'vp_mu_norm_v{v}'] = mu_norms[mask].mean().item()
+
+        metrics: Dict[str, Any] = {
+            'vp_mean_mu_norm': mean_mu_norm,
+            'vp_mean_target': mean_target,
+            'vp_gap': abs(mean_mu_norm - mean_target),
+            **per_level_norms,
+            **per_level_gaps,
+        }
+        # Tensor gap values added outside no_grad to keep computation graph alive
+        metrics.update(per_level_gap_tensors)
 
         return loss, metrics
 

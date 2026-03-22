@@ -365,13 +365,14 @@ class TernaryVAEV6(nn.Module):
 
         z_A_hyp, z_B_hyp = self.projections(z_A_tangent, z_B_tangent, as_manifold=False)
 
-        # Map back to tangent space for decoder (logmap0)
-        z_A_dec = log_map_zero(z_A_hyp, c=self.curvature, max_norm=self.max_radius)
-
-        logits_A = self.decoder_A(z_A_dec)
+        # Decoder receives z_tangent directly (not logmap0(z_hyp)).
+        # logmap0(expmap0(v)) = v, so there is no information difference, but
+        # feeding logmap0(z_hyp) coupled the decoder to tangent_scale, causing
+        # reconstruction loss to collapse tangent_scale toward 0 and prevent
+        # points from reaching target Poincaré radii.
+        logits_A = self.decoder_A(z_A_tangent)
         if decode_b:
-            z_B_dec = log_map_zero(z_B_hyp, c=self.curvature, max_norm=self.max_radius)
-            logits_B = self.decoder_B(z_B_dec)
+            logits_B = self.decoder_B(z_B_tangent)
         else:
             logits_B = None  # decoder_B skipped; coverage must be disabled in caller
 

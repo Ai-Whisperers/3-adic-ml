@@ -152,30 +152,32 @@ class TestTernaryVAEV6:
         # Std should be close to 1.0
         assert torch.allclose(z.std(), torch.tensor(1.0, dtype=torch.float64), atol=0.1)
 
-    def test_decoder_receives_logmap0(self):
-        """Decoder receives logmap0 output (not raw z_hyp) - verify by checking output changes with different curvature."""
+    def test_decoder_receives_z_tangent(self):
+        """Decoder receives z_tangent directly (not logmap0(z_hyp)).
+
+        Decoupling decoder from tangent_scale prevents reconstruction loss from
+        collapsing tangent_scale toward 0, which was preventing points from
+        reaching their target Poincaré radii.
+
+        Verify: two models with identical weights but different curvatures produce
+        identical logits (since decoder no longer goes through logmap0).
+        """
         model1 = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
         model2 = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
 
-        # Copy weights so they are identical
         model2.load_state_dict(model1.state_dict())
-
-        # Change curvature used by logmap0 in decoder path
-        # model.curvature is the plain float passed to log_map_zero(); changing it
-        # changes the decoder's tangent input without touching expmap manifold.
-        model2.curvature = 2.0
+        model2.curvature = 2.0  # Different curvature – no longer affects decoder
 
         x = torch.randn(10, 9, dtype=torch.float64)
 
-        # Fix random seed for reparameterization
         torch.manual_seed(42)
         out1 = model1(x)
 
         torch.manual_seed(42)
         out2 = model2(x)
 
-        # The logits should be different because the logmap0 output depends on curvature
-        assert not torch.allclose(out1["logits_A"], out2["logits_A"])
+        # Logits must be identical: decoder receives z_tangent, unaffected by curvature
+        assert torch.allclose(out1["logits_A"], out2["logits_A"])
 
     def test_gradient_flow_end_to_end(self):
         """Gradient flow end-to-end: CrossEntropy(logits, target).backward() -> encoder params have gradients."""
@@ -365,7 +367,14 @@ class TestTernaryVAEV6Controllable:
         assert "P:fixed" in summary
 
     def test_gradient_isolation(self):
-        """Gradient isolation: when encoder_a frozen, backward pass produces NO gradients on head_A params but DOES produce gradients on head_B/projections/decoders."""
+        """Gradient isolation: when encoder_a frozen, backward pass produces NO
+        gradients on head_A params but DOES produce gradients on head_B.
+
+        Note: decoder is now decoupled from projections (receives z_tangent directly,
+        not logmap0(z_hyp)). Projections only receive gradients from hierarchy losses
+        (z_hyp-based), not from reconstruction logits. This test uses only a logit
+        loss, so projections are expected to have zero/no gradients here.
+        """
         model = TernaryVAEV6Controllable(
             latent_dim=16,
             hidden_dim=64,
@@ -380,11 +389,11 @@ class TestTernaryVAEV6Controllable:
         loss = out["logits_A"].sum() + out["logits_B"].sum()
         loss.backward()
 
-        # head_A should have no gradients
+        # head_A should have no gradients (frozen)
         for param in model.head_A.parameters():
             assert param.grad is None or torch.all(param.grad == 0)
 
-        # head_B should have gradients
+        # head_B should have gradients (trainable, logits_B flows through it)
         has_grad_B = False
         for param in model.head_B.parameters():
             if param.grad is not None and torch.any(param.grad != 0):
@@ -392,10 +401,8 @@ class TestTernaryVAEV6Controllable:
                 break
         assert has_grad_B
 
-        # projections should have gradients
-        has_grad_proj = False
+        # projections have NO gradients from reconstruction logits (by design:
+        # decoder receives z_tangent, not logmap0(z_hyp)). They get gradients
+        # from hierarchy losses (z_A_hyp, z_B_hyp) during actual training.
         for param in model.projections.proj_A.parameters():
-            if param.grad is not None and torch.any(param.grad != 0):
-                has_grad_proj = True
-                break
-        assert has_grad_proj
+            assert param.grad is None or torch.all(param.grad == 0)

@@ -32,10 +32,12 @@ import torch.nn as nn
 # Shared type aliases
 # ------------------------------------------------------------------
 
-# Metrics dicts contain int or float scalars for logging.
-# Union[int, float] is used rather than float because counts like
-# n_pairs and margin_violations are integers.
-MetricsDict = Dict[str, Union[int, float]]
+# Metrics dicts primarily contain int or float scalars for logging.
+# Any is allowed so that Lagrangian dual code can store per-level violation
+# tensors (in-graph) alongside the usual float logging values.
+# Convention: keys ending in '_tensor' hold torch.Tensor; all others are
+# int/float and safe for .item() / logging.
+MetricsDict = Dict[str, Any]
 
 
 class HierarchyLossBase(ABC, nn.Module):

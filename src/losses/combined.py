@@ -30,7 +30,7 @@ Usage:
     # loss_fn.get_learned_weights()  # returns current effective weights
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -399,6 +399,7 @@ class CombinedLoss(nn.Module):
         mu: Optional[torch.Tensor] = None,
         logvar: Optional[torch.Tensor] = None,
         curvature: Optional[float] = None,
+        dual_weights: Optional[Dict[str, List[float]]] = None,
     ) -> Dict[str, Any]:
         """Compute combined loss.
 
@@ -412,6 +413,12 @@ class CombinedLoss(nn.Module):
             logvar: Log-variance of approximate posterior (B, latent_dim) for KL
             curvature: Current curvature value (pass model's learned curvature when
                        learnable_curvature=True). Falls back to init-time curvature.
+            dual_weights: Optional dict from LagrangianDualState.get_dual_weights().
+                Keys: 'lambda_margin' (list[9]), 'lambda_scatter' (list[10]),
+                'lambda_prior' (list[10]). When provided, additive per-level
+                penalties are applied using in-graph violation tensors from
+                the metric dicts of MonotonicRadialLoss, GlobalRankLoss, and
+                ValuationPriorLoss. None = no Lagrangian penalties (default).
 
         Returns:
             Dict with 'total' loss and individual loss components
@@ -512,6 +519,51 @@ class CombinedLoss(nn.Module):
             losses['valuation_prior'] = vp_contribution
             losses['valuation_prior_metrics'] = vp_metrics
             total = total + vp_contribution
+
+        # 8. Lagrangian dual penalties (optional, from outer-loop dual ascent).
+        # Each lambda_v * violation_tensor_v term is additive and in-graph:
+        # the tensor violations come from per-level metrics dicts computed above,
+        # and lambda values are plain floats (not optimiser parameters).
+        if dual_weights is not None:
+            lam_margin = dual_weights.get('lambda_margin', [])
+            lam_scatter = dual_weights.get('lambda_scatter', [])
+            lam_prior = dual_weights.get('lambda_prior', [])
+
+            # Margin penalties from MonotonicRadialLoss
+            if 'monotonic_metrics' in losses:
+                mono_m = losses['monotonic_metrics']
+                lagrangian_margin_total = torch.tensor(0.0, device=device, dtype=torch.float64)
+                for v in range(9):
+                    vt = mono_m.get(f'gap_viol_tensor_v{v}')
+                    if vt is not None and v < len(lam_margin) and lam_margin[v] > 0.0:
+                        lagrangian_margin_total = lagrangian_margin_total + lam_margin[v] * vt
+                if lagrangian_margin_total.item() > 0.0:
+                    losses['lagrangian_margin'] = lagrangian_margin_total
+                    total = total + lagrangian_margin_total
+
+            # Scatter penalties from GlobalRankLoss
+            if 'rank_metrics' in losses:
+                rank_m = losses['rank_metrics']
+                lagrangian_scatter_total = torch.tensor(0.0, device=device, dtype=torch.float64)
+                for v in range(10):
+                    st = rank_m.get(f'scatter_tensor_v{v}')
+                    if st is not None and v < len(lam_scatter) and lam_scatter[v] > 0.0:
+                        lagrangian_scatter_total = lagrangian_scatter_total + lam_scatter[v] * st
+                if lagrangian_scatter_total.item() > 0.0:
+                    losses['lagrangian_scatter'] = lagrangian_scatter_total
+                    total = total + lagrangian_scatter_total
+
+            # Prior norm penalties from ValuationPriorLoss
+            if 'valuation_prior_metrics' in losses:
+                vp_m = losses['valuation_prior_metrics']
+                lagrangian_prior_total = torch.tensor(0.0, device=device, dtype=torch.float64)
+                for v in range(10):
+                    gt = vp_m.get(f'vp_gap_tensor_v{v}')
+                    if gt is not None and v < len(lam_prior) and lam_prior[v] > 0.0:
+                        lagrangian_prior_total = lagrangian_prior_total + lam_prior[v] * gt
+                if lagrangian_prior_total.item() > 0.0:
+                    losses['lagrangian_prior'] = lagrangian_prior_total
+                    total = total + lagrangian_prior_total
 
         # 9. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:

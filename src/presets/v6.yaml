@@ -34,7 +34,7 @@ device:
 # =============================================================================
 model:
   name: TernaryVAEV6Controllable
-  latent_dim: 16
+  latent_dim: 32
   hidden_dim: 64
   max_radius: 0.95  # Poincaré ball boundary constraint
   curvature: 1.0
@@ -45,6 +45,8 @@ model:
   projection_dropout: 0.1
   init_identity: true   # Identity init: tangent_net starts as zero residual (empirically better norms)
   tangent_scale: 0.1    # Initial tangent_scale value; learned during training
+  # Note: decoder is decoupled from tangent_scale (receives z_tangent directly),
+  # so tangent_scale is free to grow to reach target Poincaré radii.
 
   # Encoder/Decoder architecture
   encoder_type: improved  # SiLU + LayerNorm
@@ -81,7 +83,7 @@ precision:
 # =============================================================================
 option_c:
   enabled: true
-  encoder_a_lr_scale: 0.05    # Coverage encoder: slowest (preserve reconstruction)
+  encoder_a_lr_scale: 0.2     # Coverage encoder: increased from 0.05 — coverage was 0.001 across all epochs
   encoder_b_lr_scale: 0.1     # Hierarchy encoder: slower learning
   projections_lr_scale: 1.0   # Projections/Controller: fastest (continuous adaptation)
 
@@ -89,7 +91,7 @@ option_c:
 # Anchor Checkpoint (Optional: Start from Pre-trained Weights)
 # =============================================================================
 anchor_checkpoint:
-  path: null  # Set to checkpoint path to resume, e.g., "runs/checkpoints/v6/best_Q.pt"
+  path: "runs/v6_20260321_191928/checkpoints/best_Q.pt"  # Warm-start from Q=2.161, hier=0.839
   encoder_to_load: both
   decoder_to_load: decoder_A
 
@@ -117,9 +119,9 @@ statenet:
 
   # Controller/Projections gradient monitoring
   controller:
-    grad_threshold: 0.005
-    grad_patience: 5
-    patience_ceiling: 20
+    grad_threshold: 0.001   # was 0.005 — harder to trigger projection freeze
+    grad_patience: 20        # was 5 — sustained low gradient required before freezing
+    patience_ceiling: 40     # was 20
 
   # Timing configuration
   timing:
@@ -179,6 +181,16 @@ loss:
     weight: 0.01          # Low weight: hierarchy structure takes priority
     free_bits: 0.5        # Minimum KL per dim: prevents posterior collapse
     variance_only: true   # Disable μ² term: ValuationPriorLoss handles mean target
+
+  # Lagrangian dual adaptive weighting (Phase 3B)
+  # Dual variables increase pressure on violated per-level constraints (margin,
+  # within-level scatter, μ-norm prior). NOT gradient-descent parameters —
+  # updated by dual ascent after each validation epoch.
+  lagrangian:
+    enabled: true
+    lr: 0.1           # Dual ascent step size (increased from 0.01 — lambdas only reached 0.24 in 190 epochs, need 1-3 range)
+    max_lambda: 5.0   # Cap on any single dual variable (prevents runaway)
+    warmup_epochs: 10 # Freeze duals until epoch 10 (reduced from 20 — scatter duals need to fire sooner)
 
   # Valuation-conditioned prior (Phase 1: corrects wrong-direction KL gradient)
   # Replaces N(0,I) mean pull with pull toward target_tangent[v₃(i)] per sample.

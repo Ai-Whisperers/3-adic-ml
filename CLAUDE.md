@@ -1,4 +1,4 @@
-# P-Adic VAE Architecture (V6.0)
+# P-Adic VAE Architecture (V6.2)
 
 ## Architecture Summary
 
@@ -121,13 +121,17 @@ python src/train.py --config src/presets/v6.yaml
 | `statenet.initial.encoder_a_trainable` | Initial trainability for encoder A |
 | `model.name` | `TernaryVAEV6Controllable` |
 
-### Training Loop Algorithm
+### Training Loop Algorithm (V6.2)
 
 ```
 For each epoch:
-    1. Training phase:
+    1. Training phase (BOTH VAEs contribute to loss):
        - Forward: out = model(batch_ops)
-       - Loss: losses = loss_fn(z_hyp, batch_idx, logits, batch_ops, epoch)
+       - Loss A: losses_A = loss_fn(z_A_hyp, batch_idx, logits_A, batch_ops, epoch,
+                                     mu=mu_A, logvar=logvar_A)
+       - Loss B: losses_B = loss_fn(z_B_hyp, batch_idx, logits_B, batch_ops, epoch,
+                                     mu=mu_B, logvar=logvar_B)
+       - Total: loss = losses_A["total"] + losses_B["total"]
        - Backward + gradient clipping
        - Optimizer step
 
@@ -254,6 +258,39 @@ class StateNetConfig:
 
 ---
 
+## Critical Fixes (V6.2 - 2026-03-11)
+
+### Adversarial Audit Results & Fixes Applied
+
+Full adversarial audit revealed 3 critical bugs + 2 design flaws. All fixed:
+
+| Bug | Severity | Fix |
+|-----|----------|-----|
+| **VAE-B dead**: z_B_hyp never passed to loss | CRITICAL | Both z_A_hyp and z_B_hyp now go through CombinedLoss in train.py |
+| **max_radius saturation**: all points clamped to 0.95 | CRITICAL | Added learnable `tangent_scale` (init=0.1) in HyperbolicProjection |
+| **Config key mismatch**: `radial_weight` vs `weight` | CRITICAL | Fixed v6.yaml to use `weight: 5.0` |
+| **No KL divergence**: model was a deterministic AE | HIGH | Wired HyperbolicKLDivergence into CombinedLoss.forward() |
+| **Dead config keys**: 11+ unused YAML keys | MEDIUM | Removed zero_structure, richness_weight, annealing, encoder/decoder_dropout, logvar_min/max |
+
+### Post-Fix Training Results (20 epochs, CPU)
+
+| Metric | Before Fix | After Fix |
+|--------|-----------|-----------|
+| Initial radii | All 0.95 (saturated) | 0.23-0.57 (spread) |
+| VAE-B gradients | 0/14 params | 14/14 params |
+| Hierarchy corr | N/A (flat) | 0.83 from epoch 0 |
+| Accuracy | N/A | 55% at epoch 20 |
+| Loss curve | N/A | 15.6 → 2.1 (converging) |
+
+### tangent_scale Parameter
+
+`HyperbolicProjection` now has a learnable `tangent_scale` parameter:
+- Initialized to 0.1 (prevents expmap0 saturation)
+- Encoder outputs (~4.0 norm) are scaled to ~0.4, giving expmap0 radii ~0.38
+- Learned during training; adapts to optimal magnitude for hierarchy
+
+---
+
 ## Codebase Review Summary (2026-01-26)
 
 ### Architecture Verification
@@ -365,11 +402,11 @@ update_optimizer_lr_scales(optimizer, base_lr, state['lr_scales'])
 | **Geometry** | `geometry/poincare.py` (geoopt backend) |
 | **Losses** | `losses/combined.py`, `losses/padic_geodesic.py` |
 | **Utils** | `utils/checkpoint.py`, `utils/tensorboard_logger.py` |
-| **Tests** | `tests/` (214 tests across 6 files) |
+| **Tests** | `tests/` (280 tests across 8 files) |
 
 ---
 
-## Test Suite (214 tests)
+## Test Suite (280 tests)
 
 Comprehensive test coverage following `docs/plans/TESTS_CRITICAL_TARGETS.md`.
 
@@ -397,6 +434,7 @@ pytest tests/ --cov=src --cov-report=html
 | `test_geometry_poincare_extended.py` | 27 | Möbius add, geodesics, distance matrix, formula verification |
 | `test_losses.py` | 64 | Gradient flow, non-negativity, monotonicity, edge cases |
 | `test_losses_combined.py` | 37 | CombinedLoss, phase gating, learnable weight formula |
+| `test_gradient_flow.py` | 11 | Full pipeline gradient flow, radius spread, KL integration |
 
 ### What's Tested
 

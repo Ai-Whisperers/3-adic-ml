@@ -41,7 +41,7 @@ from pathlib import Path
 import random
 import sys
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.stats import spearmanr
@@ -69,6 +69,7 @@ from src.config.paths import RUNS_DIR
 from src.core import TERNARY
 from src.geometry import get_riemannian_optimizer, hyperbolic_radius, poincare_distance
 from src.losses import CombinedLoss
+from src.losses.lagrangian import LagrangianDualState
 from src.models import (
     MetricBasedLR,
     TernaryVAEV6Controllable,
@@ -1025,6 +1026,23 @@ def train(
     else:
         grokking_detector = GrokkingDetector()
 
+    # Lagrangian dual adaptive weighting (Phase 3B)
+    # Plain Python object: NOT in optimizer.parameters()
+    lagrangian_cfg = config.get('loss', {}).get('lagrangian', {})
+    if lagrangian_cfg.get('enabled', False):
+        dual_state: Optional[LagrangianDualState] = LagrangianDualState.from_config(lagrangian_cfg)
+        print(f"  [Lagrangian] Dual weighting enabled: lr={dual_state.lr}, "
+              f"max_lambda={dual_state.max_lambda}, warmup={dual_state.warmup_epochs} epochs")
+    else:
+        dual_state = None
+
+    # Per-epoch violation accumulators (float only, for dual update)
+    dual_violation_acc: Dict[str, float] = {}
+    dual_violation_count: int = 0
+
+    # Current dual weights (updated at eval cadence, applied every training step)
+    current_dual_weights = None  # None = no Lagrangian penalties
+
     # Training state
     best_Q = -1.0
     best_hierarchy = 0.0
@@ -1056,6 +1074,12 @@ def train(
     for epoch in epoch_iter:
         t0 = time.time()
         model.train()
+
+        # Reset per-epoch Lagrangian violation accumulators
+        if dual_state is not None:
+            dual_violation_acc = {}
+            dual_violation_count = 0
+            dual_state.step_epoch(epoch)
 
         # Training epoch
         train_loss_sum = 0.0
@@ -1092,6 +1116,7 @@ def train(
                         z_A_hyp, batch_idx, logits_A, batch_ops, epoch=epoch,
                         mu=out.get("mu_A"), logvar=out.get("logvar_A"),
                         curvature=current_curvature,
+                        dual_weights=current_dual_weights,
                     )
                     # VAE-B: hierarchy-only (no coverage/reconstruction).
                     # coverage_weight=0.0 in loss_fn_b prevents gradient conflict
@@ -1100,9 +1125,28 @@ def train(
                         z_B_hyp, batch_idx, logits_B, batch_ops, epoch=epoch,
                         mu=out.get("mu_B"), logvar=out.get("logvar_B"),
                         curvature=current_curvature,
+                        dual_weights=current_dual_weights,
                     )
                     # Combine: both VAEs contribute to total loss
                     loss = losses["total"] + losses_B["total"]
+
+                    # Accumulate per-level violation floats for Lagrangian dual update.
+                    # Only floats — tensors are already consumed in the backward pass.
+                    if dual_state is not None:
+                        for src_losses in (losses, losses_B):
+                            for m_key, pfx_map in (
+                                ('monotonic_metrics', [('gap_viol_v', 9)]),
+                                ('rank_metrics', [('scatter_v', 10)]),
+                                ('valuation_prior_metrics', [('vp_gap_v', 10)]),
+                            ):
+                                m = src_losses.get(m_key, {})
+                                for pfx, n in pfx_map:
+                                    for v in range(n):
+                                        k = f'{pfx}{v}'
+                                        val = m.get(k)
+                                        if isinstance(val, (int, float)) and val > 0.0:
+                                            dual_violation_acc[k] = dual_violation_acc.get(k, 0.0) + val
+                        dual_violation_count += 1
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
@@ -1296,6 +1340,17 @@ def train(
                 scales = new_scales
                 train_summary = f"A:{scales.get('encoder_a', 0):.2f} B:{scales.get('encoder_b', 0):.2f} P:{scales.get('projections', 0):.2f}"
 
+            # Lagrangian dual ascent update (after LR controller, at eval cadence)
+            if dual_state is not None and dual_violation_count > 0:
+                avg_violations = {
+                    k: v / dual_violation_count
+                    for k, v in dual_violation_acc.items()
+                }
+                dual_state.update(avg_violations)
+                current_dual_weights = dual_state.get_dual_weights()
+                if dual_state.is_active():
+                    print(f"  [{dual_state.summary()}]")
+
             # Grokking detection
             grok_state = grokking_detector.update(
                 epoch, avg_train_loss, avg_train_acc, avg_val_acc
@@ -1442,6 +1497,8 @@ def train(
                         "hierarchy_a_history": list(lr_controller._hierarchy_a_history),
                         "hierarchy_b_history": list(lr_controller._hierarchy_b_history),
                     }
+                if dual_state is not None:
+                    ckpt_payload["lagrangian_state"] = dual_state.state_dict()
                 torch.save(ckpt_payload, ckpt_dir / "best_Q.pt")
 
             if avg_val_coverage > best_coverage:
