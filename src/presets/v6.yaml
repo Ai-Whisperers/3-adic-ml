@@ -156,7 +156,8 @@ loss:
     max_target_distance: 3.0
     n_pairs: 2000
     use_smooth_l1: true
-    weight: 2.0  # Note: 4.0 weight tried, no improvement — Q ceiling confirmed ~2.163
+    weight: 2.0
+    use_individual_valuation: true  # Skip same-level pairs; target = max_dist*|val_diff|/9
 
   # Global rank loss (soft ordering violations + within-level scatter)
   rank:

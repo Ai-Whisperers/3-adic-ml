@@ -91,15 +91,19 @@ class PAdicGeodesicLoss(HierarchyLossBase):
     THE KEY V5.11 INSIGHT: In hyperbolic geometry, distance ordering and
     radial hierarchy are coupled via the metric itself.
 
-    For pairs (i, j) with 3-adic valuation v_3(|i-j|):
-    - High valuation → small target geodesic distance
-    - Small geodesic distance in hyperbolic space → both points near origin
+    Two target modes (controlled by use_individual_valuation):
 
-    This single loss enforces BOTH:
-    - Hierarchy: High-valuation pairs close → both near origin
-    - Correlation: Distance ordering matches valuation ordering
+    Default (use_individual_valuation=False):
+        Target = max_dist * exp(-v₃(|i-j|) / scale)
+        Trains on the true 3-adic ultrametric structure.
+        Pairs with high shared 3-adic factor → close.
 
-    No competing objectives - geometry handles both automatically.
+    Individual valuation mode (use_individual_valuation=True):
+        Target = max_dist * |val_i - val_j| / max_valuation
+        Directly optimises what dist_corr measures.
+        Same-level pairs skipped (they add noise and fight reconstruction).
+        Large individual valuation difference → large target Poincaré distance.
+        Aligns geodesic training with the dist_corr evaluation metric.
     """
 
     def __init__(
@@ -109,6 +113,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         valuation_scale: float = 3.0,
         n_pairs: int = 2000,
         use_smooth_l1: bool = True,
+        use_individual_valuation: bool = False,
         seed: int = 42,
     ):
         """Initialize PAdicGeodesicLoss.
@@ -119,6 +124,9 @@ class PAdicGeodesicLoss(HierarchyLossBase):
             valuation_scale: Scale factor for valuation→distance mapping
             n_pairs: Number of pairs to sample per batch
             use_smooth_l1: Use SmoothL1 (Huber) loss instead of MSE
+            use_individual_valuation: If True, use |val_i - val_j| instead of
+                v₃(|i-j|) as the pair signal, with linear target mapping and
+                same-level pairs skipped. Directly optimises dist_corr metric.
             seed: Random seed for reproducible pair sampling
         """
         super().__init__()
@@ -132,6 +140,8 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         self.valuation_scale = valuation_scale
         self.n_pairs = n_pairs
         self.use_smooth_l1 = use_smooth_l1
+        self.use_individual_valuation = use_individual_valuation
+        self.max_valuation = float(TERNARY.MAX_VALUATION)
         self.generator = torch.Generator()
         self.generator.manual_seed(seed)
 
@@ -185,10 +195,26 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         # Compute actual Poincaré distance
         d_actual = poincare_distance(z_hyp[i_idx], z_hyp[j_idx], self.curvature)
 
-        # Compute target distance from 3-adic valuation
-        diff = torch.abs(batch_indices[i_idx].long() - batch_indices[j_idx].long())
-        valuation = TERNARY.valuation(diff).double()
-        d_target = self.target_distance(valuation)
+        if self.use_individual_valuation:
+            # Individual valuation mode: target = max_dist * |val_i - val_j| / max_val
+            # Same-level pairs skipped — they add noise to dist_corr and fight reconstruction.
+            # Large individual valuation difference → large target distance (correct direction
+            # for dist_corr, which measures Spearman(|radius_i - radius_j|, |val_i - val_j|)).
+            v_i = TERNARY.valuation(batch_indices[i_idx]).double()
+            v_j = TERNARY.valuation(batch_indices[j_idx]).double()
+            val_diff = torch.abs(v_i - v_j)
+            cross_mask = val_diff > 0
+            if not cross_mask.any():
+                return torch.tensor(0.0, device=device, dtype=torch.float64), {"n_pairs": 0}
+            d_actual = d_actual[cross_mask]
+            val_diff = val_diff[cross_mask]
+            d_target = self.max_target * val_diff / self.max_valuation
+            valuation = val_diff  # for metrics
+        else:
+            # Default mode: 3-adic ultrametric — target based on pairwise index valuation
+            diff = torch.abs(batch_indices[i_idx].long() - batch_indices[j_idx].long())
+            valuation = TERNARY.valuation(diff).double()
+            d_target = self.target_distance(valuation)
 
         # Loss: align actual geodesic distance with target
         if self.use_smooth_l1:

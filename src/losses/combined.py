@@ -197,6 +197,7 @@ class CombinedLoss(nn.Module):
                 max_target_distance=geodesic_cfg.get('max_target_distance', 3.0),
                 n_pairs=geodesic_cfg.get('n_pairs', 2000),
                 use_smooth_l1=geodesic_cfg.get('use_smooth_l1', True),
+                use_individual_valuation=geodesic_cfg.get('use_individual_valuation', False),
             )
             self.geodesic_weight = geodesic_cfg.get('weight', 0.3)
             self.geodesic_phase_start = geodesic_cfg.get('phase_start_epoch', 0)
