@@ -23,11 +23,12 @@ Reference:
   Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
 """
 
-from typing import Tuple, Union, cast
+from typing import Optional, Tuple, Union, cast
 
 import geoopt
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from src.geometry import ManifoldParameter, exp_map_zero
 
@@ -60,6 +61,8 @@ class HyperbolicProjection(nn.Module):
         n_layers: int = 1,
         dropout: float = 0.0,
         learnable_curvature: bool = False,
+        factored: bool = False,
+        radial_dims: int = 4,
     ):
         """Initialize HyperbolicProjection.
 
@@ -73,6 +76,8 @@ class HyperbolicProjection(nn.Module):
             n_layers: Number of hidden layers
             dropout: Dropout rate
             learnable_curvature: If True, curvature is learnable
+            factored: If True, use V7 factored latent (z_r ⊕ z_θ → r * normalize(z_θ))
+            radial_dims: Number of dimensions dedicated to radius in factored mode (k)
         """
         super().__init__()
         if not (0.0 < max_radius < 1.0):
@@ -88,22 +93,34 @@ class HyperbolicProjection(nn.Module):
             raise ValueError(
                 f"HyperbolicProjection: tangent_scale_init must be >= 0, got {tangent_scale_init}"
             )
+        if factored and radial_dims >= latent_dim:
+            raise ValueError(
+                f"HyperbolicProjection: radial_dims ({radial_dims}) must be < latent_dim ({latent_dim})"
+            )
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
         self.max_radius = max_radius
         self.n_layers = n_layers
         self.dropout_rate = dropout
         self.learnable_curvature = learnable_curvature
+        self.factored = factored
+        self.radial_dims = radial_dims
 
-        # Create manifold
+        # Create manifold (used for non-factored mode; kept for curvature tracking)
         self.manifold = geoopt.PoincareBall(c=curvature, learnable=learnable_curvature)
         self.curvature = self.manifold.c
 
+        # In factored mode:
+        #   - tangent_net processes z_θ (direction dims: latent_dim - radial_dims)
+        #   - linear_r maps z_r (radial_dims) → scalar r via sigmoid * max_radius
+        # In non-factored mode:
+        #   - tangent_net processes full z_tangent (latent_dim) for expmap0 approach
+        net_in_dim = (latent_dim - radial_dims) if factored else latent_dim
+
         # Tangent space transform network (residual architecture)
-        # Learns to scale/rotate tangent vectors for correct hierarchy
         layers = []
         for i in range(n_layers):
-            in_dim = latent_dim if i == 0 else hidden_dim
+            in_dim = net_in_dim if i == 0 else hidden_dim
             out_dim = hidden_dim
             layers.extend([
                 nn.Linear(in_dim, out_dim),
@@ -112,14 +129,22 @@ class HyperbolicProjection(nn.Module):
             ])
             if dropout > 0:
                 layers.append(nn.Dropout(dropout))
-        layers.append(nn.Linear(hidden_dim, latent_dim))
+        layers.append(nn.Linear(hidden_dim, net_in_dim))
         self.tangent_net = nn.Sequential(*layers)
 
-        # Tangent scale: controls initial magnitude of tangent vectors entering expmap0.
-        # Encoder outputs have norm ~4.0; expmap0(tanh) saturates for large norms.
-        # tangent_scale_init=0.1 gives tangent norm ~0.4 → expmap0 radius ~0.38,
-        # well within target range [inner_radius, outer_radius].
-        # Value is passed from config (model.tangent_scale in v6.yaml).
+        # Factored mode: linear_r maps radial dims to a scalar pre-sigmoid.
+        # Small random weight init ensures gradient flows from hierarchy losses
+        # through r back to z_r (and thus to the encoder) from epoch 1.
+        # Bias=0 → sigmoid(~0) ≈ 0.5 → r ≈ 0.5 * max_radius at initialization.
+        if factored:
+            self.linear_r = nn.Linear(radial_dims, 1, bias=True)
+            nn.init.normal_(self.linear_r.weight, std=0.1)
+            nn.init.zeros_(self.linear_r.bias)
+        else:
+            self.linear_r = None  # type: ignore[assignment]
+
+        # Tangent scale: in non-factored mode scales encoder outputs before expmap0.
+        # In factored mode scales z_θ before direction residual network.
         self.tangent_scale = nn.Parameter(
             torch.tensor(tangent_scale_init, dtype=torch.float64)
         )
@@ -138,19 +163,31 @@ class HyperbolicProjection(nn.Module):
 
     def forward(
         self, z_tangent: torch.Tensor, as_manifold: bool = False
-    ) -> Union[torch.Tensor, "ManifoldParameter"]:
-        """Project tangent vector to Poincaré ball via expmap0.
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], "ManifoldParameter"]:
+        """Project tangent vector to Poincaré ball.
+
+        Non-factored mode: expmap0 approach (V6).
+        Factored mode: z_r → sigmoid → r, z_θ → normalize → dir, z_hyp = r * dir (V7).
 
         Args:
             z_tangent: Tangent vectors at origin (batch, latent_dim)
-            as_manifold: If True, return ManifoldParameter
+            as_manifold: If True, return ManifoldParameter (non-factored only)
 
         Returns:
-            z_hyp: Points on Poincaré ball
+            Non-factored: z_hyp (batch, latent_dim) — Poincaré ball points
+            Factored: (z_hyp, r) tuple where z_hyp (batch, latent_dim - radial_dims),
+                      r (batch,) is the explicit Poincaré radius. Gradients from
+                      ||z_hyp|| are isolated to z_r (not z_θ) by construction:
+                      d(||r*dir||)/d(z_θ) = 0 because F.normalize Jacobian is
+                      orthogonal to its output, and r*dir is collinear with dir.
         """
         # Enforce float64 precision
         z_tangent = z_tangent.to(torch.float64)
 
+        if self.factored:
+            return self._forward_factored(z_tangent)
+
+        # --- Non-factored mode (V6 expmap0 approach) ---
         # Scale tangent vectors + residual transform
         # tangent_scale is learned; init=0.1 prevents expmap0 saturation at init
         z_scaled = self.tangent_scale * z_tangent
@@ -179,6 +216,46 @@ class HyperbolicProjection(nn.Module):
 
         return z_hyp
 
+    def _forward_factored(
+        self, z_tangent: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Factored forward pass (V7).
+
+        Splits z_tangent into:
+          - z_r  (first radial_dims): controls Poincaré radius only
+          - z_θ  (remaining dims):   controls direction only
+
+        Hierarchy/radial losses operate on r; reconstruction operates on z_θ.
+        The gradient isolation holds because d(||r*dir||)/d(z_θ) = 0:
+        the norm of r*dir equals r regardless of dir's value, and F.normalize's
+        Jacobian (I - dir*dirᵀ)/||z_θ|| projects the incoming gradient r*dir
+        onto the tangent space of the unit sphere, which is orthogonal to dir.
+
+        Args:
+            z_tangent: (batch, latent_dim) tangent vectors
+
+        Returns:
+            (z_hyp, r) where z_hyp has shape (batch, latent_dim - radial_dims)
+            and r has shape (batch,) with values in (0, max_radius).
+        """
+        z_r = z_tangent[:, :self.radial_dims]          # (B, k)
+        z_theta = z_tangent[:, self.radial_dims:]       # (B, D-k)
+
+        # Radius: sigmoid maps to (0,1), scaled to (0, max_radius)
+        r = torch.sigmoid(self.linear_r(z_r).squeeze(-1)) * self.max_radius  # (B,)
+
+        # Direction: residual transform of z_θ, then normalize to unit sphere
+        z_theta_scaled = self.tangent_scale * z_theta
+        dir_unnorm = z_theta_scaled + self.tangent_net(z_theta_scaled)
+        eps = torch.tensor(1e-10, device=z_tangent.device, dtype=torch.float64)
+        dir_norm = torch.norm(dir_unnorm, dim=-1, keepdim=True).clamp(min=eps)
+        dir = dir_unnorm / dir_norm                     # (B, D-k), unit norm
+
+        # Poincaré ball point: ||z_hyp|| = r < max_radius < 1 by construction
+        z_hyp = r.unsqueeze(-1) * dir                  # (B, D-k)
+
+        return z_hyp, r
+
     def get_curvature(self) -> float:
         """Get current curvature value."""
         c = self.manifold.c
@@ -187,11 +264,14 @@ class HyperbolicProjection(nn.Module):
     def forward_with_components(
         self, z_tangent: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Project with diagnostic outputs.
+        """Project with diagnostic outputs (non-factored mode only).
 
         Returns:
             Tuple of (z_hyp, z_transformed, tangent_norm)
         """
+        if self.factored:
+            z_hyp, r = self._forward_factored(z_tangent.to(torch.float64))
+            return z_hyp, z_hyp, r  # z_transformed approximated by z_hyp
         # Enforce float64 precision
         z_tangent = z_tangent.to(torch.float64)
 
@@ -231,6 +311,8 @@ class DualHyperbolicProjection(nn.Module):
         learnable_curvature: bool = False,
         init_identity: bool = False,
         tangent_scale_init: float = 0.1,
+        factored: bool = False,
+        radial_dims: int = 4,
     ):
         """Initialize DualHyperbolicProjection.
 
@@ -244,11 +326,14 @@ class DualHyperbolicProjection(nn.Module):
             learnable_curvature: If True, curvature is learnable
             init_identity: If True, initialize tangent_net as identity (zero residual)
             tangent_scale_init: Initial value for learnable tangent_scale parameter
+            factored: If True, use V7 factored latent architecture
+            radial_dims: Number of radial dimensions (k) in factored mode
         """
         super().__init__()
         self.n_layers = n_layers
         self.dropout_rate = dropout
         self.learnable_curvature = learnable_curvature
+        self.factored = factored
 
         # VAE-A projection
         self.proj_A = HyperbolicProjection(
@@ -261,6 +346,8 @@ class DualHyperbolicProjection(nn.Module):
             learnable_curvature=learnable_curvature,
             init_identity=init_identity,
             tangent_scale_init=tangent_scale_init,
+            factored=factored,
+            radial_dims=radial_dims,
         )
 
         # VAE-B projection (separate)
@@ -274,27 +361,32 @@ class DualHyperbolicProjection(nn.Module):
             learnable_curvature=False,  # Share curvature with A
             init_identity=init_identity,
             tangent_scale_init=tangent_scale_init,
+            factored=factored,
+            radial_dims=radial_dims,
         )
 
     def forward(
         self, z_A: torch.Tensor, z_B: torch.Tensor, as_manifold: bool = False
-    ) -> Tuple[
-        Union[torch.Tensor, "ManifoldParameter"],
-        Union[torch.Tensor, "ManifoldParameter"],
-    ]:
+    ) -> Tuple:
         """Project both tangent vectors to Poincaré ball.
 
         Args:
             z_A: VAE-A tangent vector (batch, latent_dim)
             z_B: VAE-B tangent vector (batch, latent_dim)
-            as_manifold: If True, return ManifoldParameters
+            as_manifold: If True, return ManifoldParameters (non-factored only)
 
         Returns:
-            Tuple of (z_A_hyp, z_B_hyp) on the manifold
+            Non-factored: (z_A_hyp, z_B_hyp, None, None)
+            Factored: (z_A_hyp, z_B_hyp, r_A, r_B) where r_A, r_B are (batch,) radii
         """
-        z_A_hyp = self.proj_A(z_A, as_manifold=as_manifold)
-        z_B_hyp = self.proj_B(z_B, as_manifold=as_manifold)
-        return z_A_hyp, z_B_hyp
+        if self.factored:
+            z_A_hyp, r_A = self.proj_A(z_A, as_manifold=as_manifold)
+            z_B_hyp, r_B = self.proj_B(z_B, as_manifold=as_manifold)
+            return z_A_hyp, z_B_hyp, r_A, r_B
+        else:
+            z_A_hyp = self.proj_A(z_A, as_manifold=as_manifold)
+            z_B_hyp = self.proj_B(z_B, as_manifold=as_manifold)
+            return z_A_hyp, z_B_hyp, None, None
 
     def get_curvature(self) -> float:
         """Get current curvature value."""

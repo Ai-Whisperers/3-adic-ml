@@ -88,6 +88,8 @@ class TestTernaryVAEV6:
             "z_B_tangent",
             "z_A_hyp",
             "z_B_hyp",
+            "r_A",
+            "r_B",
         }
         assert set(out.keys()) == expected_keys
 
@@ -124,6 +126,8 @@ class TestTernaryVAEV6:
         out = model(x)
 
         for key, tensor in out.items():
+            if tensor is None:
+                continue  # r_A/r_B are None in non-factored mode
             assert tensor.dtype == torch.float64, f"{key} is not float64"
 
     def test_reparameterize_stochastic(self):

@@ -272,6 +272,8 @@ class TernaryVAEV6(nn.Module):
         learnable_curvature: bool = False,
         init_identity: bool = True,
         tangent_scale_init: float = 0.1,
+        factored: bool = False,
+        radial_dims: int = 4,
     ):
         super().__init__()
         self.latent_dim = latent_dim
@@ -280,12 +282,13 @@ class TernaryVAEV6(nn.Module):
         self.curvature = curvature
         self.encoder_type = encoder_type
         self.decoder_type = decoder_type
+        self.factored = factored
 
         # Encoder heads (backbone + mu/logvar projections)
         self.head_A = EncoderHead(hidden_dim, latent_dim, encoder_type)
         self.head_B = EncoderHead(hidden_dim, latent_dim, encoder_type)
 
-        # Hyperbolic projections (tangent → manifold via expmap0)
+        # Hyperbolic projections (tangent → manifold via expmap0, or factored r*dir)
         self.projections = DualHyperbolicProjection(
             latent_dim=latent_dim,
             hidden_dim=hidden_dim,
@@ -296,6 +299,8 @@ class TernaryVAEV6(nn.Module):
             learnable_curvature=learnable_curvature,
             init_identity=init_identity,
             tangent_scale_init=tangent_scale_init,
+            factored=factored,
+            radial_dims=radial_dims,
         )
 
         # Decoders (input from tangent space via logmap0)
@@ -363,7 +368,9 @@ class TernaryVAEV6(nn.Module):
         z_A_tangent = self.reparameterize(mu_A, logvar_A)
         z_B_tangent = self.reparameterize(mu_B, logvar_B)
 
-        z_A_hyp, z_B_hyp = self.projections(z_A_tangent, z_B_tangent, as_manifold=False)
+        z_A_hyp, z_B_hyp, r_A, r_B = self.projections(
+            z_A_tangent, z_B_tangent, as_manifold=False
+        )
 
         # Decoder receives z_tangent directly (not logmap0(z_hyp)).
         # logmap0(expmap0(v)) = v, so there is no information difference, but
@@ -388,6 +395,8 @@ class TernaryVAEV6(nn.Module):
             "z_B_tangent": z_B_tangent,
             "z_A_hyp": z_A_hyp,
             "z_B_hyp": z_B_hyp,
+            "r_A": r_A,  # explicit Poincaré radius (factored mode only, else None)
+            "r_B": r_B,
         }
 
     def get_param_groups(self, base_lr: float) -> List[Dict[str, Any]]:

@@ -259,6 +259,8 @@ class ModelAuditor:
             learnable_curvature=model_cfg.get("learnable_curvature", False),
             init_identity=model_cfg.get("init_identity", True),
             tangent_scale_init=model_cfg.get("tangent_scale", 0.1),
+            factored=model_cfg.get("factored", False),
+            radial_dims=model_cfg.get("radial_dims", 4),
             encoder_a_trainable=encoder_a_trainable,
             encoder_b_trainable=encoder_b_trainable,
             projections_trainable=projections_trainable,
