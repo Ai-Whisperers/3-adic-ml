@@ -91,7 +91,7 @@ option_c:
 # Anchor Checkpoint (Optional: Start from Pre-trained Weights)
 # =============================================================================
 anchor_checkpoint:
-  path: "runs/v6_20260321_191928/checkpoints/best_Q.pt"  # Warm-start from Q=2.161, hier=0.839
+  path: "runs/v6_20260321_210840/checkpoints/best_Q.pt"  # Best: Q=2.163, hier=0.839 (ceiling confirmed)
   encoder_to_load: both
   decoder_to_load: decoder_A
 
@@ -156,7 +156,7 @@ loss:
     max_target_distance: 3.0
     n_pairs: 2000
     use_smooth_l1: true
-    weight: 2.0  # Increased from 0.5: primary driver of dist_corr (was 30x weaker than hierarchy)
+    weight: 2.0  # Note: 4.0 weight tried, no improvement — Q ceiling confirmed ~2.163
 
   # Global rank loss (soft ordering violations + within-level scatter)
   rank:
@@ -186,8 +186,8 @@ loss:
   # Addresses the 0.839 hierarchy ceiling — all other losses are radial (push to target
   # radius) but none minimises angular/geodesic spread within a level.
   within_level_contrastive:
-    enabled: true
-    weight: 0.5           # Start conservative; hierarchy ceiling is at 0.839
+    enabled: false        # Disabled: WLC tightened within-level std 3× but hierarchy stayed 0.839
+    weight: 0.5           # (irreducible reconstruction diversity is the true ceiling)
     max_pairs_per_level: 500
 
   # Lagrangian dual adaptive weighting (Phase 3B)
