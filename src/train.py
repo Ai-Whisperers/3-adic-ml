@@ -1304,16 +1304,18 @@ def train(
                 aq_value = intra_sim - inter_sim
 
             # Per-level ARI: K-means on direction vectors vs digit_prefix_class
-            # Each level uses its own prefix depth (matching level_prefix_k config)
-            # and k=18 clusters (true class count: 2*3*3=18 at each level).
-            ari_per_level = {}  # {0: float, 1: float, 2: float}
+            # v=0–2: deeper prefix (k=3/4/5), k_means=18 (true class count 2×3×3)
+            # v=3–8: prefix k=2, k_means=min(n_classes, n_samples//3) adaptive
+            # v=9: single sample, skipped
+            ari_per_level = {}  # {v: float}
             ari_prefix3 = float("nan")  # backward compat (v=0 ARI)
             if r_A_all:
-                level_k_map = {0: 3, 1: 4, 2: 5}  # prefix depth per level
-                for v, pfx_k in level_k_map.items():
+                # prefix depth per level: deeper for v=0-2, k=2 for v=3+
+                level_pfx = {0: 3, 1: 4, 2: 5, 3: 2, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2}
+                for v, pfx_k in level_pfx.items():
                     v_mask = (vals == v)
                     n_v = v_mask.sum().item()
-                    if n_v < 36:  # need at least 2× k=18
+                    if n_v < 6:  # skip if too few samples
                         continue
                     dir_v = dir_A[v_mask].detach().cpu().numpy()
                     idx_v = idx_cat[v_mask]
@@ -1321,8 +1323,13 @@ def train(
                         sub = np.random.choice(n_v, 5000, replace=False)
                         dir_v = dir_v[sub]
                         idx_v = idx_v[sub]
-                    labels = KMeans(n_clusters=18, n_init=3, random_state=42).fit_predict(dir_v)
+                    # Determine true class count and cap k_means
                     pfx = TERNARY.digit_prefix_class(idx_v, pfx_k).cpu().numpy()
+                    n_classes = len(np.unique(pfx))
+                    km_k = min(n_classes, max(2, n_v // 3))
+                    if km_k < 2:
+                        continue
+                    labels = KMeans(n_clusters=km_k, n_init=3, random_state=42).fit_predict(dir_v)
                     ari_per_level[v] = adjusted_rand_score(pfx, labels)
                 ari_prefix3 = ari_per_level.get(0, float("nan"))
 
@@ -1449,8 +1456,9 @@ def train(
                     for v, ari_v in ari_per_level.items():
                         tb_logger.writer.add_scalar(f"Direction/ARI_v{v}", ari_v, epoch)
                     if len(ari_per_level) >= 2:
-                        # Composite: weighted by data fraction (v=0:66%, v=1:22%, v=2:7%)
-                        w = {0: 0.7, 1: 0.2, 2: 0.1}
+                        # Composite: weighted by data fraction
+                        # v=0:66.7%, v=1:22.2%, v=2:7.4%, v=3:2.5%, v=4+:<1%
+                        w = {0: 0.60, 1: 0.20, 2: 0.10, 3: 0.05, 4: 0.02, 5: 0.01, 6: 0.01, 7: 0.005, 8: 0.005}
                         ari_composite = sum(w.get(v, 0) * a for v, a in ari_per_level.items())
                         tb_logger.writer.add_scalar("Direction/ARI_composite", ari_composite, epoch)
 
