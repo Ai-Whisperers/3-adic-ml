@@ -1303,22 +1303,28 @@ def train(
                     inter_sim = cos_sims[~same_level].mean().item()
                 aq_value = intra_sim - inter_sim
 
-            # Lightweight ARI: K-means on v=0 direction vectors vs digit_prefix_class(k=3)
-            ari_prefix3 = float("nan")
+            # Per-level ARI: K-means on direction vectors vs digit_prefix_class
+            # Each level uses its own prefix depth (matching level_prefix_k config)
+            # and k=18 clusters (true class count: 2*3*3=18 at each level).
+            ari_per_level = {}  # {0: float, 1: float, 2: float}
+            ari_prefix3 = float("nan")  # backward compat (v=0 ARI)
             if r_A_all:
-                v0_mask = (vals == 0)
-                n_v0 = v0_mask.sum().item()
-                if n_v0 >= 30:
-                    dir_v0 = dir_A[v0_mask].detach().cpu().numpy()
-                    idx_v0 = idx_cat[v0_mask]
-                    # Subsample for speed (K-means is O(n*k*d*iters))
-                    if n_v0 > 5000:
-                        sub = np.random.choice(n_v0, 5000, replace=False)
-                        dir_v0 = dir_v0[sub]
-                        idx_v0 = idx_v0[sub]
-                    labels = KMeans(n_clusters=15, n_init=3, random_state=42).fit_predict(dir_v0)
-                    pfx3 = TERNARY.digit_prefix_class(idx_v0, 3).cpu().numpy()
-                    ari_prefix3 = adjusted_rand_score(pfx3, labels)
+                level_k_map = {0: 3, 1: 4, 2: 5}  # prefix depth per level
+                for v, pfx_k in level_k_map.items():
+                    v_mask = (vals == v)
+                    n_v = v_mask.sum().item()
+                    if n_v < 36:  # need at least 2× k=18
+                        continue
+                    dir_v = dir_A[v_mask].detach().cpu().numpy()
+                    idx_v = idx_cat[v_mask]
+                    if n_v > 5000:
+                        sub = np.random.choice(n_v, 5000, replace=False)
+                        dir_v = dir_v[sub]
+                        idx_v = idx_v[sub]
+                    labels = KMeans(n_clusters=18, n_init=3, random_state=42).fit_predict(dir_v)
+                    pfx = TERNARY.digit_prefix_class(idx_v, pfx_k).cpu().numpy()
+                    ari_per_level[v] = adjusted_rand_score(pfx, labels)
+                ari_prefix3 = ari_per_level.get(0, float("nan"))
 
             # Get gradient statistics from optimizer (V6.0: avoids manual grad loop)
             controller_grad_norm = None
@@ -1440,6 +1446,13 @@ def train(
                     tb_logger.writer.add_scalar("Direction/inter_level_sim", inter_sim, epoch)
                     if not np.isnan(ari_prefix3):
                         tb_logger.writer.add_scalar("Direction/ARI_prefix3", ari_prefix3, epoch)
+                    for v, ari_v in ari_per_level.items():
+                        tb_logger.writer.add_scalar(f"Direction/ARI_v{v}", ari_v, epoch)
+                    if len(ari_per_level) >= 2:
+                        # Composite: weighted by data fraction (v=0:66%, v=1:22%, v=2:7%)
+                        w = {0: 0.7, 1: 0.2, 2: 0.1}
+                        ari_composite = sum(w.get(v, 0) * a for v, a in ari_per_level.items())
+                        tb_logger.writer.add_scalar("Direction/ARI_composite", ari_composite, epoch)
 
                 # Tree coherence (lower = better tree structure)
                 tb_logger.writer.add_scalar("TreeCoherence/VAE_A", hier_metrics_A["tree_coherence"], epoch)
