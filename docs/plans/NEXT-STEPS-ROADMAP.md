@@ -1,6 +1,10 @@
-# Next Steps Roadmap
+#XR|# Next Steps Roadmap
+YB|**Date:** 2026-03-23
+JR|**Status:** V7.2+ complete. Direction geometry optimization (level_prefix_k, target_sim) yields composite ARI 0.912→0.955. Q=2.163 ceiling confirmed data-derived, not architecture.
+RW|
+SJ|See `docs/audits/23-03-2026-LEVEL-PREFIX-AUDIT.md` for full experimental trajectory.
 **Date:** 2026-03-22
-**Status:** Post-V6 ceiling analysis. All individual targets met. Q=2.163 confirmed hard limit for V6.
+**Status:** Q=2.163 confirmed as structural ceiling — survives V7 factored latent architecture. Ceiling is from 3-adic group size distribution (66% at v=0 → tied Spearman ranks), not architecture.
 
 See `docs/audits/22-03-2026-Q-CEILING-ANALYSIS.md` for the full mathematical proof of the ceiling.
 
@@ -16,7 +20,20 @@ See `docs/audits/22-03-2026-Q-CEILING-ANALYSIS.md` for the full mathematical pro
 | Phase 3B | Lagrangian dual adaptive weighting | ✅ Done — no Q gain (ceiling confirmed) |
 | Phase 4A | Positional significance encoding (18-dim input) | ❌ Not started |
 | Phase 4B | FT-Transformer encoder | ❌ Not started |
-| **Phase 4C** | **Factored latent z_radial ⊕ z_identity (V7)** | ✅ Done — implemented 2026-03-22, awaiting training validation |
+| **Phase 4C** | **Factored latent z_radial ⊕ z_identity (V7)** | ✅ Done — **Q=2.1633, hier=0.839** (same ceiling as V6; ceiling is structural not architectural) |
+
+### V7 Final Results (200 epochs, 2026-03-22)
+- **Best Q: 2.1633** (V6 best: 2.163 — identical to 4 decimal places)
+- **Best Hierarchy: 0.8395** (locked at 0.839 from epoch 5, same as V6)
+- **Best Coverage: 0.9989** (near-perfect reconstruction)
+- **Within-level scatter**: 9× reduction vs V6 (v=0 std=0.007 vs 0.063) — V7 **wins** on scatter
+- **StateNet**: encoder_B frozen around epoch 150 (`B:0.00`) — no Q gain after freeze
+- **Conclusion**: Factored latent eliminates reconstruction/hierarchy gradient conflict and
+  dramatically reduces scatter, but does NOT break the Spearman ceiling. The ceiling is in
+  the data: 66% of 19683 operations have v=0 → tied ranks → Spearman saturates at 0.839.
+  Breaking Q>2.163 requires either changing the metric or changing the data representation.
+  **Note**: the Spearman ceiling is a consequence of the indexing-derived valuation (66% of
+  ops at v=0 → tied ranks). See `docs/DATA-SEMANTICS.md` §5 and dataset expansion options §4.
 
 ---
 
@@ -256,78 +273,76 @@ Four items identified before committing to the full 200-epoch run.
 
 ---
 
-### Item A — Re-run diagnostic with variance_only:false  ⬜ TODO
+### Item A — Re-run diagnostic with variance_only:false  ✅ CLEARED
 
-The `variance_only: false` fix (Concern 3) adds back the `||mu||²/2` penalty
-on ALL 32 dims, including mu[:, :4] (z_r). This directly opposes hierarchy
-losses for v=0 samples (which need large `linear_r(mu[:, :4])` ≈ 2.14 to
-reach r=0.85). The 40-epoch diagnostic was run BEFORE this fix. Must re-run
-`validate_v7_concerns.py` with the corrected config and confirm:
-- C1 Spear still ≈ −0.81 (KL pull on z_r doesn't overwhelm hierarchy)
-- r separation still monotonic by epoch 10
-- mu[:, 4:] norm stays bounded (fix worked)
+**Empirical results (40-epoch run, 2026-03-22):**
+- `A:Spear4` = -0.80 to -0.81 (stable, negative = hierarchy correct)
+- `A:rsep` = ✓ by epoch 15, one ✗ at epoch 10 (transient)
+- `A:mu4n` = 6–8 (non-trivial norms in z_r; KL weight=0.01 yields to hierarchy weight=5.0)
+- `C3:mu+n` = 1.74→2.90 then **stabilizes** — no unbounded drift
+- **Conclusion**: `variance_only: false` fix works. KL penalty does not overwhelm hierarchy.
 
 ---
 
-### Item B — Add actual Spearman hierarchy / Q / accuracy to diagnostic  ⬜ TODO
+### Item B — Add actual Spearman hierarchy / Q / accuracy to diagnostic  ✅ CLEARED
 
-`validate_v7_concerns.py` measures r-separation as a proxy, but the training
-run will ultimately be judged on `hierarchy = -Spearman(valuation, radius)`
-and `Q = dist_corr + 1.5 * hierarchy`. These were never computed in the
-diagnostic. Need to add to the eval loop:
-- `spearmanr(val_vals, r_A)` — the true hierarchy metric
-- `dist_corr` via pairwise |r_i − r_j| vs |val_i − val_j|
-- Per-digit reconstruction accuracy (coverage)
-A 40-epoch preview of Q would confirm whether V7 is on track to exceed 2.163
-before committing to 200 epochs of GPU time.
+**Empirical results (40-epoch run, 2026-03-22):**
+- `B:hier` = **0.839** (matches V6 ceiling immediately at epoch 5; sustained through ep 40)
+- `B:dco` = 0.715 → **0.812** (growing; V6 ceiling dco ≈ 0.904 not yet reached)
+- `B:Q` = 1.970 → **2.071** (approaching V6 ceiling 2.163 at only 40/200 epochs!)
+- `B:acc` = 77% @ ep 5 → **99.9% @ ep 40** (near-perfect reconstruction)
+- **Trajectory**: dist_corr still climbing at ep 40. At 200 epochs it should surpass V6's 0.904,
+  potentially pushing Q above the V6 ceiling of 2.163 once hier also breaks past 0.839.
 
 ---
 
-### Item C — v=8 and v=9 invisible in val set  ⬜ TODO
+### Item C — v=8 and v=9 invisible in val set  ✅ CLEARED
 
-The diagnostic showed `nan` for v=8 and v=9 in the per-level r table.
-v=9 has 1 sample (n=0), v=8 has 3 samples — with a 10% random val split
-they rarely land in val. The train.py validation loop uses the same random
-split, so hierarchy metrics computed during training will also miss these
-levels in validation. This is not catastrophic (they are <0.02% of data),
-but it means the Spearman metric in training logs is computed on at most
-v=0…v=7, which slightly inflates the measured hierarchy. Verify that
-train.py's validation split is deterministic (seed=42) and check whether
-stratified sampling could be added.
+**Empirical results (40-epoch run, 2026-03-22):**
+- Full-dataset hierarchy = **0.832** vs val-set hierarchy = 0.840 (delta = −0.007, negligible)
+- v=8 full r = **0.0287**, v=9 full r = **0.0374** — both correctly placed near origin
+- Val-set Spearman slightly inflated by ~0.007 due to missing v=8/v=9, but all training
+  decisions based on it are safe (it overestimates slightly, not underestimates)
+- **Conclusion**: v=8/v=9 invisibility does not meaningfully bias training. No stratified
+  sampling needed.
 
 ---
 
-### Item D — Decoder reliance on z_r dims over long training  ⬜ TODO
+### Item D — Decoder reliance on z_r dims over long training  ✅ CLEARED
 
-Over 200 epochs, the decoder may learn to use z_r (4 dims) as a shortcut
-for coarse valuation-level discrimination, since z_r encodes a clean radial
-hierarchy signal. If decoder reliance on z_r grows, reconstruction gradients
-through z_r could start competing with hierarchy losses. No mechanism currently
-prevents this. Mitigation: monitor `||grad_decoder_A||` vs `||grad_linear_r||`
-during training to detect if decoder is "leaning on" the radial dims.
-If detected: detach z_r before passing to decoder (pass `z_r.detach() ⊕ z_θ`
-to decoder), keeping decoder fully blind to the radial scalar path.
+**Empirical results (40-epoch run, 2026-03-22):**
+- Decoder grad ratio z_r/z_θ = **0.10–0.18** (well below 0.5 threshold)
+- Ratio is **decreasing** over training (0.181 @ ep 5 → 0.135 @ ep 40)
+- Decoder is learning to use z_θ (28 identity dims) as expected
+- **Conclusion**: No decoder leaning on z_r. If ratio rises above 0.5 during
+  200-epoch run, detach z_r before decoder as fallback. Monitor in TensorBoard.
 
 ---
 
-### Item E — StateNet plateau detection calibrated for V6 hierarchy ≈ 0.84  ⬜ TODO
+### Item E — StateNet plateau detection calibrated for V6 hierarchy ≈ 0.84  ✅ CLEARED
 
-`statenet.hierarchy.plateau_threshold: 0.0005` and `plateau_patience: 10` were
-tuned when hierarchy was plateauing near 0.839. In V7 hierarchy is expected to
-rise to ~0.95. The plateau detector may fire early (e.g., during the initial
-fast climb through 0.84→0.88) and freeze encoder_b before it finishes learning.
-Review whether these thresholds need to be relaxed for V7's steeper trajectory.
+**Empirical results (40-epoch run, 2026-03-22):**
+- Plateau detector did **not fire** in 40 epochs (E:plat = "ok" throughout)
+- `hierarchy_history` stayed in range [0.837, 0.839] with sub-0.001 changes
+  but patience of 10 eval-every-5 steps = 50 epochs → too far for 40-epoch run
+- **Conclusion**: With `eval_every: 2` in production training, patience=10 means
+  20 epochs before potential freeze. Hierarchy is already at 0.839 from epoch 5,
+  so StateNet may freeze encoder_b around epoch 20. This is acceptable if
+  dist_corr can improve further with encoder_b frozen (projections still trainable).
+  Monitor in production run; relax `plateau_patience: 15` if encoder_b freezes too early.
 
 ---
 
-### Item F — scatter_weight=0.8 tuned for V6's irreducible scatter  ⬜ TODO
+### Item F — scatter_weight=0.8 tuned for V6's irreducible scatter  ✅ CLEARED (actionable)
 
-`loss.rank.scatter_weight: 0.8` was increased from 0.3 specifically because
-within-level radial scatter was the bottleneck in V6 (though ultimately
-ineffective). In V7, within-level scatter should be near zero by construction
-(r = f(z_r) is tightly controlled). Keeping scatter_weight=0.8 may be harmless,
-but could add unnecessary gradient noise on z_r dims for same-valuation samples
-that are already well-clustered. Consider reducing to 0.3 (V6 default) for V7.
+**Empirical results (40-epoch run, 2026-03-22):**
+- v=0 within-level r scatter = **0.0072** (vs V6 baseline 0.063 — **9× reduction**)
+- Flag: `ok` (threshold < 0.02) throughout all 40 epochs
+- V7 factored latent eliminates scatter structurally: `r = sigmoid(linear_r(z_r)) * max_r`
+  means all samples of same valuation share similar z_r → similar r by construction
+- **Actionable**: `scatter_weight=0.8` is excessive and could add unnecessary gradient
+  noise on z_r dims for same-level samples already well-clustered. Reduced to 0.3
+  in v7.yaml (V6 default). No other changes needed.
 
 ---
 
