@@ -95,7 +95,7 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Requirements**: Python 3.10+, PyTorch 2.0+, CUDA GPU (tested on RTX 3050 6GB). Optional: `pip install tqdm psutil` for monitoring.
+> **Requirements**: Python 3.10+, PyTorch 2.0+, CUDA GPU (tested on RTX 3050 6GB). All dependencies (including tensorboard, scikit-learn, matplotlib, umap-learn) are in `requirements.txt`. See `docs/DEPENDENCIES.md` for details.
 
 ## Usage
 
