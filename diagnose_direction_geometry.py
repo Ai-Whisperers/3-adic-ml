@@ -36,9 +36,9 @@ from src.core.ternary import TERNARY
 from src.models.vae import TernaryVAEV6Controllable
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-CHECKPOINT = "runs/v7_20260323_023452/checkpoints/best_Q.pt"
-CONFIG     = "src/presets/v7.yaml"
-OUT_DIR    = Path("runs/v7_20260323_023452")
+CHECKPOINT = "runs/v7_large_20260323_030047/checkpoints/best_Q.pt"
+CONFIG     = "src/presets/v7_large.yaml"
+OUT_DIR    = Path("runs/v7_large_20260323_030047")
 DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print("=" * 70)
