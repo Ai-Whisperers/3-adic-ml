@@ -146,3 +146,49 @@ With `target_sim[0]=1.0`:
 - v=1/v=2 may show improvement from deeper prefix splits (k=4, k=5)
 - Net ARI target: ≥ 0.85, ideally 0.90+
 - Q metric expected to remain at 2.163 ceiling (loss change is direction-only)
+
+## Live ARI Integration (Closing the Blind Spot)
+
+### Problem
+
+ARI was only computed offline via `diagnose_direction_geometry.py`, meaning we couldn't
+track direction clustering quality during training. The AQ metric (intra_sim - inter_sim)
+is a proxy but doesn't measure how well K-means clusters align with digit prefix classes.
+
+### Implementation
+
+**File:** `src/train.py`
+
+Added lightweight ARI computation in the eval block (runs every `eval_every` epochs):
+
+```python
+from sklearn.cluster import KMeans
+from sklearn.metrics import adjusted_rand_score
+
+# After AQ metric computation (uses existing dir_A, vals from AQ block)
+v0_mask = (vals == 0)
+dir_v0 = dir_A[v0_mask].detach().cpu().numpy()
+idx_v0 = idx_cat[v0_mask]
+if n_v0 > 5000:  # Subsample for speed
+    sub = np.random.choice(n_v0, 5000, replace=False)
+    dir_v0, idx_v0 = dir_v0[sub], idx_v0[sub]
+labels = KMeans(n_clusters=15, n_init=3, random_state=42).fit_predict(dir_v0)
+pfx3 = TERNARY.digit_prefix_class(idx_v0, 3).cpu().numpy()
+ari_prefix3 = adjusted_rand_score(pfx3, labels)
+```
+
+**TensorBoard scalar:** `Direction/ARI_prefix3`
+
+### Performance Impact
+
+- K-means(k=15, n_init=3) on 5000 × 60 matrix: ~50ms per eval
+- Runs only every `eval_every` epochs (default 5), adding ~10ms/epoch amortized
+- Zero GPU memory impact (computation is CPU-only on detached tensors)
+
+### Why K-means(k=15) and prefix_k=3
+
+- v=0 has 18 distinct digit_prefix_class(k=3) values (out of 27 possible; 9 are impossible
+  since digit0 ∈ {-1, +1} at v=0, never 0)
+- K-means(k=15) is close to the true number of clusters without overfitting
+- ARI is invariant to label permutation, so K-means labels don't need to match prefix IDs
+- prefix_k=3 was empirically validated as the right granularity (ARI=0.72 at k=3 vs 0.57 at k=2)

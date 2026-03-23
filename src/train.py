@@ -45,6 +45,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.stats import spearmanr
+from sklearn.cluster import KMeans
+from sklearn.metrics import adjusted_rand_score
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
@@ -1294,6 +1296,23 @@ def train(
                     inter_sim = cos_sims[~same_level].mean().item()
                 aq_value = intra_sim - inter_sim
 
+            # Lightweight ARI: K-means on v=0 direction vectors vs digit_prefix_class(k=3)
+            ari_prefix3 = float("nan")
+            if r_A_all:
+                v0_mask = (vals == 0)
+                n_v0 = v0_mask.sum().item()
+                if n_v0 >= 30:
+                    dir_v0 = dir_A[v0_mask].detach().cpu().numpy()
+                    idx_v0 = idx_cat[v0_mask]
+                    # Subsample for speed (K-means is O(n*k*d*iters))
+                    if n_v0 > 5000:
+                        sub = np.random.choice(n_v0, 5000, replace=False)
+                        dir_v0 = dir_v0[sub]
+                        idx_v0 = idx_v0[sub]
+                    labels = KMeans(n_clusters=15, n_init=3, random_state=42).fit_predict(dir_v0)
+                    pfx3 = TERNARY.digit_prefix_class(idx_v0, 3).cpu().numpy()
+                    ari_prefix3 = adjusted_rand_score(pfx3, labels)
+
             # Get gradient statistics from optimizer (V6.0: avoids manual grad loop)
             controller_grad_norm = None
             if lr_controller is not None:
@@ -1431,6 +1450,8 @@ def train(
                     tb_logger.writer.add_scalar("Direction/AQ", aq_value, epoch)
                     tb_logger.writer.add_scalar("Direction/intra_level_sim", intra_sim, epoch)
                     tb_logger.writer.add_scalar("Direction/inter_level_sim", inter_sim, epoch)
+                    if not np.isnan(ari_prefix3):
+                        tb_logger.writer.add_scalar("Direction/ARI_prefix3", ari_prefix3, epoch)
 
                 # Tree coherence (lower = better tree structure)
                 tb_logger.writer.add_scalars(
