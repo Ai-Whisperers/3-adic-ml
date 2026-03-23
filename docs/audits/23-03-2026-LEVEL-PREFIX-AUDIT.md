@@ -1027,3 +1027,63 @@ This is the first time we can observe whether the Lagrangian is doing work or st
 || best_coverage | 0.999 |
 
 **Status**: Completed successfully. Q remains at the 2.163 ceiling, confirming this is a data-derived limit not affected by direction geometry changes.
+WN|**Status**: Completed successfully. Q remains at the 2.163 ceiling, confirming this is a data-derived limit not affected by direction geometry changes.
+
+---
+
+## Run 10: v=5 AC Loss + 1500 Epochs
+
+### Hypothesis
+
+v=5 has 54 operations with a binary pivot (digit[5] ∈ {0, +1}). While marginal (27 ops/class), this is algebraically identical to the v=2/v=3/v=4 binary splits that achieved 0.999–1.000 ARI. The 1500 epochs test whether more cosine LR cycles can stabilize v=1's mean/peak gap (currently 0.882/0.991) and give v=5 enough pair-updates to converge.
+
+### Algebraic Structure of v=5
+
+From `docs/DATA-SEMANTICS.md §1b`:
+- Positions 0–4: **always -1** (algebraically forced — index divisible by 3^5=243)
+- Position 5 (pivot): **always 0 or +1** (never -1)
+- Positions 6–8: **completely free** ∈ {-1, 0, +1}
+
+The binary split at depth=v+1=6 separates by the pivot digit value:
+- Class A (27 ops): digit[5]=0 → unshifted=1
+- Class B (27 ops): digit[5]=+1 → unshifted=2
+
+### Configuration Changes
+
+```yaml
+# From Run 9 (v=0-4 only, 1200 epochs):
+level_prefix_k: [3, 4, 3, 4, 5, 0, 0, 0, 0, 0]
+target_sim:    [1.0, 0.93, 0.70, 0.70, 0.70, 0.0, 0.0, 0.0, 0.0, 0.0]
+n_pairs: 4500
+epochs: 1200
+
+# To Run 10 (add v=5, more epochs):
+level_prefix_k: [3, 4, 3, 4, 5, 6, 0, 0, 0, 0]  # add v=5 (depth=v+1=6, 2 classes)
+target_sim:    [1.0, 0.93, 0.70, 0.70, 0.70, 0.70, 0.0, 0.0, 0.0, 0.0]  # v=5 permissive
+n_pairs: 5000                                        # ~830/level for 6 levels
+epochs: 1500                                        # more LR cycles to stabilize
+```
+
+### Expected Outcome
+
+1. **v=1 mean/peak gap closes**: More epochs → more cosine cycles → geometry stabilizes
+2. **v=5 marginal signal**: 27 ops/class is borderline but the binary split is structurally clean
+3. **v=0/v=2/v=3 remain stable**: No regression expected
+4. **Watch for**: Geometric tension cascade. If v=1 regresses, bump `target_sim[1]` to 0.95.
+
+### Lagrangian Observability
+
+This run benefits from the Bug 4 fix (Lagrangian logging):
+- `Lagrangian/margin_v{v}` (v=0..8) shows which radial gaps are violated
+- `Lagrangian/scatter_v{v}` (v=0..9) shows within-level spread constraints
+- `Lagrangian/n_active` counts active constraints
+
+We can now verify whether the dual variables are doing work or staying at zero throughout training.
+
+### Code Changes Applied
+
+| File | Change |
+|------|--------|
+| `src/presets/v7_large.yaml` | `level_prefix_k[5]=6`, `target_sim[5]=0.70`, `n_pairs=5000`, `epochs=1500` |
+| `src/train.py` | `level_pfx[5]=6` (metric matches AC loss) |
+| `docs/audits/...` | This entry documenting the run |

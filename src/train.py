@@ -1310,7 +1310,9 @@ def train(
             ari_per_level = {}  # {v: float}
             ari_prefix3 = float("nan")  # backward compat (v=0 ARI)
             if r_A_all:
-                # prefix depth per level: deeper for v=0-2, k=2 for v=3+
+                # prefix depth per level: matches AC loss level_prefix_k
+                # v=0:k=3→18cls, v=1:k=4→18cls, v=2:k=3→2cls, v=3:k=4→2cls, v=4:k=5→2cls, v=5:k=6→2cls
+                level_pfx = {0: 3, 1: 4, 2: 3, 3: 4, 4: 5, 5: 6, 6: 2, 7: 2, 8: 2}
                 level_pfx = {0: 3, 1: 4, 2: 5, 3: 2, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2}
                 for v, pfx_k in level_pfx.items():
                     v_mask = (vals == v)
