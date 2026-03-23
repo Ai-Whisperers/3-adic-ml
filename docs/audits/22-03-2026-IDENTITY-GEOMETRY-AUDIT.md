@@ -662,4 +662,142 @@ Cluster UMAP saved: `runs/v7_20260322_180254/direction_umap_v0_clusters.png`
 | Step 3 | ✅ Done | `AngularCoherenceLoss` in `src/losses/padic_geodesic.py`, wired into `CombinedLoss` |
 | Step 4 | ✅ Done | Angular Q metric + TensorBoard hooks in `src/train.py` |
 | v7.yaml | ✅ Done | `angular_coherence` block added, `prefix_k=3` |
-| Retrain | 🔄 Pending | 200-epoch V7 + AngularCoherenceLoss |
+| Retrain | ✅ Done | Four training runs completed; see multi-run analysis below |
+
+---
+
+## Multi-Run Analysis — 2026-03-23
+
+Four training runs executed and fully analyzed.
+
+### Full Results Table
+
+| Run | Params | ARI k=3 | v=0 intra | v=2 Δ | v=3 intra | kNN digit | Q |
+|-----|--------|---------|-----------|-------|-----------|-----------|---|
+| V7 baseline (no AC, 32-dim dir) | 106k | 0.721 | +0.373 | −0.053 | 0.486 | 0.765 | 2.163 |
+| V7 + AC light (w=0.3, ep50, 32-dim) | 106k | 0.810 | +0.353 | +0.302 | 0.960 | 0.823 | 2.159 |
+| V7.1 aggressive (w=1.0, ep10, 32-dim) | 106k | 0.820 | +0.379 | +0.233 | 0.998 | 0.785 | 2.163 |
+| V7.2 large (w=1.0, ep10, 60-dim dir) | 400k | 0.844 | +0.384 | +0.167 | 0.998 | 0.772 | 2.163 |
+
+**ARI progression**: 0.721 → 0.810 → 0.820 → 0.844
+**Rate of improvement**: +0.089 → +0.010 → +0.024 → clear diminishing returns
+**Q**: stable at 2.163 structural ceiling across all runs (unchanged by architecture or AC weight)
+
+### ARI Ceiling Identified: ~0.85
+
+The ARI stops improving after V7.2 despite 4× more parameters and 2× more direction dimensions. This is not a training failure — it is a structural property of the dataset.
+
+---
+
+## Root Cause Analysis: Immense Directional Diversity at v=0, v=1, v=2
+
+### Per-Level Prefix Structure (measured from V7.2 checkpoint)
+
+| Level | N | prefix_k=2 classes | ops/class | within-class sim | behaviour |
+|-------|---|---------------------|-----------|-----------------|-----------|
+| v=0 | 13122 | **6** | 2187 | 0.981 | ✓ Well clustered — 6 classes × 2187 ops |
+| v=1 | 4374  | **2** | 2187 | 0.857 | ~ Weak — only 2 classes, each 2187 ops |
+| v=2 | 1458  | **1** | 1458 | 0.705 | ✗ Single class — no structure to exploit |
+| v=3 | 486   | 1 | 486 | 0.998 | ✓ Perfect (already near-singleton) |
+| v=4+ | ≤162  | 1 | ≤162 | 0.997 | ✓ Perfect |
+
+**Why v=2 has only 1 prefix_k=2 class:** All v=2 operations have digit0=0, digit1=0 (the first two digits are always 0, defining valuation≥2). So every v=2 operation maps to the same prefix_k=2 value: `(0+1)×3 + (0+1) = 4`. There is literally no prefix structure at k≤2 for v=2.
+
+**Why v=1 has only 2 prefix_k=2 classes:** All v=1 operations have digit0≠0 and digit1=0. The prefix_k=2 encoding is `(digit0+1)×3 + (digit1+1) = (digit0+1)×3 + 1`. Since digit0∈{−1,+1}, this gives classes 1 and 7 only — exactly 2.
+
+**Why this creates the ceiling:** `AngularCoherenceLoss` with prefix_k=3 tries to pull same-(valuation, prefix3) operations together. For v=2, prefix_k=3 gives exactly **2 classes** of 729 ops each. Within each 729-op class, operations differ in digits 3–8 (3^6 = 729 distinct combinations), and the decoder requires distinct directions for each. AC can only partially collapse these, creating a ceiling. For v=0, 6 classes × 2187 ops works because the prefix already captures the most predictive digits (digits 0–2 drive reconstruction for v=0), leaving residual directions for finer identity.
+
+### The Reconstruction-Coherence Tension (Quantified)
+
+For the AC loss to be perfectly obeyed (cos_sim=1.0 within a class), all operations in a class would decode to the **same output** — which is wrong for 728 out of 729 operations. The decoder fundamentally needs within-class directional diversity. The achievable maximum within-class sim for v=2 is bounded by how similar the reconstructions of same-prefix ops actually are:
+
+- v=2, prefix_k=3 class: digits 0-2 fixed (000, then ±1), digits 3-8 free → decoder output is entirely determined by digits 3-8 → no angular coherence is achievable without information loss.
+- v=0, prefix_k=3 class: digits 0-2 fixed (±1, ±1, ±1), digits 3-8 free → same situation, but the 6-class structure already provides angular separation between the classes.
+
+This is fundamental: **for any valuation level v, operations sharing the same prefix of depth k all still have 3^(9−v−k) free digits driving reconstruction**. AC can only work where k is deep enough that the free tail is small.
+
+---
+
+## Next Steps: Addressing Directional Diversity Without a Dedicated Decoder Branch
+
+No new architecture, no new encoder-decoder. The following are pure loss/config modifications.
+
+### Why No Dedicated Decoder Branch
+
+A dedicated decoder branch (e.g., separate reconstruction path that doesn't see z_θ) would solve the tension by decoupling direction from reconstruction — z_θ could then be fully angular-coherent. But:
+- It doubles the decoder parameter count and the architectural surface
+- It requires a second forward pass or split output
+- It creates two competing supervision signals (shared vs. dedicated)
+- **The tension is actually a feature**: the current directional diversity IS the algebraic identity information. Destroying it would remove the commercial value of similarity search in direction space.
+
+### Proposed Solution: Per-Level Prefix Depth (`level_prefix_k`)
+
+Replace the single `prefix_k` with a per-level list. Each valuation level gets its own prefix depth, chosen to give ~10–50 ops per class (enough AC signal, not too much reconstruction conflict):
+
+| Level | Current k | Proposed k | Classes | Ops/class | Rationale |
+|-------|-----------|------------|---------|-----------|-----------|
+| v=0 | 3 | 3 | 27 | 486 | Already working well; 486 ops/class gives real AC signal |
+| v=1 | 3 | 4 | 18 | 243 | k=4 gives 2×3^2=18 classes; within-class reconstruction is more similar |
+| v=2 | 3 | 5 | 18 | 81 | k=5 gives 2×3^2=18 classes; smaller groups = less reconstruction conflict |
+| v=3 | 3 | skip | — | — | Already near-perfect (0.998); AC would add noise |
+| v=4+ | 3 | skip | — | — | Already perfect |
+
+**Config change needed:**
+```yaml
+loss:
+  angular_coherence:
+    enabled: true
+    weight: 1.0
+    n_pairs: 2000
+    prefix_k: 3            # kept as default fallback
+    level_prefix_k: [3, 4, 5, 0, 0, 0, 0, 0, 0, 0]  # per level 0-9; 0=skip
+    phase_start_epoch: 10
+```
+
+**Code change needed** (`src/losses/padic_geodesic.py`, `AngularCoherenceLoss.forward()`):
+- Instead of `key = vals * (3**self.prefix_k) + prefix`, compute per-entry:
+  ```python
+  level_prefix_k = self.level_prefix_k  # list of int, indexed by valuation
+  pfx_k_per_op = torch.tensor([level_prefix_k[v.item()] for v in vals], device=...)
+  # skip entries where pfx_k_per_op == 0
+  active = pfx_k_per_op > 0
+  # compute prefix for each entry using its own k
+  # key = vals * max_classes + prefix_class_for_its_k
+  ```
+  This is a small loop over valuation levels (max 10), not a per-operation loop.
+
+### Proposed Solution 2: Soft Margin Coherence
+
+Replace hard-pull `(1 − cos_sim)` with a margin-based loss that stops pushing once similarity reaches a target. This prevents the loss from forcing reconstruction-diverse pairs into identical directions:
+
+```python
+# Current:
+loss = self.weight * (1.0 - cos_sim).mean()
+
+# Proposed:
+margin = self.target_sim   # e.g., 0.75 for v=0, 0.65 for v=1/v=2
+loss = self.weight * F.relu(margin - cos_sim).mean()
+```
+
+This becomes zero once cos_sim ≥ margin, so the decoder can still use remaining directional diversity. Per-level margins:
+- v=0: target=0.90 (clusters are well-separated; push to tighter coherence)
+- v=1: target=0.80
+- v=2: target=0.70 (preserve reconstruction diversity)
+- v=3+: skip
+
+### Expected Outcome
+
+With level_prefix_k + soft margin:
+- v=1 gets 18 meaningful prefix classes → should cluster from ~0.857 → ~0.92 within-class sim
+- v=2 gets 18 meaningful prefix classes with soft margin → should cluster from ~0.705 → ~0.78 within-class sim without decoder conflict
+- ARI should improve from 0.844 → potentially 0.90+
+- Q remains unchanged (structural ceiling unaffected)
+
+### Priority
+
+Implement in order:
+1. `level_prefix_k` parameter in `AngularCoherenceLoss` (pure loss change, no model change)
+2. Per-level `target_sim` soft margin (optional, run 2 if needed)
+3. No architectural changes required
+
+Both are changes to `src/losses/padic_geodesic.py` and the YAML config only.
