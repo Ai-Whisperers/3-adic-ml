@@ -169,9 +169,11 @@ loss:
   angular_coherence:
     enabled: true
     weight: 1.0      # 0.3→1.0: direction geometry already stable, push harder
-    n_pairs: 2000    # 1000→2000: more pair candidates per forward call
-    prefix_k: 3
+    n_pairs: 3000    # 2000→3000: ~1000 per active level
+    prefix_k: 3      # global fallback (used only when level_prefix_k is null)
     phase_start_epoch: 10  # 50→10: reconstruction converges in <10 epochs
+    level_prefix_k: [3, 4, 5, 0, 0, 0, 0, 0, 0, 0]
+    target_sim: [1.0, 0.85, 0.70, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
   lagrangian:
     enabled: true

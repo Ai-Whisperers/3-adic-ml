@@ -17,7 +17,7 @@ The ultrametric-antigen-AI project uses the trained models and mathematical fram
 
 ## Architecture Overview
 
-**Dual VAE + True Hyperbolic Geometry + LR Controller**
+**Dual VAE + Factored Hyperbolic Geometry + LR Controller (V7.2)**
 
 ```
 Input (9 ternary values, {-1, 0, 1})
@@ -27,12 +27,18 @@ Input (9 ternary values, {-1, 0, 1})
 |  mu_A, sig_A  |    |  mu_B, sig_B  |
 +------+--------+    +------+--------+
        |                    |
-   z_tangent (16-dim)   z_tangent
+   z_tangent (64-dim)   z_tangent
        |                    |
-   +----------------------------+
-   |  DualHyperbolicProjection  |
-   |  tangent_net + expmap0     |
-   +----------------------------+
+   +----- Factored Split ------+
+   | z_r (4 dims)  z_θ (60 dims) |
+   |      |              |        |
+   | sigmoid(linear_r)   |        |
+   |   * max_radius  normalize(   |
+   |      |        tangent_net(z_θ))|
+   |      r            dir        |
+   |      |              |        |
+   |   z_hyp = r * dir            |
+   +------------------------------+
        |                    |
    z_A_hyp              z_B_hyp       <- Poincare manifold points
        |                    |
@@ -45,10 +51,11 @@ Input (9 ternary values, {-1, 0, 1})
 
 | Component | Structure | Purpose |
 |-----------|-----------|---------|
-| **VAE-A** | Encoder 9->128->64, Decoder 16->64->27 | Coverage (reconstruction) |
+| **VAE-A** | Encoder 9->128->64, Decoder 64->128->27 | Coverage (reconstruction) |
 | **VAE-B** | Same structure, independent weights | Hierarchy learning |
-| **Hyperbolic Projection** | Tangent net + expmap0 -> Poincare ball | True hyperbolic mapping |
+| **Factored Projection** | z_r -> radius, z_θ -> direction, z_hyp = r * dir | Gradient-isolated hyperbolic mapping |
 | **LR Controller** | MetricBasedLR with Q-gated thresholds | Dynamic LR scale control |
+| **AngularCoherenceLoss** | Per-level prefix-class direction loss | Direction geometry sharpening |
 
 ### What Makes It "P-Adic"
 
@@ -56,6 +63,7 @@ Input (9 ternary values, {-1, 0, 1})
 2. **3-adic valuation**: v_3(n) measures divisibility by powers of 3
 3. **Geometric encoding**: High valuation -> near origin, low valuation -> near boundary
 4. **Loss alignment**: Poincare distances aligned to 3-adic valuations (ultrametric -> hyperbolic)
+5. **Direction geometry**: Digit prefix classes spontaneously emerge in z_θ (ARI=0.844 at v=0)
 
 ## Installation
 
@@ -87,17 +95,17 @@ pip install tqdm psutil
 ### Training
 
 ```bash
-# Run training with V6.0 configuration
+# V7.2 large architecture (recommended — latent_dim=64, factored mode)
+python src/train.py --config src/presets/v7_large.yaml
+
+# V7.1 standard (latent_dim=32, factored mode)
+python src/train.py --config src/presets/v7.yaml
+
+# V6 legacy (non-factored expmap0 mode)
 python src/train.py --config src/presets/v6.yaml
 
 # Validate config only (no training)
-python src/train.py --config src/presets/v6.yaml --validate-only
-
-# With mixed precision (faster on compatible GPUs)
-python src/train.py --config src/presets/v6.yaml --amp
-
-# Custom seed for reproducibility
-python src/train.py --config src/presets/v6.yaml --seed 123
+python src/train.py --config src/presets/v7_large.yaml --validate-only
 ```
 
 ### CLI Options
@@ -121,9 +129,11 @@ tensorboard --logdir runs/
 ```
 
 Key metrics:
-- **Q metric**: `Q = dist_corr + 1.5 * |hierarchy|` (composite quality)
-- **Coverage**: Reconstruction accuracy
-- **Hierarchy**: Spearman correlation between valuation and radius
+- **Q metric**: `Q = dist_corr + 1.5 * |hierarchy|` (composite quality, ceiling 2.163)
+- **Coverage**: Reconstruction accuracy (target: 1.0)
+- **Hierarchy**: Spearman correlation between valuation and radius (target: -0.95)
+- **AQ**: Angular coherence quality (intra_level_sim - inter_level_sim)
+- **ARI**: Adjusted Rand Index of K-means clusters vs digit prefix classes (target: 0.90+)
 - **LR scales**: Per-component learning rate multipliers
 
 ## Project Structure
@@ -154,47 +164,44 @@ src/
 
 ## Configuration
 
-Training uses YAML configuration files. See `src/presets/v6.yaml` for a complete example.
+Training uses YAML configuration files. See `src/presets/v7_large.yaml` for the current recommended config.
 
-### Key Configuration Sections
+### Key Configuration Sections (V7.2)
 
 ```yaml
-# Model architecture
+# Model architecture (factored latent)
 model:
   name: TernaryVAEV6Controllable
+  latent_dim: 64       # z_r (4 dims) + z_θ (60 dims)
   hidden_dim: 128
-  latent_dim: 16
+  factored: true       # V7: split z_tangent into radial + direction
+  radial_dims: 4
+  init_identity: true
+  tangent_scale: 0.1
 
 # Training parameters
 training:
-  epochs: 200
-  batch_size: 512
-  lr: 1e-3
+  epochs: 800
+  batch_size: 4096
+  lr: 8.0e-4
 
-# Loss functions (config-driven)
+# Loss functions (config-driven, 11 available)
 loss:
   rich_hierarchy:
     enabled: true
     hierarchy_weight: 5.0
-  radial:
+  angular_coherence:
     enabled: true
-  monotonic:
-    enabled: true
+    weight: 1.0
+    level_prefix_k: [3, 4, 5, 0, 0, 0, 0, 0, 0, 0]  # Per-level prefix depth
+    target_sim: [1.0, 0.85, 0.70, 0, 0, 0, 0, 0, 0, 0]  # Soft-margin targets
 
 # LR Controller (differential learning rates)
 option_c:
   enabled: true
-  encoder_a_lr_scale: 0.05   # Coverage encoder (slowest)
-  encoder_b_lr_scale: 0.1    # Hierarchy encoder (medium)
-  projections_lr_scale: 1.0  # Projections (fastest)
-
-# StateNet controller settings
-statenet:
-  enabled: true
-  initial:
-    encoder_a_trainable: false
-    encoder_b_trainable: true
-    projections_trainable: true
+  encoder_a_lr_scale: 0.2
+  encoder_b_lr_scale: 0.1
+  projections_lr_scale: 1.0
 ```
 
 ## Mathematical Background
@@ -219,7 +226,7 @@ Operations with high valuation map to small radii (near Poincare ball origin):
 
 This creates a natural hierarchical structure where "more fundamental" operations (higher valuation) are geometrically central.
 
-### Loss Functions
+### Loss Functions (11 Available)
 
 | Loss | Purpose |
 |------|---------|
@@ -228,13 +235,21 @@ This creates a natural hierarchical structure where "more fundamental" operation
 | **RadialHierarchyLoss** | Direct radius enforcement per valuation |
 | **GlobalRankLoss** | Soft ranking violations |
 | **MonotonicRadialLoss** | Per-level ordering constraints |
+| **AngularCoherenceLoss** | Direction clustering by digit prefix (V7) |
+| **HyperbolicKLDivergence** | KL divergence in Poincare ball |
+| **ValuationPriorLoss** | Valuation-conditioned prior (V6, disabled in V7) |
+| **WithinLevelContrastiveLoss** | Same-level geodesic pulling |
 
 ## Documentation
 
-- `CLAUDE.md` - Detailed architecture documentation
+- `CLAUDE.md` - Detailed architecture documentation (V6.2 base + V7 extensions)
 - `src/README.md` - Module documentation and integration guide
 - `docs/FAQ.md` - Frequently asked questions
-- `docs/audits/` - Codebase audit reports
+- `docs/SPECS.md` - Technical specifications
+- `docs/audits/` - Codebase audit reports (chronological)
+  - `23-03-2026-LEVEL-PREFIX-AUDIT.md` - Level prefix & soft margin implementation
+  - `22-03-2026-IDENTITY-GEOMETRY-AUDIT.md` - Direction geometry analysis (4-run comparison)
+  - `22-03-2026-Q-CEILING-ANALYSIS.md` - Q=2.163 ceiling root cause
 
 ## Hardware Requirements
 
