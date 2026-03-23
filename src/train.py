@@ -33,6 +33,7 @@ Usage:
 """
 
 import argparse
+import atexit
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -982,6 +983,12 @@ def train(
             print(f"  {msg}") if logging_cfg.get("verbose", False) else None
         ),
     )
+    # Safety: flush + close TB writer on crash or unclean exit
+    atexit.register(tb_logger.close)
+
+    if not tb_logger.is_available:
+        print("  [WARN] TensorBoard is NOT available — metrics will NOT be logged.")
+        print("         Install with: pip install tensorboard>=2.13.0")
 
     # Hardware monitor for memory tracking
     hw_monitor = HardwareMonitor(device, warn_threshold=0.9)
@@ -1411,39 +1418,20 @@ def train(
                 results["grokking_events"].append(grokking_detector.events[-1].__dict__)
 
             # TensorBoard logging (log both VAE metrics)
+            # NOTE: Uses add_scalar (not add_scalars) to avoid phantom sub-run
+            # directories. TensorBoard auto-groups by "/" prefix in the UI.
             if tb_logger.is_available:
-                tb_logger.writer.add_scalars(
-                    "Accuracy", {"train": avg_train_acc, "val": avg_val_acc}, epoch
-                )
+                tb_logger.writer.add_scalar("Accuracy/train", avg_train_acc, epoch)
+                tb_logger.writer.add_scalar("Accuracy/val", avg_val_acc, epoch)
                 tb_logger.writer.add_scalar("Loss/train", avg_train_loss, epoch)
                 tb_logger.writer.add_scalar("Coverage", avg_val_coverage, epoch)
-                tb_logger.writer.add_scalars(
-                    "Hierarchy/corr",
-                    {
-                        "VAE_A": hier_metrics_A["hierarchy"],
-                        "VAE_B": hier_metrics_B["hierarchy"],
-                    },
-                    epoch,
-                )
-                tb_logger.writer.add_scalars(
-                    "Hierarchy/Q",
-                    {
-                        "VAE_A": hier_metrics_A["Q"],
-                        "VAE_B": hier_metrics_B["Q"],
-                    },
-                    epoch,
-                )
-                tb_logger.writer.add_scalar(
-                    "Hierarchy/dist_corr", hier_metrics_A["dist_corr"], epoch
-                )
-                tb_logger.writer.add_scalars(
-                    "Radius/mean",
-                    {
-                        "VAE_A": hier_metrics_A["mean_radius"],
-                        "VAE_B": hier_metrics_B["mean_radius"],
-                    },
-                    epoch,
-                )
+                tb_logger.writer.add_scalar("Hierarchy/corr_VAE_A", hier_metrics_A["hierarchy"], epoch)
+                tb_logger.writer.add_scalar("Hierarchy/corr_VAE_B", hier_metrics_B["hierarchy"], epoch)
+                tb_logger.writer.add_scalar("Hierarchy/Q_VAE_A", hier_metrics_A["Q"], epoch)
+                tb_logger.writer.add_scalar("Hierarchy/Q_VAE_B", hier_metrics_B["Q"], epoch)
+                tb_logger.writer.add_scalar("Hierarchy/dist_corr", hier_metrics_A["dist_corr"], epoch)
+                tb_logger.writer.add_scalar("Radius/mean_VAE_A", hier_metrics_A["mean_radius"], epoch)
+                tb_logger.writer.add_scalar("Radius/mean_VAE_B", hier_metrics_B["mean_radius"], epoch)
 
                 # Angular Q metric (direction geometry)
                 if r_A_all:
@@ -1454,14 +1442,8 @@ def train(
                         tb_logger.writer.add_scalar("Direction/ARI_prefix3", ari_prefix3, epoch)
 
                 # Tree coherence (lower = better tree structure)
-                tb_logger.writer.add_scalars(
-                    "TreeCoherence",
-                    {
-                        "VAE_A": hier_metrics_A["tree_coherence"],
-                        "VAE_B": hier_metrics_B["tree_coherence"],
-                    },
-                    epoch,
-                )
+                tb_logger.writer.add_scalar("TreeCoherence/VAE_A", hier_metrics_A["tree_coherence"], epoch)
+                tb_logger.writer.add_scalar("TreeCoherence/VAE_B", hier_metrics_B["tree_coherence"], epoch)
 
                 # Per-level hierarchy (log worst and mean)
                 tb_logger.writer.add_scalar(
