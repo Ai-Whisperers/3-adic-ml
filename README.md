@@ -64,12 +64,13 @@ Input (9 ternary values, {-1, 0, 1})
 3. **Geometric encoding**: High valuation -> near origin, low valuation -> near boundary
 4. **Loss alignment**: Poincare distances aligned to 3-adic valuations (ultrametric -> hyperbolic)
 5. **Direction geometry**: Digit prefix classes spontaneously emerge in z_θ (ARI=0.844 at v=0)
+6. **Per-level prefix tuning**: `level_prefix_k` gives deeper prefix splits at v=1/v=2; soft-margin `target_sim` preserves diversity
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/Ai-Whisperers/3-adic-ml.git
+git clone https://github.com/gesttaltt/3-adic-ml.git
 cd 3-adic-ml
 
 # Create virtual environment
@@ -133,7 +134,7 @@ Key metrics:
 - **Coverage**: Reconstruction accuracy (target: 1.0)
 - **Hierarchy**: Spearman correlation between valuation and radius (target: -0.95)
 - **AQ**: Angular coherence quality (intra_level_sim - inter_level_sim)
-- **ARI**: Adjusted Rand Index of K-means clusters vs digit prefix classes (target: 0.90+)
+- **ARI**: Adjusted Rand Index of K-means clusters vs digit prefix classes (target: 0.90+, logged live as `Direction/ARI_prefix3`)
 - **LR scales**: Per-component learning rate multipliers
 
 ## Project Structure
@@ -194,7 +195,8 @@ loss:
     enabled: true
     weight: 1.0
     level_prefix_k: [3, 4, 5, 0, 0, 0, 0, 0, 0, 0]  # Per-level prefix depth
-    target_sim: [1.0, 0.85, 0.70, 0, 0, 0, 0, 0, 0, 0]  # Soft-margin targets
+    target_sim: [1.0, 0.85, 0.70, 0, 0, 0, 0, 0, 0, 0]  # Soft-margin targets (v=0 MUST be 1.0)
+    n_pairs: 3000  # ~1000 per active level
 
 # LR Controller (differential learning rates)
 option_c:
@@ -275,6 +277,17 @@ Contributions are welcome. To get started:
 2. Ensure all tests pass: `pytest tests/ -v`
 3. Follow existing code patterns (float64 throughout, geoopt for geometry)
 4. Submit a pull request with a clear description of changes
+
+## Changelog
+
+| Date | Version | Key Changes |
+|------|---------|-------------|
+| 2026-03-23 | V7.2+ | `level_prefix_k` per-level prefix depth, soft-margin `target_sim`, live ARI in training loop, `target_sim[0]=0.90` regression identified and fixed to 1.0, repo moved to `gesttaltt/3-adic-ml` |
+| 2026-03-22 | V7.2 | Identity geometry audit, 4-run ARI comparison (0.721→0.844), Q=2.163 ceiling analysis |
+| 2026-03-21 | V7.1 | AngularCoherenceLoss + AQ metric, tangent_scale collapse fix |
+| 2026-03-19 | V6.2 | Sampling fix (sqrt-inverse weighting), loss weight rebalancing, dist_corr root cause analysis |
+| 2026-03-11 | V6.2 | Critical bug fixes (VAE-B dead, max_radius saturation, config key mismatch, KL wiring) |
+| 2026-01-26 | V6.0 | True hyperbolic geometry (expmap0/logmap0), learnable loss weights, codebase review |
 
 ## Acknowledgments
 

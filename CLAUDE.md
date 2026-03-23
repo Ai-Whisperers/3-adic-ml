@@ -459,3 +459,47 @@ Tests validate **mathematical invariants** and **actual computation**, not:
 - Constructor return values (can't be None)
 
 See `docs/plans/TESTS_CRITICAL_TARGETS.md` for full testing strategy.
+
+---
+
+## Direction Geometry — Level Prefix & Soft Margin (V7.2+ - 2026-03-23)
+
+### ARI Ceiling & Root Cause
+
+Four V7 runs established an ARI ceiling at 0.844. Root cause: `AngularCoherenceLoss` with global `prefix_k=3` has leverage only at v=0 (18 classes). At v=1 (2 classes) and v=2 (1 class), AC has minimal/zero leverage.
+
+### level_prefix_k — Per-Level Prefix Depth
+
+```yaml
+angular_coherence:
+  level_prefix_k: [3, 4, 5, 0, 0, 0, 0, 0, 0, 0]  # v=0→k=3, v=1→k=4, v=2→k=5, v=3+→skip
+  target_sim: [1.0, 0.85, 0.70, 0, 0, 0, 0, 0, 0, 0]  # Soft-margin targets
+  n_pairs: 3000  # ~1000 per active level
+```
+
+When `level_prefix_k` is set, `AngularCoherenceLoss.forward()` processes levels independently. When `None`, falls back to global `prefix_k` (backward compatible).
+
+### target_sim Constraint
+
+**`target_sim[0]` MUST be 1.0** — setting it to 0.90 caused ARI regression from 0.844 → 0.716 because `F.relu(0.90 - 0.981) = 0` (v=0 within-class sim is already 0.981, so the loss becomes identically zero). With `target_sim[0]=1.0`, `F.relu(1.0 - cos_sim)` is equivalent to the original `(1.0 - cos_sim)` formula.
+
+### Live ARI in Training Loop
+
+ARI is now computed during training (every `eval_every` epochs) in `src/train.py`:
+- Extracts v=0 direction vectors, subsamples to 5000
+- K-means(k=15, n_init=3) → compared to `digit_prefix_class(k=3)` via `adjusted_rand_score`
+- Logged as `Direction/ARI_prefix3` in TensorBoard
+- ~50ms per eval, zero GPU impact (CPU-only on detached tensors)
+
+### Metrics Blind Spots (Audit Finding)
+
+Per-level loss details (`r_v0..r_v9`, `angular_coherence_pairs`) are computed by loss classes but not logged to TensorBoard — only aggregate values are logged. Per-level within-sim and kNN digit overlap remain offline-only via `diagnose_direction_geometry.py`.
+
+### Implementation Files
+
+| File | Change |
+|------|--------|
+| `src/losses/padic_geodesic.py` | `AngularCoherenceLoss`: `level_prefix_k`, `target_sim` params, per-level forward |
+| `src/losses/combined.py` | Passes `level_prefix_k` and `target_sim` from YAML |
+| `src/presets/v7_large.yaml` | Config for level_prefix_k, target_sim, n_pairs |
+| `src/train.py` | Live ARI computation in eval block |

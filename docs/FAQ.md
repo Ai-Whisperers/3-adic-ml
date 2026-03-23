@@ -215,8 +215,74 @@ Or use a custom run name to continue from a previous run's final checkpoint.
 
 ---
 
+## Direction Geometry (V7+)
+
+### What is `level_prefix_k` and why is it needed?
+
+`level_prefix_k` gives `AngularCoherenceLoss` a per-valuation-level prefix depth for defining direction classes:
+
+```yaml
+angular_coherence:
+  level_prefix_k: [3, 4, 5, 0, 0, 0, 0, 0, 0, 0]
+```
+
+Without it, a single global `prefix_k=3` is used for all levels. This is insufficient because:
+- v=0 has 18 distinct prefix_k=3 classes → AC works well
+- v=1 has only 2 prefix_k=2 classes (2187 ops each) → AC has minimal leverage
+- v=2 has only 1 prefix_k=2 class → AC has zero leverage
+
+With `level_prefix_k`, deeper levels use deeper prefix splits (k=4, k=5), giving AC enough class granularity to sharpen direction clustering at every active level.
+
+---
+
+### What is `target_sim` (soft margin)?
+
+`target_sim` sets per-level cosine similarity targets for `AngularCoherenceLoss`:
+
+```yaml
+angular_coherence:
+  target_sim: [1.0, 0.85, 0.70, 0, 0, 0, 0, 0, 0, 0]
+```
+
+The loss becomes `F.relu(target_sim - cos_sim).mean()` — gradient stops once the pair similarity exceeds the target. This preserves reconstruction diversity at direction-diverse levels.
+
+**Critical**: `target_sim[0]` must be `1.0`, not a lower value. At v=0, within-class cosine similarity is already ~0.981. Setting `target_sim=0.90` makes the loss identically zero (since 0.90 < 0.981), destroying the primary ARI driver. This was confirmed empirically: `target_sim[0]=0.90` caused ARI to regress from 0.844 to 0.716.
+
+---
+
+### What is the ARI metric and how is it computed?
+
+ARI (Adjusted Rand Index) measures how well K-means clusters in direction space align with digit prefix classes. It is computed during training (every `eval_every` epochs):
+
+1. Extract direction vectors for v=0 operations
+2. Subsample to 5000 if needed (for speed)
+3. Run K-means(k=15, n_init=3)
+4. Compare cluster labels to `digit_prefix_class(k=3)` labels via `adjusted_rand_score`
+
+**TensorBoard scalar**: `Direction/ARI_prefix3`
+
+ARI=1.0 means perfect agreement; ARI=0.0 means random. Current best: 0.844 (V7.2 large architecture).
+
+---
+
+### What metrics are only available offline?
+
+While most key metrics are logged to TensorBoard during training, some are only available via `diagnose_direction_geometry.py`:
+
+| Available in training | Offline only |
+|----------------------|-------------|
+| AQ (intra-inter sim) | Per-level within-sim |
+| ARI (prefix3, v=0) | kNN digit overlap |
+| Intra/inter level sim | Multi-level ARI breakdown |
+
+Per-level loss details (e.g., `r_v0..r_v9`, `angular_coherence_pairs`) are computed by loss classes but not currently logged to TensorBoard.
+
+---
+
 ## See Also
 
 - `CLAUDE.md` - Architecture overview
 - `src/README.md` - Module documentation and integration guide
-- `src/presets/v6.yaml` - Reference configuration
+- `src/presets/v7_large.yaml` - Recommended V7.2 configuration
+- `docs/SPECS.md` - Technical specifications
+- `docs/audits/23-03-2026-LEVEL-PREFIX-AUDIT.md` - Level prefix audit details
