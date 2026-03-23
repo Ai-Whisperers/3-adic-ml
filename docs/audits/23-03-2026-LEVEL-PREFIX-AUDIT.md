@@ -192,3 +192,102 @@ ari_prefix3 = adjusted_rand_score(pfx3, labels)
 - K-means(k=15) is close to the true number of clusters without overfitting
 - ARI is invariant to label permutation, so K-means labels don't need to match prefix IDs
 - prefix_k=3 was empirically validated as the right granularity (ARI=0.72 at k=3 vs 0.57 at k=2)
+
+## Post-Fix Training Results (Run v7_large_20260323_072059)
+
+### Configuration
+
+- `target_sim: [1.0, 0.85, 0.70, 0, 0, 0, 0, 0, 0, 0]` (v=0 hard pull restored)
+- `level_prefix_k: [3, 4, 5, 0, 0, 0, 0, 0, 0, 0]`
+- `n_pairs: 3000`, 800 epochs, batch_size=4096
+- TensorBoard fully operational (tensorboard 2.20.0 installed, 89 scalar tags)
+- Live ARI logged as `Direction/ARI_prefix3` every 5 epochs (161 data points)
+
+### Final Metrics
+
+| Metric | Value |
+|--------|-------|
+| Q (VAE-A) | 2.156 |
+| Coverage | 0.979 |
+| ARI (prefix3, final) | 0.822 |
+| ARI (prefix3, peak) | **0.859** (epoch 700) |
+| ARI (last 20 evals, mean±std) | 0.837 ± 0.009 |
+| AQ | 0.677 |
+
+### ARI Trajectory Analysis
+
+The live ARI data reveals four distinct phases:
+
+1. **Cold start (epoch 0–50):** ARI near zero, rising slowly to ~0.15.
+   AC loss is active from epoch 10 but the model is still learning basic reconstruction.
+
+2. **Rapid climb (epoch 55–80):** ARI jumps from 0.23 to 0.67 in 25 epochs.
+   This coincides with reconstruction stabilizing (coverage crosses 0.95).
+
+3. **Noisy plateau (epoch 80–200):** ARI oscillates between 0.61 and 0.83.
+   K-means is sensitive to initialization at this stage; clusters are forming but unstable.
+   Notable dips to 0.61 (epoch 85) and 0.64 (epoch 95) before settling.
+
+4. **Stable plateau (epoch 200–800):** ARI converges to 0.837 ± 0.009.
+   The peak of 0.859 at epoch 700 is within noise of the plateau.
+   Occasional dips to ~0.72 (epochs 350, 390, 405, 625) are K-means stochasticity,
+   not model regressions — the AQ metric remains stable through these dips.
+
+### Comparison to Previous Runs
+
+| Run | ARI (diagnostic) | ARI (live final) | ARI (live peak) | Q |
+|-----|-------------------|-------------------|------------------|---|
+| V7.0 baseline | 0.721 | — | — | 2.163 |
+| V7.1 AC light | 0.810 | — | — | 2.163 |
+| V7.1 AC aggressive | 0.820 | — | — | 2.163 |
+| V7.2 large | 0.844 | — | — | 2.163 |
+| V7.2+level_prefix (broken) | 0.716 | — | — | 2.163 |
+| V7.2+level_prefix (fixed, no TB) | 0.845 | — | — | 2.163 |
+| **V7.2+level_prefix (fixed, TB)** | — | **0.822** | **0.859** | **2.156** |
+
+### Verdict
+
+**The `level_prefix_k` + soft-margin implementation did NOT improve ARI beyond the V7.2
+baseline of 0.844.** The stable plateau of 0.837 ± 0.009 is statistically indistinguishable
+from (or slightly below) the previous best. The deeper prefix splits at v=1 (k=4) and
+v=2 (k=5) did not provide measurable benefit because:
+
+1. **v=0 dominates ARI:** 66% of all data is v=0. The K-means ARI metric primarily
+   reflects v=0 clustering quality. v=1/v=2 improvements are invisible in this metric.
+
+2. **The live ARI measures v=0 only:** The K-means(k=15) is run on v=0 ops exclusively.
+   Even if v=1/v=2 direction clustering improved, the current metric cannot detect it.
+
+3. **ARI ceiling is structural:** With 18 prefix_k=3 classes at v=0 and K-means(k=15),
+   the maximum achievable ARI is bounded by the mismatch between 15 clusters and 18 classes.
+   Perfect clustering would give ARI ≈ 0.90 (not 1.0) due to this k mismatch.
+
+## Next Steps
+
+### Option A: Fix the ARI Metric (Measure What We Changed)
+
+The current ARI metric is blind to v=1/v=2 improvements. To evaluate level_prefix_k properly:
+
+1. **Add per-level ARI to the training loop:** Run K-means separately on v=0, v=1, v=2
+   direction vectors and log `Direction/ARI_v0`, `Direction/ARI_v1`, `Direction/ARI_v2`.
+   Use `digit_prefix_class(k=level_prefix_k[v])` as ground truth for each level.
+
+2. **Increase K-means k to 18 for v=0:** Match the true number of prefix_k=3 classes
+   at v=0 (there are 18, not 15). This removes the k mismatch ceiling.
+
+### Option B: Increase AC Strength at v=1/v=2
+
+The soft margin may be too permissive at v=1 (target_sim=0.85) and v=2 (target_sim=0.70).
+Try `target_sim: [1.0, 0.95, 0.85, 0, ...]` to push harder.
+
+### Option C: Weighted Composite ARI
+
+Compute ARI per level and combine: `ARI_composite = 0.6*ARI_v0 + 0.3*ARI_v1 + 0.1*ARI_v2`.
+This makes v=1/v=2 improvements visible in a single number.
+
+### Recommendation
+
+**Do Option A first** (fix the metric), then re-evaluate whether level_prefix_k is helping.
+It's possible the implementation is working correctly but we can't see it because the
+metric only measures v=0. If per-level ARI shows v=1/v=2 improvement, the feature is
+validated. If not, try Option B.
