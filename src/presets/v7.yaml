@@ -168,10 +168,10 @@ loss:
 
   angular_coherence:
     enabled: true
-    weight: 0.3
-    n_pairs: 1000
-    prefix_k: 3     # Step 5: ARI(prefix_k=3)=0.721 >> ARI(prefix_k=2)=0.565 → k=3 explains v=0 islands
-    phase_start_epoch: 50
+    weight: 1.0      # 0.3→1.0: direction geometry already stable, push harder
+    n_pairs: 2000    # 1000→2000: more pair candidates per forward call
+    prefix_k: 3
+    phase_start_epoch: 10  # 50→10: reconstruction converges in <10 epochs
 
   lagrangian:
     enabled: true
@@ -191,20 +191,20 @@ loss:
 # Training Configuration
 # =============================================================================
 training:
-  epochs: 200
-  batch_size: 2048  # Increased 512→2048: 5GB VRAM allows this; gives 36 same-class pairs/batch vs 9.6 for AngularCoherenceLoss
+  epochs: 1500
+  batch_size: 4096  # 2048→4096: ~70 same-class AC pairs/batch; 6GB VRAM gives full headroom
   lr: 8.0e-4
   weight_decay: 1.0e-4
   max_grad_norm: 1.0
 
   scheduler:
     type: cosine_warmup_restart
-    T_0: 25
+    T_0: 100         # Adjusted for 1500 epochs: 100+200+400+800=1500 (4 complete cycles)
     T_mult: 2
 
-  eval_every: 2
-  save_every: 25
-  print_every: 2
+  eval_every: 5
+  save_every: 100
+  print_every: 5
 
 # =============================================================================
 # Data Configuration
@@ -218,8 +218,8 @@ data:
 # =============================================================================
 logging:
   tensorboard: true
-  log_dir: runs/v7
-  print_every: 2
+  log_dir: runs/v7_aggressive
+  print_every: 5
 
   enhanced_metrics:
     enabled: true
@@ -233,10 +233,10 @@ logging:
 # Checkpoints
 # =============================================================================
 checkpoints:
-  save_dir: runs/checkpoints/v7
+  save_dir: runs/checkpoints/v7_aggressive
   save_best: true
   best_metric: composite_score
-  checkpoint_name: v7
+  checkpoint_name: v7_aggressive
 
 # =============================================================================
 # Success Criteria
@@ -260,9 +260,9 @@ memory:
 # Version Tracking
 # =============================================================================
 version:
-  model: "7.0"
-  config: "v7_factored_latent"
-  date: "2026-03-22"
+  model: "7.1"
+  config: "v7_aggressive_ac"
+  date: "2026-03-23"
   changes:
     - "Factored latent: z_r (k=4) → radius, z_θ (28) → direction"
     - "HyperbolicProjection factored mode: r=sigmoid(linear_r(z_r))*max_r, dir=normalize(z_θ)"
