@@ -1119,6 +1119,7 @@ def train(
                         mu=out.get("mu_A"), logvar=out.get("logvar_A"),
                         curvature=current_curvature,
                         dual_weights=current_dual_weights,
+                        r=out.get("r_A"),
                     )
                     # VAE-B: hierarchy-only (no coverage/reconstruction).
                     # coverage_weight=0.0 in loss_fn_b prevents gradient conflict
@@ -1128,6 +1129,7 @@ def train(
                         mu=out.get("mu_B"), logvar=out.get("logvar_B"),
                         curvature=current_curvature,
                         dual_weights=current_dual_weights,
+                        r=out.get("r_B"),
                     )
                     # Combine: both VAEs contribute to total loss
                     loss = losses["total"] + losses_B["total"]
@@ -1231,6 +1233,7 @@ def train(
             z_A_all = []
             z_B_all = []
             idx_all = []
+            r_A_all = []
 
             with torch.no_grad():
                 for batch_ops, batch_idx in val_loader:
@@ -1249,6 +1252,8 @@ def train(
                     z_A_all.append(out["z_A_hyp"])
                     z_B_all.append(out["z_B_hyp"])
                     idx_all.append(batch_idx)
+                    if out.get("r_A") is not None:
+                        r_A_all.append(out["r_A"])
 
             avg_val_acc = val_acc_sum / val_batches
             avg_val_coverage = val_coverage_sum / val_batches
@@ -1263,6 +1268,31 @@ def train(
             hier_metrics_B = compute_hierarchy_metrics(
                 z_B_cat, idx_cat, curvature, seed=seed + epoch + 1000
             )
+
+            # Angular Q metric (direction geometry quality)
+            aq_value = 0.0
+            intra_sim = 0.0
+            inter_sim = 0.0
+            if r_A_all:
+                r_A_cat = torch.cat(r_A_all)
+                eps = 1e-10
+                dir_A = z_A_cat / r_A_cat.unsqueeze(-1).clamp(min=eps)
+                dir_A = dir_A / dir_A.norm(dim=-1, keepdim=True).clamp(min=eps)
+                # Get valuations for all indices
+                vals = TERNARY.valuation(idx_cat)
+                unique_vals = vals.unique()
+                intra_sims, inter_sims = [], []
+                # Sample pairs for efficiency
+                n_sample = min(500, len(idx_cat))
+                perm = torch.randperm(len(idx_cat), device=device)[:n_sample]
+                perm2 = torch.randperm(len(idx_cat), device=device)[:n_sample]
+                same_level = (vals[perm] == vals[perm2])
+                cos_sims = (dir_A[perm] * dir_A[perm2]).sum(dim=-1)
+                if same_level.sum() > 0:
+                    intra_sim = cos_sims[same_level].mean().item()
+                if (~same_level).sum() > 0:
+                    inter_sim = cos_sims[~same_level].mean().item()
+                aq_value = intra_sim - inter_sim
 
             # Get gradient statistics from optimizer (V6.0: avoids manual grad loop)
             controller_grad_norm = None
@@ -1395,6 +1425,12 @@ def train(
                     },
                     epoch,
                 )
+
+                # Angular Q metric (direction geometry)
+                if r_A_all:
+                    tb_logger.writer.add_scalar("Direction/AQ", aq_value, epoch)
+                    tb_logger.writer.add_scalar("Direction/intra_level_sim", intra_sim, epoch)
+                    tb_logger.writer.add_scalar("Direction/inter_level_sim", inter_sim, epoch)
 
                 # Tree coherence (lower = better tree structure)
                 tb_logger.writer.add_scalars(

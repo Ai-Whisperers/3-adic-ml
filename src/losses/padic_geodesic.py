@@ -1247,6 +1247,92 @@ class WithinLevelContrastiveLoss(nn.Module):
         return loss, metrics
 
 
+class AngularCoherenceLoss(nn.Module):
+    """Pull same-digit-prefix operations together angularly within each valuation level.
+
+    Targets v=0 sub-island sharpness and mitigates v=2/v=3 anti-clustering.
+    Operates purely on direction vectors (z_hyp / ||z_hyp||) and therefore
+    cannot corrupt radial hierarchy: d(dir)/d(z_r) = 0 by F.normalize
+    Jacobian orthogonality — same gradient isolation as the factored latent.
+
+    For each sampled pair (i, j) sharing the same valuation level AND the same
+    digit_prefix_class(k), minimise (1 - cosine_similarity(dir_i, dir_j)).
+    This sharpens the spontaneously-emerged direction clusters into commercially
+    exploitable algebraic similarity regions.
+
+    Args:
+        weight: Loss weight (default 0.3; ramp up after reconstruction stable)
+        n_pairs: Random pairs to sample per forward call
+        prefix_k: Depth of digit prefix class (2 → 9 classes, 3 → 27 classes)
+        phase_start_epoch: Epoch before which loss returns 0 (default 50)
+    """
+
+    def __init__(
+        self,
+        weight: float = 0.3,
+        n_pairs: int = 1000,
+        prefix_k: int = 2,
+        phase_start_epoch: int = 50,
+    ):
+        super().__init__()
+        self.weight = weight
+        self.n_pairs = n_pairs
+        self.prefix_k = prefix_k
+        self.phase_start_epoch = phase_start_epoch
+
+    def forward(
+        self,
+        z_hyp: torch.Tensor,
+        r: torch.Tensor,
+        indices: torch.Tensor,
+        epoch: int = 0,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
+        metrics: MetricsDict = {}
+        zero = torch.tensor(0.0, device=z_hyp.device, dtype=z_hyp.dtype)
+
+        if epoch < self.phase_start_epoch:
+            metrics["angular_coherence_loss"] = 0.0
+            metrics["angular_coherence_pairs"] = 0
+            return zero, metrics
+
+        # Recover unit direction vectors
+        eps = torch.tensor(1e-10, device=z_hyp.device, dtype=z_hyp.dtype)
+        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=eps)   # (B, D-k)
+
+        vals    = TERNARY.valuation(indices)                 # (B,)
+        prefix  = TERNARY.digit_prefix_class(indices, self.prefix_k)  # (B,)
+        # Composite key: unique per (valuation, prefix_class) combination
+        key     = vals * (3 ** self.prefix_k) + prefix      # (B,)
+
+        B = len(dir_vecs)
+        if B < 4:
+            metrics["angular_coherence_loss"] = 0.0
+            metrics["angular_coherence_pairs"] = 0
+            return zero, metrics
+
+        perm    = torch.randperm(B, device=z_hyp.device)
+        half    = min(self.n_pairs, B // 2)
+        i_idx   = perm[:half]
+        j_idx   = perm[half:half * 2]
+
+        same_cls = key[i_idx] == key[j_idx]
+        n_same   = same_cls.sum().item()
+
+        if n_same < 4:
+            metrics["angular_coherence_loss"] = 0.0
+            metrics["angular_coherence_pairs"] = int(n_same)
+            return zero, metrics
+
+        di = dir_vecs[i_idx[same_cls]]
+        dj = dir_vecs[j_idx[same_cls]]
+        cos_sim = (di * dj).sum(dim=-1)                     # (n_same,)
+        loss    = self.weight * (1.0 - cos_sim).mean()
+
+        metrics["angular_coherence_loss"] = loss.item()
+        metrics["angular_coherence_pairs"] = int(n_same)
+        return loss, metrics
+
+
 __all__ = [
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",
@@ -1255,4 +1341,5 @@ __all__ = [
     "RichHierarchyLoss",
     "ValuationPriorLoss",
     "WithinLevelContrastiveLoss",
+    "AngularCoherenceLoss",
 ]

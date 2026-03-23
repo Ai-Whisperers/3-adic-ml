@@ -648,6 +648,80 @@ class TernarySpace:
             'level_rank': props[..., self.PROP_LEVEL_RANK],
         }
 
+    # =========================================================================
+    # Algebraic Pattern Classifiers (for direction geometry analysis)
+    # =========================================================================
+
+    def digit_prefix_class(self, indices: torch.Tensor, k: int = 2) -> torch.Tensor:
+        """Classify operations by their first k digits interpreted as base-3.
+
+        Returns class label in [0, 3^k). Within a valuation level, operations
+        sharing a prefix class form natural sub-clusters in direction space.
+
+        Args:
+            indices: Operation indices, any shape
+            k: Number of leading digits to use (default 2 → 9 classes)
+
+        Returns:
+            Class labels in [0, 3^k), same shape as indices
+        """
+        ops = self.to_ternary(indices)                          # (..., 9) float64
+        ops_shifted = (ops[..., :k] + 1).long()                # (..., k) in {0,1,2}
+        device = indices.device
+        weights = torch.tensor(
+            [3 ** i for i in range(k - 1, -1, -1)],
+            dtype=torch.long, device=device,
+        )
+        return (ops_shifted * weights).sum(dim=-1)              # (...,) in [0, 3^k)
+
+    def nonzero_pattern(self, indices: torch.Tensor) -> torch.Tensor:
+        """Encode which digit positions are non-zero as a 9-bit integer.
+
+        Operations sharing nonzero_pattern have identical zero-structure,
+        regardless of the sign of non-zero digits.
+
+        Returns:
+            9-bit codes in [0, 512), same shape as indices
+        """
+        ops = self.to_ternary(indices)                          # (..., 9)
+        nonzero = (ops != 0).long()                            # (..., 9) binary
+        device = indices.device
+        weights = torch.tensor(
+            [2 ** i for i in range(self.N_DIGITS)],
+            dtype=torch.long, device=device,
+        )
+        return (nonzero * weights).sum(dim=-1)                  # (...,) in [0, 512)
+
+    def valuation_prefix_class(self, indices: torch.Tensor) -> torch.Tensor:
+        """Within-level sub-class: sign of first non-zero digit × value of next digit.
+
+        For v=k operations, the first k digits are 0. The k-th digit has sign ±1
+        and the (k+1)-th digit takes values {-1, 0, +1}. Together they give 6
+        sub-classes per level that capture secondary p-adic tree branching.
+
+        Returns:
+            Sub-class labels in [0, 6), same shape as indices
+        """
+        ops = self.to_ternary(indices)                          # (..., 9) float64
+        fz = self.first_nonzero(indices).clamp(0, 8)           # (...,)
+
+        # Sign class: whether first non-zero digit is positive (0 or 1)
+        sign_digit = torch.gather(
+            ops.view(-1, self.N_DIGITS),
+            1, fz.view(-1, 1),
+        ).squeeze(1).view(indices.shape)
+        sign_cls = (sign_digit > 0).long()                     # (...,) in {0,1}
+
+        # Next digit value class: -1→0, 0→1, +1→2
+        next_pos = (fz + 1).clamp(0, 8)
+        next_digit = torch.gather(
+            ops.view(-1, self.N_DIGITS),
+            1, next_pos.view(-1, 1),
+        ).squeeze(1).view(indices.shape)
+        next_cls = (next_digit + 1).long()                     # (...,) in {0,1,2}
+
+        return sign_cls * 3 + next_cls                         # (...,) in [0, 6)
+
     def all_properties(self, device: Optional[torch.device] = None) -> torch.Tensor:
         """Get properties tensor for all indices.
 
@@ -738,6 +812,21 @@ def level_rank(indices: torch.Tensor) -> torch.Tensor:
     return TERNARY.level_rank(indices)
 
 
+def digit_prefix_class(indices: torch.Tensor, k: int = 2) -> torch.Tensor:
+    """Classify by first k digits. See TernarySpace.digit_prefix_class."""
+    return TERNARY.digit_prefix_class(indices, k)
+
+
+def nonzero_pattern(indices: torch.Tensor) -> torch.Tensor:
+    """9-bit nonzero structure encoding. See TernarySpace.nonzero_pattern."""
+    return TERNARY.nonzero_pattern(indices)
+
+
+def valuation_prefix_class(indices: torch.Tensor) -> torch.Tensor:
+    """Within-level sub-class. See TernarySpace.valuation_prefix_class."""
+    return TERNARY.valuation_prefix_class(indices)
+
+
 __all__ = [
     # Core types
     "TernarySpace",
@@ -756,4 +845,8 @@ __all__ = [
     "last_nonzero",
     "parent",
     "level_rank",
+    # Algebraic pattern classifiers
+    "digit_prefix_class",
+    "nonzero_pattern",
+    "valuation_prefix_class",
 ]

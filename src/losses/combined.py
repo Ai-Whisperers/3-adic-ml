@@ -38,6 +38,7 @@ import torch.nn.functional as F
 
 from .hyperbolic_kl import HyperbolicKLDivergence
 from .padic_geodesic import (
+    AngularCoherenceLoss,
     GlobalRankLoss,
     MonotonicRadialLoss,
     PAdicGeodesicLoss,
@@ -93,6 +94,7 @@ class CombinedLoss(nn.Module):
     kl_loss: Optional[HyperbolicKLDivergence]
     valuation_prior: Optional[ValuationPriorLoss]
     wlc_loss: Optional[WithinLevelContrastiveLoss]
+    angular_coherence: Optional[AngularCoherenceLoss]
 
     def __init__(
         self,
@@ -279,11 +281,23 @@ class CombinedLoss(nn.Module):
         else:
             self.wlc_loss = None
 
+        # AngularCoherenceLoss (pull same-prefix operations together in direction space)
+        ac_cfg = self.config.get('angular_coherence', {})
+        if ac_cfg.get('enabled', False):
+            self.angular_coherence = AngularCoherenceLoss(
+                weight=ac_cfg.get('weight', 0.3),
+                n_pairs=ac_cfg.get('n_pairs', 1000),
+                prefix_k=ac_cfg.get('prefix_k', 2),
+                phase_start_epoch=ac_cfg.get('phase_start_epoch', 50),
+            )
+        else:
+            self.angular_coherence = None
+
         # Guard: at least one loss must be enabled, or training will be gradient-free
         active = [
             self.rich_hierarchy, self.radial_loss, self.geodesic_loss,
             self.rank_loss, self.monotonic_loss, self.kl_loss, self.valuation_prior,
-            self.wlc_loss,
+            self.wlc_loss, self.angular_coherence,
         ]
         if not any(x is not None for x in active):
             raise ValueError(
@@ -415,6 +429,7 @@ class CombinedLoss(nn.Module):
         logvar: Optional[torch.Tensor] = None,
         curvature: Optional[float] = None,
         dual_weights: Optional[Dict[str, List[float]]] = None,
+        r: Optional[torch.Tensor] = None,
     ) -> Dict[str, Any]:
         """Compute combined loss.
 
@@ -587,6 +602,13 @@ class CombinedLoss(nn.Module):
             losses['wlc_metrics'] = wlc_metrics
             total = total + wlc_out
 
+        # 10. Angular coherence loss (sharpen direction sub-clusters by digit prefix)
+        if self.angular_coherence is not None and r is not None:
+            ac_out, ac_metrics = self.angular_coherence(z_hyp, r, indices, epoch)
+            losses['angular_coherence'] = ac_out
+            losses['angular_coherence_metrics'] = ac_metrics
+            total = total + ac_out
+
         # 11. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:
             coverage_loss = self._compute_coverage_loss(logits, targets)
@@ -651,6 +673,8 @@ class CombinedLoss(nn.Module):
             enabled.append('valuation_prior')
         if self.wlc_loss is not None:
             enabled.append('within_level_contrastive')
+        if self.angular_coherence is not None:
+            enabled.append('angular_coherence')
         return enabled
 
     def get_learned_weights(self) -> Dict[str, float]:

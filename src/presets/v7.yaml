@@ -144,7 +144,7 @@ loss:
     weight: 0.5
     temperature: 0.1
     n_pairs: 2000
-    scatter_weight: 0.8
+    scatter_weight: 0.3  # V7: scatter near-zero by construction (was 0.8, reduced per Item F diagnostic)
 
   monotonic:
     enabled: true
@@ -165,6 +165,13 @@ loss:
     enabled: false
     weight: 0.5
     max_pairs_per_level: 500
+
+  angular_coherence:
+    enabled: true
+    weight: 0.3
+    n_pairs: 1000
+    prefix_k: 3     # Step 5: ARI(prefix_k=3)=0.721 >> ARI(prefix_k=2)=0.565 → k=3 explains v=0 islands
+    phase_start_epoch: 50
 
   lagrangian:
     enabled: true
