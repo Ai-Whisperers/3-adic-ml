@@ -1,5 +1,9 @@
 #XR|# Next Steps Roadmap
 YB|**Date:** 2026-03-23
+PJ|**Status:** V7.2+ complete. Direction geometry optimization yields composite ARI 0.912→0.955. Q=2.163 ceiling confirmed data-derived.
+WT|
+HS|See `docs/audits/23-03-2026-LEVEL-PREFIX-AUDIT.md` for full experimental trajectory.
+YB|**Date:** 2026-03-23
 JR|**Status:** V7.2+ complete. Direction geometry optimization (level_prefix_k, target_sim) yields composite ARI 0.912→0.955. Q=2.163 ceiling confirmed data-derived, not architecture.
 RW|
 SJ|See `docs/audits/23-03-2026-LEVEL-PREFIX-AUDIT.md` for full experimental trajectory.
@@ -355,3 +359,31 @@ These have been exhausted and will not improve Q:
 - Geodesic loss weight changes (2.0→4.0; zero effect)
 - encoder_a LR tuning (coverage was dead, now fixed; Q formula doesn't include coverage)
 - More training epochs from current checkpoint (convergence confirmed)
+
+HR|- More training epochs from current checkpoint (convergence confirmed)
+
+---
+
+## Pending Tasks
+
+### Run 10: v=5 AC Loss + 1500 Epochs
+
+**Config:** `src/presets/v7_large.yaml` — committed as `023c463`
+
+```yaml
+level_prefix_k: [3, 4, 3, 4, 5, 6, 0, 0, 0, 0]  # 6 active levels (v=0-5)
+target_sim:    [1.0, 0.93, 0.70, 0.70, 0.70, 0.70, 0, 0, 0, 0]
+n_pairs: 5000  # ~830/level
+epochs: 1500
+```
+
+**Watch:**
+- `Lagrangian/*` scalars — are dual variables active or dormant?
+- `Direction/ARI_v1` mean/peak gap (0.882/0.991) — does 1500 epochs stabilize?
+- `Direction/ARI_v5` — marginal signal (27 ops/class) expected
+
+**If v=1 regresses:** bump `target_sim[1]` to 0.95.
+
+### Pydantic Validation (in progress)
+
+Review `src/config/` for schema-based YAML validation. See `docs/PLANNING/PYDANTIC_VALIDATION.md` for analysis.
