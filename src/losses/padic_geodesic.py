@@ -25,7 +25,7 @@ than two at boundary.
 Single responsibility: Unified p-adic geodesic alignment.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -1255,16 +1255,25 @@ class AngularCoherenceLoss(nn.Module):
     cannot corrupt radial hierarchy: d(dir)/d(z_r) = 0 by F.normalize
     Jacobian orthogonality — same gradient isolation as the factored latent.
 
-    For each sampled pair (i, j) sharing the same valuation level AND the same
-    digit_prefix_class(k), minimise (1 - cosine_similarity(dir_i, dir_j)).
-    This sharpens the spontaneously-emerged direction clusters into commercially
-    exploitable algebraic similarity regions.
+    Supports per-level prefix depth via `level_prefix_k` (a list indexed by
+    valuation 0-9). If level_prefix_k[v] == 0, that valuation level is skipped
+    entirely (useful for v=3+ where direction geometry is already near-perfect).
+    If `level_prefix_k` is None, falls back to the global `prefix_k` for all levels.
+
+    Uses soft-margin loss: F.relu(target_sim - cos_sim) instead of (1 - cos_sim).
+    This stops applying force once cos_sim >= target_sim, preserving reconstruction
+    diversity at levels like v=2 where directions must remain varied.
 
     Args:
-        weight: Loss weight (default 0.3; ramp up after reconstruction stable)
+        weight: Loss weight
         n_pairs: Random pairs to sample per forward call
-        prefix_k: Depth of digit prefix class (2 → 9 classes, 3 → 27 classes)
-        phase_start_epoch: Epoch before which loss returns 0 (default 50)
+        prefix_k: Global fallback prefix depth (used when level_prefix_k is None)
+        phase_start_epoch: Epoch before which loss returns 0
+        level_prefix_k: Per-level prefix depths, list of length 10 (one per valuation
+            level 0-9). Use 0 to skip a level. Overrides prefix_k per level.
+        target_sim: Cosine similarity target for soft margin. Float (global) or list
+            of 10 floats (per level). Pairs already meeting this threshold contribute
+            zero loss.
     """
 
     def __init__(
@@ -1273,12 +1282,20 @@ class AngularCoherenceLoss(nn.Module):
         n_pairs: int = 1000,
         prefix_k: int = 2,
         phase_start_epoch: int = 50,
+        level_prefix_k: Optional[List[int]] = None,
+        target_sim: Union[float, List[float]] = 1.0,
     ):
         super().__init__()
         self.weight = weight
         self.n_pairs = n_pairs
         self.prefix_k = prefix_k
         self.phase_start_epoch = phase_start_epoch
+        self.level_prefix_k = level_prefix_k
+        # Normalise target_sim to a list of 10 floats
+        if isinstance(target_sim, (int, float)):
+            self.target_sim: List[float] = [float(target_sim)] * 10
+        else:
+            self.target_sim = list(target_sim)
 
     def forward(
         self,
@@ -1297,18 +1314,74 @@ class AngularCoherenceLoss(nn.Module):
 
         # Recover unit direction vectors
         eps = torch.tensor(1e-10, device=z_hyp.device, dtype=z_hyp.dtype)
-        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=eps)   # (B, D-k)
+        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=eps)   # (B, D)
 
-        vals    = TERNARY.valuation(indices)                 # (B,)
-        prefix  = TERNARY.digit_prefix_class(indices, self.prefix_k)  # (B,)
-        # Composite key: unique per (valuation, prefix_class) combination
-        key     = vals * (3 ** self.prefix_k) + prefix      # (B,)
+        vals = TERNARY.valuation(indices)                    # (B,) int tensor
 
         B = len(dir_vecs)
         if B < 4:
             metrics["angular_coherence_loss"] = 0.0
             metrics["angular_coherence_pairs"] = 0
             return zero, metrics
+
+        # --- Per-level prefix depth mode ---
+        if self.level_prefix_k is not None:
+            total_loss = zero
+            total_pairs = 0
+            n_active_levels = 0
+
+            for v in range(10):
+                k = self.level_prefix_k[v]
+                if k == 0:
+                    continue  # skip this valuation level
+
+                t_sim = self.target_sim[v]
+                mask_v = (vals == v)                         # (B,) bool
+                if mask_v.sum() < 4:
+                    continue
+
+                idx_v = mask_v.nonzero(as_tuple=True)[0]    # indices into batch
+                nv = len(idx_v)
+                perm = torch.randperm(nv, device=z_hyp.device)
+                half = min(self.n_pairs // max(1, sum(kk > 0 for kk in self.level_prefix_k)), nv // 2)
+                if half < 2:
+                    continue
+
+                i_local = perm[:half]
+                j_local = perm[half:half * 2]
+                i_idx = idx_v[i_local]
+                j_idx = idx_v[j_local]
+
+                prefix_i = TERNARY.digit_prefix_class(indices[i_idx], k)
+                prefix_j = TERNARY.digit_prefix_class(indices[j_idx], k)
+                same_cls = prefix_i == prefix_j
+                n_same = same_cls.sum().item()
+
+                if n_same < 2:
+                    continue
+
+                di = dir_vecs[i_idx[same_cls]]
+                dj = dir_vecs[j_idx[same_cls]]
+                cos_sim = (di * dj).sum(dim=-1)              # (n_same,)
+                t = torch.tensor(t_sim, device=z_hyp.device, dtype=z_hyp.dtype)
+                level_loss = torch.nn.functional.relu(t - cos_sim).mean()
+                total_loss = total_loss + level_loss
+                total_pairs += int(n_same)
+                n_active_levels += 1
+
+            if n_active_levels == 0:
+                metrics["angular_coherence_loss"] = 0.0
+                metrics["angular_coherence_pairs"] = 0
+                return zero, metrics
+
+            loss = self.weight * (total_loss / n_active_levels)
+            metrics["angular_coherence_loss"] = loss.item()
+            metrics["angular_coherence_pairs"] = total_pairs
+            return loss, metrics
+
+        # --- Global prefix_k fallback (original behaviour, soft-margin aware) ---
+        prefix  = TERNARY.digit_prefix_class(indices, self.prefix_k)  # (B,)
+        key     = vals * (3 ** self.prefix_k) + prefix                # (B,)
 
         perm    = torch.randperm(B, device=z_hyp.device)
         half    = min(self.n_pairs, B // 2)
@@ -1325,8 +1398,10 @@ class AngularCoherenceLoss(nn.Module):
 
         di = dir_vecs[i_idx[same_cls]]
         dj = dir_vecs[j_idx[same_cls]]
-        cos_sim = (di * dj).sum(dim=-1)                     # (n_same,)
-        loss    = self.weight * (1.0 - cos_sim).mean()
+        cos_sim = (di * dj).sum(dim=-1)                              # (n_same,)
+        # Global target_sim is target_sim[0] (all same when scalar was given)
+        t = torch.tensor(self.target_sim[0], device=z_hyp.device, dtype=z_hyp.dtype)
+        loss = self.weight * torch.nn.functional.relu(t - cos_sim).mean()
 
         metrics["angular_coherence_loss"] = loss.item()
         metrics["angular_coherence_pairs"] = int(n_same)

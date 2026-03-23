@@ -289,6 +289,8 @@ class CombinedLoss(nn.Module):
                 n_pairs=ac_cfg.get('n_pairs', 1000),
                 prefix_k=ac_cfg.get('prefix_k', 2),
                 phase_start_epoch=ac_cfg.get('phase_start_epoch', 50),
+                level_prefix_k=ac_cfg.get('level_prefix_k', None),
+                target_sim=ac_cfg.get('target_sim', 1.0),
             )
         else:
             self.angular_coherence = None

@@ -169,8 +169,16 @@ loss:
     enabled: true
     weight: 1.0      # 0.3→1.0: direction geometry already stable, push harder
     n_pairs: 2000    # 1000→2000: more pair candidates per forward call
-    prefix_k: 3
+    prefix_k: 3      # global fallback (used only when level_prefix_k is null)
     phase_start_epoch: 10  # 50→10: reconstruction converges in <10 epochs
+    # Per-level prefix depth: v=0→k=3 (27 classes), v=1→k=4, v=2→k=5, v=3+→skip (0)
+    # Root cause of ARI=0.85 ceiling: v=1/v=2 had only 2/1 class at k=3.
+    # Deeper k gives 81/243 prefix classes at v=1/v=2 → finer-grained direction targets.
+    level_prefix_k: [3, 4, 5, 0, 0, 0, 0, 0, 0, 0]
+    # Soft-margin target per level: stop applying force once cos_sim >= target.
+    # Prevents crushing reconstruction-diverse directions into identical vectors.
+    # v=2 target=0.70 (within-sim was 0.705 baseline — just consolidate clusters, don't collapse).
+    target_sim: [0.90, 0.80, 0.70, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
   lagrangian:
     enabled: true
