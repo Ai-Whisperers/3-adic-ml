@@ -192,7 +192,7 @@ loss:
 # =============================================================================
 training:
   epochs: 200
-  batch_size: 512
+  batch_size: 2048  # Increased 512→2048: 5GB VRAM allows this; gives 36 same-class pairs/batch vs 9.6 for AngularCoherenceLoss
   lr: 8.0e-4
   weight_decay: 1.0e-4
   max_grad_norm: 1.0
