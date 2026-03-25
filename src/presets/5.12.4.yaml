@@ -24,6 +24,7 @@ model:
   max_radius: 0.95
   curvature: 1.0
   learnable_curvature: true
+  factored: false  # Legacy preset: keep non-factored latent when schema defaults change
   projection_layers: 2
   projection_dropout: 0.1
   encoder_type: improved   # "improved" (SiLU+LayerNorm) or "standard" (ReLU)

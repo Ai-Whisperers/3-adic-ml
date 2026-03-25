@@ -39,6 +39,7 @@ model:
   max_radius: 0.95  # Poincaré ball boundary constraint
   curvature: 1.0
   learnable_curvature: true  # Curvature is optimized via RiemannianAdam
+  factored: false  # Legacy V6 architecture uses expmap0/logmap0, not the V7 radius/direction split
 
   # Projection network (tangent space transform before expmap0)
   projection_layers: 2
