@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 import yaml
 
@@ -11,6 +12,7 @@ from scripts.analysis.project_audit import (
     build_model_kwargs,
     collect_run_results,
     monte_carlo_scenarios,
+    stratified_probe_indices,
     summarize_scalar_series,
 )
 
@@ -74,3 +76,16 @@ def test_summarize_scalar_series_supports_max_and_min_modes() -> None:
     assert minimize is not None
     assert minimize.best_step == 0
     assert minimize.best_value == 0.5
+
+
+def test_stratified_probe_indices_is_deterministic_and_keeps_small_classes() -> None:
+    labels = np.array([0] * 50 + [1] * 10 + [2] * 3)
+
+    idx_a = stratified_probe_indices(labels, sample_budget=20, min_per_class=4, seed=42)
+    idx_b = stratified_probe_indices(labels, sample_budget=20, min_per_class=4, seed=42)
+
+    assert np.array_equal(idx_a, idx_b)
+    sampled = labels[idx_a]
+    assert (sampled == 0).sum() >= 4
+    assert (sampled == 1).sum() >= 4
+    assert (sampled == 2).sum() == 3

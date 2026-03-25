@@ -344,6 +344,75 @@ Generation is **not yet evidence** of:
 
 If the goal is to claim disruptive value outside this sandbox, the repository still lacks the benchmark layer that serious research and production review would require.
 
+## Downstream Probe Benchmark
+
+The most useful next standard test was not another internal geometry scalar. It was a downstream representation probe with explicit raw-input baselines and class-imbalance-aware reporting.
+
+Why this test matters:
+
+1. Linear probes are a standard way to ask whether the learned representation makes a target easier to decode than the original input.
+2. k-NN probes test whether local neighborhood structure improves even when linear separability does not.
+3. Trustworthiness checks whether the embedding preserves local neighborhoods instead of merely collapsing them into a useful-but-distorted code.
+4. Reporting raw-input baselines is mandatory here because the ternary digits may already encode the label strongly enough to make the learned representation unnecessary.
+
+### Protocol
+
+The new audit path in `scripts/analysis/project_audit.py` now runs `representation_probe_suite(...)` directly from the checkpointed latent states.
+
+- Probe target: valuation level derived from the state index.
+- Included levels: `0..6`.
+- Excluded levels: `7..9`, because their support is too sparse for a defensible stratified train/test split.
+- Sample size: `2,034` states.
+- Class counts: `{0: 1334, 1: 445, 2: 148, 3: 49, 4: 20, 5: 20, 6: 18}`.
+- Evaluation seed: `42`, fixed in the audit path so repeated checkpoint evaluations stay reproducible even if the model forward pass samples latent noise.
+- Metrics: accuracy, balanced accuracy, macro-F1, and trustworthiness@15.
+
+This is still an internal-label benchmark, not an external task benchmark. That limitation matters: passing this test does not prove commercial predictive value. It only tells us whether the learned latent space improves access to a label the repository already defines exactly.
+
+### Results
+
+For `runs/v7_large_20260324_013725`:
+
+| Checkpoint | Probe | Accuracy | Balanced Acc. | Macro-F1 | Skeptical interpretation |
+| --- | --- | ---: | ---: | ---: | --- |
+| `best_Q.pt` | Linear on embedding | `0.8845` | `0.4286` | `0.3172` | Looks decent by raw accuracy, but class imbalance exposes weak minority-level decoding. |
+| `best_Q.pt` | Linear on raw ternary input | `1.0000` | `1.0000` | `1.0000` | The original digits already make valuation linearly trivial. |
+| `best_Q.pt` | 15-NN on embedding | `0.9951` | `0.9905` | `0.9821` | Very strong local organization for valuation neighborhoods. |
+| `best_Q.pt` | 15-NN on raw ternary input | `0.9165` | `0.6666` | `0.6674` | Raw space is materially worse as a neighborhood retrieval space. |
+| `best_Q.pt` | Trustworthiness@15 | `0.6365` | - | - | Moderate neighborhood preservation, not elite manifold quality. |
+| `final.pt` | Linear on embedding | `0.7396` | `0.4286` | `0.2476` | Late training still leaves minority-level linear decoding weak despite higher aggregate accuracy. |
+| `final.pt` | Linear on raw ternary input | `1.0000` | `1.0000` | `1.0000` | No learned advantage over the native digits on this target. |
+| `final.pt` | 15-NN on embedding | `1.0000` | `1.0000` | `1.0000` | Neighborhood ordering remains extremely strong for this internal label. |
+| `final.pt` | 15-NN on raw ternary input | `0.9165` | `0.6666` | `0.6674` | Same weak baseline as above. |
+| `final.pt` | Trustworthiness@15 | `0.6152` | - | - | Slightly worse than `best_Q.pt`; still moderate. |
+
+### What this benchmark actually proves
+
+This is the strongest new skeptical result from the current repository state.
+
+What survived scrutiny:
+
+1. The latent space is genuinely useful as a valuation-aware neighborhood index.
+2. On a k-NN probe, the learned embedding is much better than the raw ternary coordinates.
+3. That suggests a real retrieval or nearest-neighbor organization benefit inside the native finite state space.
+
+What did **not** survive scrutiny:
+
+1. The latent space is **not** a better linear feature space than the raw input for valuation prediction.
+2. The high raw-input baseline means the project cannot honestly market this result as “the model discovered a hidden predictive factor unavailable to simple methods.”
+3. Trustworthiness around `0.62-0.63` is useful but not strong enough to claim exceptionally faithful manifold preservation.
+4. Because the label is internally derived, this still does not count as evidence for external forecasting, industrial prediction, or neurosymbolic reasoning superiority.
+
+### Most defensible value statement after the probe benchmark
+
+The disruptive angle, if one emerges, is narrower than broad predictive AI claims:
+
+1. The model may become valuable as a hyperbolic retrieval/indexing layer over algebraically structured discrete state spaces.
+2. It may support compression or neighborhood search where raw-coordinate nearest-neighbor structure is poor.
+3. It is **not yet** validated as a superior general predictor, feature extractor, or commercially deployable inference engine on real datasets.
+
+That is a real and useful result, but it is not yet the sort of asymmetrical evidence that would justify aggressive external-performance claims.
+
 ### Metrics that should gate external claims
 
 For future external-task evaluations, I would require:

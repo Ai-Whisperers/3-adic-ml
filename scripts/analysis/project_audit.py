@@ -23,8 +23,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import numpy as np
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+from sklearn.linear_model import SGDClassifier
 from sklearn.cluster import KMeans
-from sklearn.metrics import adjusted_rand_score
+from sklearn.manifold import trustworthiness
+from sklearn.metrics import accuracy_score, adjusted_rand_score, balanced_accuracy_score, f1_score
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn.functional as F
 import yaml
@@ -221,6 +226,142 @@ def summarize_training_curves(run_dir: Path) -> dict[str, Any]:
             summaries[tag] = asdict(summary)
 
     return {"available": True, "summaries": summaries}
+
+
+def stratified_probe_indices(
+    labels: np.ndarray,
+    sample_budget: int = 2000,
+    min_per_class: int = 20,
+    seed: int = 42,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    selected: list[np.ndarray] = []
+    n_total = max(1, len(labels))
+    for cls in np.unique(labels):
+        cls_idx = np.where(labels == cls)[0]
+        proportional = int(round(sample_budget * len(cls_idx) / n_total))
+        take = min(len(cls_idx), max(min_per_class, proportional))
+        selected.append(rng.choice(cls_idx, size=take, replace=False))
+    return np.sort(np.concatenate(selected))
+
+
+def _fit_linear_probe(
+    features_train: np.ndarray,
+    features_test: np.ndarray,
+    labels_train: np.ndarray,
+    labels_test: np.ndarray,
+) -> dict[str, float]:
+    scaler = StandardScaler()
+    train_scaled = scaler.fit_transform(features_train)
+    test_scaled = scaler.transform(features_test)
+    classifier = SGDClassifier(
+        loss="log_loss",
+        penalty="l2",
+        alpha=1e-4,
+        max_iter=1000,
+        tol=1e-3,
+        class_weight="balanced",
+        random_state=42,
+    )
+    classifier.fit(train_scaled, labels_train)
+    predicted = classifier.predict(test_scaled)
+    return {
+        "accuracy": float(accuracy_score(labels_test, predicted)),
+        "balanced_accuracy": float(balanced_accuracy_score(labels_test, predicted)),
+        "macro_f1": float(f1_score(labels_test, predicted, average="macro")),
+    }
+
+
+def _fit_knn_probe(
+    features_train: np.ndarray,
+    features_test: np.ndarray,
+    labels_train: np.ndarray,
+    labels_test: np.ndarray,
+    n_neighbors: int = 15,
+) -> dict[str, float]:
+    scaler = StandardScaler()
+    train_scaled = scaler.fit_transform(features_train)
+    test_scaled = scaler.transform(features_test)
+    classifier = KNeighborsClassifier(n_neighbors=n_neighbors)
+    classifier.fit(train_scaled, labels_train)
+    predicted = classifier.predict(test_scaled)
+    return {
+        "accuracy": float(accuracy_score(labels_test, predicted)),
+        "balanced_accuracy": float(balanced_accuracy_score(labels_test, predicted)),
+        "macro_f1": float(f1_score(labels_test, predicted, average="macro")),
+    }
+
+
+def representation_probe_suite(
+    z_hyp: torch.Tensor,
+    raw_inputs: torch.Tensor,
+    indices: torch.Tensor,
+    sample_budget: int = 2000,
+    max_level: int = 6,
+    min_per_class: int = 20,
+    knn_neighbors: int = 15,
+    trustworthiness_size: int = 800,
+    seed: int = 42,
+) -> dict[str, Any]:
+    valuations = TERNARY.valuation(indices).cpu().numpy()
+    raw_np = raw_inputs.cpu().numpy()
+    z_np = z_hyp.detach().cpu().numpy()
+
+    mask = valuations <= max_level
+    filtered_labels = valuations[mask]
+    filtered_raw = raw_np[mask]
+    filtered_z = z_np[mask]
+    sampled_idx = stratified_probe_indices(
+        filtered_labels,
+        sample_budget=sample_budget,
+        min_per_class=min_per_class,
+        seed=seed,
+    )
+    sampled_labels = filtered_labels[sampled_idx]
+    sampled_raw = filtered_raw[sampled_idx]
+    sampled_z = filtered_z[sampled_idx]
+
+    emb_train, emb_test, labels_train, labels_test = train_test_split(
+        sampled_z,
+        sampled_labels,
+        test_size=0.2,
+        random_state=seed,
+        stratify=sampled_labels,
+    )
+    raw_train, raw_test, _, _ = train_test_split(
+        sampled_raw,
+        sampled_labels,
+        test_size=0.2,
+        random_state=seed,
+        stratify=sampled_labels,
+    )
+
+    trust_n = min(trustworthiness_size, len(raw_train))
+    return {
+        "levels_included": list(range(max_level + 1)),
+        "levels_excluded_due_to_sparse_support": list(range(max_level + 1, TERNARY.MAX_VALUATION + 1)),
+        "sample_size": int(len(sampled_labels)),
+        "class_counts": {
+            str(level): int((sampled_labels == level).sum())
+            for level in np.unique(sampled_labels)
+        },
+        "linear_probe_embedding": _fit_linear_probe(emb_train, emb_test, labels_train, labels_test),
+        "linear_probe_raw_input": _fit_linear_probe(raw_train, raw_test, labels_train, labels_test),
+        "knn_probe_embedding": _fit_knn_probe(
+            emb_train, emb_test, labels_train, labels_test, n_neighbors=knn_neighbors
+        ),
+        "knn_probe_raw_input": _fit_knn_probe(
+            raw_train, raw_test, labels_train, labels_test, n_neighbors=knn_neighbors
+        ),
+        "trustworthiness_k15": float(
+            trustworthiness(raw_train[:trust_n], emb_train[:trust_n], n_neighbors=knn_neighbors)
+        ),
+        "notes": [
+            "Probe labels are valuation levels, which are internally derived rather than external semantic labels.",
+            "Levels 7-9 are excluded by default because they are too sparse for a defensible stratified train/test split.",
+            "Raw-input baselines are reported to prevent overstating learned-feature value when the original digits already encode the label strongly.",
+        ],
+    }
 
 
 def evaluate_direction_clustering(
@@ -451,6 +592,7 @@ def evaluate_run(
     checkpoint_name: str = "best_Q.pt",
     generation_samples: int = 5000,
     scenario_trials: int = 50000,
+    evaluation_seed: int = 42,
 ) -> dict[str, Any]:
     run_dir = run_dir if run_dir.is_absolute() else (PROJECT_ROOT / run_dir)
     config = load_yaml(run_dir / "config.yaml")
@@ -461,6 +603,7 @@ def evaluate_run(
 
     all_ops = TERNARY.all_ternary().to(torch.float64)
     all_indices = torch.arange(len(all_ops), dtype=torch.long)
+    torch.manual_seed(evaluation_seed)
     with torch.no_grad():
         output = model(all_ops)
 
@@ -488,6 +631,7 @@ def evaluate_run(
     evaluation = {
         "run_dir": str(run_dir.relative_to(PROJECT_ROOT)),
         "checkpoint": checkpoint_name,
+        "evaluation_seed": evaluation_seed,
         "surface": asdict(summarize_surface(model)),
         "full_domain_metrics": {
             "per_digit_accuracy": float(compute_accuracy(output["logits_A"], all_ops)),
@@ -499,6 +643,7 @@ def evaluate_run(
         },
         "reconstruction_quality": reconstruction_quality(output["logits_A"], all_ops),
         "retrieval_metrics": retrieval_metrics(output["z_A_hyp"], all_indices),
+        "representation_probe_suite": representation_probe_suite(output["z_A_hyp"], all_ops, all_indices),
         "training_curves": summarize_training_curves(run_dir),
         "per_level_radii": per_level_radii,
         "direction_clustering": [asdict(row) for row in direction_rows],
@@ -550,6 +695,21 @@ def format_text_report(run_rows: list[RunResultRow], evaluation: dict[str, Any])
         f"- retrieval: val-nn1={retrieval['valuation_nn1_accuracy']:.4f}, "
         f"same-val-p@{retrieval['k']}={retrieval['same_valuation_precision_at_k']:.4f}, "
         f"parent-hit@{retrieval['k']}={retrieval['parent_hit_at_k']:.4f}"
+    )
+    probe = evaluation["representation_probe_suite"]
+    probe_linear = probe["linear_probe_embedding"]
+    probe_linear_raw = probe["linear_probe_raw_input"]
+    probe_knn = probe["knn_probe_embedding"]
+    probe_knn_raw = probe["knn_probe_raw_input"]
+    lines.append(
+        "- probes (levels 0-6): "
+        f"linear_emb_acc={probe_linear['accuracy']:.4f}, "
+        f"linear_emb_bal_acc={probe_linear['balanced_accuracy']:.4f}, "
+        f"linear_raw_acc={probe_linear_raw['accuracy']:.4f}, "
+        f"knn_emb_acc={probe_knn['accuracy']:.4f}, "
+        f"knn_emb_bal_acc={probe_knn['balanced_accuracy']:.4f}, "
+        f"knn_raw_acc={probe_knn_raw['accuracy']:.4f}, "
+        f"trustworthiness@15={probe['trustworthiness_k15']:.4f}"
     )
     curve_q = evaluation["training_curves"]["summaries"].get("Hierarchy/Q_VAE_A")
     if curve_q is not None:
