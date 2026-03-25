@@ -164,6 +164,127 @@ Conclusions:
 
 `compute_hierarchy_metrics()` samples up to 1,000 points for the distance-correlation component rather than using all pairwise distances: `src/train.py:570-590`. It also operates during validation rather than on the entire state space. That explains why the logged `best_Q` values are a bit higher than the full-domain recomputed values.
 
+## How The Main Metrics Are Actually Computed
+
+This matters because several metric names sound broader than they really are.
+
+### Reconstruction metrics
+
+- `Accuracy/val` is **per-trit accuracy**, not sample-level exact match. It is computed by argmax over each of the 9 ternary positions and averaging correctness over all trits: `src/train.py:382-402`.
+- `Coverage` is **perfect-sample reconstruction rate**, meaning a sample counts only if all 9 positions are correct: `src/train.py:405-426`.
+- The LR controller does **not** use perfect-sample coverage. It passes `avg_val_acc` into `TrainingMetrics.coverage`, so the controller’s “coverage” signal is actually per-trit accuracy: `src/train.py:1584-1592`.
+
+This distinction is easy to miss and matters operationally.
+
+### Geometry metrics
+
+- `hierarchy` is the **negated Spearman correlation** between valuation and hyperbolic radius, so positive is better: `src/train.py:563-567`.
+- `dist_corr` is Spearman correlation between pairwise radius differences and pairwise valuation differences over a sampled subset: `src/train.py:570-590`.
+- `Q` is `dist_corr + 1.5 * hierarchy`: `src/models/lr_controller.py:46-55`.
+- `tree_coherence` is the mean parent-child geodesic distance, so **lower is better**: `src/train.py:444-500`.
+- `mean_level_hierarchy` is a level-wise scatter proxy built from per-level radius standard deviation, where values closer to `-1` are better: `src/train.py:502-538` and `src/train.py:596-615`.
+
+### Direction metrics
+
+The live ARI metrics are computed by:
+
+1. Running a full-domain forward pass,
+2. Normalizing direction vectors from `z_hyp / r`,
+3. Splitting by valuation level,
+4. Clustering each level with K-means,
+5. Comparing cluster labels to `digit_prefix_class()` using ARI.
+
+That logic lives in `src/train.py:1515-1560`. This is a reasonable research diagnostic, but it is still a **proxy for internal geometric organization**, not proof of external semantic reasoning.
+
+### Hyperbolic coverage caveat
+
+There is also a `compute_hyperbolic_coverage()` function based on entropy over radius bins: `src/train.py:429-441`. It is accumulated during evaluation, but it is not the `Coverage` metric shown in TensorBoard, and it is not the signal fed into the LR controller in the current training path.
+
+## Training-State Review Of The Latest V7-Large Run
+
+The latest fully instrumented run is `runs/v7_large_20260324_013725`. Its TensorBoard logs give a better picture of what training actually achieved and what degraded.
+
+### Stable wins
+
+These metrics stayed strong late in training:
+
+| Metric | Peak | Final | Last-20 Mean ± Std | Interpretation |
+|---|---:|---:|---:|---|
+| Val accuracy | 1.000000 @ epoch 1230 | 0.999831 @ 1499 | 0.999839 ± 0.000090 | reconstruction remained saturated |
+| Perfect reconstruction coverage | 1.000000 @ epoch 1230 | 0.998476 @ 1499 | 0.998603 ± 0.000769 | almost all samples reconstructed exactly |
+| Hierarchy | 0.839463 @ epoch 585 | 0.839463 @ 1499 | 0.839463 ± 0.000000 | radial ordering fully plateaued |
+| Q | 2.164360 @ epoch 810 | 2.161561 @ 1499 | 2.158395 ± 0.001819 | high and stable, with mild late drift |
+
+### Weak or decaying signals
+
+These are the metrics that undermine strong disruption claims:
+
+| Metric | Peak | Final | Last-20 Mean ± Std | Skeptical read |
+|---|---:|---:|---:|---|
+| ARI v0 | 0.195761 @ epoch 355 | 0.079427 @ 1499 | 0.078713 ± 0.006376 | direction clustering stayed weak |
+| ARI v1 | 0.126743 @ epoch 190 | 0.084199 @ 1499 | 0.081462 ± 0.002829 | weak |
+| Composite ARI | 0.141148 @ epoch 355 | 0.064635 @ 1499 | 0.064242 ± 0.003959 | not commercially persuasive |
+| AQ | 0.028817 @ epoch 5 | ~0.0 @ 1499 | ~0.0 | direction separation mostly disappeared |
+
+This is the strongest evidence so far that the current V7-large run is **primarily a radial hierarchy engine**, not a strong direction-semantic engine.
+
+## Research-Grade Metric Augmentation
+
+To get beyond repo-native scalar names, I recomputed a small set of more standard metrics on the full domain.
+
+### V7-large: best-Q checkpoint vs final checkpoint
+
+| Checkpoint | Accuracy | Coverage | Cross-Entropy | ECE-15 | Brier | Q | Tree Coherence | Mean Level Hierarchy |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `best_Q.pt` | 0.999441 | 0.995021 | 0.018978 | 0.017424 | 0.002716 | 2.145318 | 0.582617 | -0.962275 |
+| `final.pt` | 0.999819 | 0.998374 | 0.012349 | 0.011723 | 0.001174 | 2.144204 | 0.593941 | -0.979512 |
+
+Interpretation:
+
+- `best_Q.pt` is the best checkpoint only in the narrow sense of the repo’s `Q` objective.
+- `final.pt` is actually **better** on reconstruction, calibration, and level consistency.
+- the project needs multi-objective checkpoint selection if it wants to claim broad model quality rather than just best-`Q`.
+
+### Cross-family comparison on battle-tested metric families
+
+Using `best_Q.pt` for each family:
+
+| Family | Cross-Entropy | ECE-15 | Tree Coherence | Skeptical take |
+|---|---:|---:|---:|---|
+| V6 | 0.058462 | 0.054593 | 3.044381 | weakest reconstruction confidence and weak parent-child locality |
+| V7 | 0.019499 | 0.018223 | 2.564976 | big reconstruction/calibration gain over V6 |
+| V7-large | 0.018978 | 0.017424 | 0.582617 | marginal reconstruction gain, but **major** tree-coherence gain |
+
+This is one place where the larger model actually does something materially interesting: it dramatically improves parent-child compactness relative to V6/V7 even though its `Q` improvement is small.
+
+### Retrieval-style diagnostics
+
+On a 2,000-point sampled retrieval evaluation for V7-large:
+
+| Checkpoint | Valuation NN-1 Accuracy | Same-Valuation Precision@10 | Parent Hit@10 |
+|---|---:|---:|---:|
+| `best_Q.pt` | 0.9995 | 0.9978 | 0.0052 |
+| `final.pt` | 1.0000 | 0.9988 | 0.0157 |
+
+Interpretation:
+
+- valuation cohorts are extremely well clustered
+- parent-child retrieval is still poor
+- so the embedding separates **levels** much better than it preserves local tree adjacency
+
+That limits any claim that the model has learned a rich executable symbolic tree, even though the radial hierarchy itself is strong.
+
+### Generative distribution fidelity
+
+I also computed Jensen-Shannon divergence between the generated valuation histogram and the true domain valuation histogram:
+
+| Checkpoint | Valuation JSD |
+|---|---:|
+| `best_Q.pt` | 0.2034 |
+| `final.pt` | 0.2313 |
+
+That is not catastrophic, but it is far from “distribution-faithful generation.” The decoder prior is clearly biased relative to the true domain frequency profile.
+
 ## Direction Geometry Review
 
 This is the main area where skepticism is warranted.
@@ -218,6 +339,31 @@ Generation is **not yet evidence** of:
 - external-world simulation
 - likelihood-calibrated forecasting
 - stronger-than-classical generative performance on real data
+
+## Benchmark Gap Against Research And Industry Standards
+
+If the goal is to claim disruptive value outside this sandbox, the repository still lacks the benchmark layer that serious research and production review would require.
+
+### Metrics that should gate external claims
+
+For future external-task evaluations, I would require:
+
+1. Predictive quality: negative log-likelihood, AUROC/PR-AUC, macro-F1, calibration error, Brier score.
+2. Retrieval quality: Recall@K, Precision@K, MRR, NDCG.
+3. Representation quality: k-NN probe, linear probe, trustworthiness, ablations against Euclidean baselines.
+4. OOD robustness: corruption/OOD AUROC, confidence calibration under shift.
+5. Generative quality: held-out NLL or likelihood proxy, support coverage, conditional fidelity, diversity metrics that match the real task.
+
+### Dataset suites that would count as serious evidence
+
+No results currently exist on these, but these are the kinds of benchmark families that would matter:
+
+1. Tabular benchmark suites such as OpenML-CC18 for structured prediction.
+2. Clinical or operational tabular/time-series datasets such as MIMIC-IV or eICU if the project wants high-stakes inference relevance.
+3. Graph or hierarchical benchmarks such as OGB if the project wants to argue that hyperbolic structure helps on real relational data.
+4. Taxonomy-heavy vision or multimodal datasets such as iNaturalist or WordNet-linked image corpora if the claim is “learned hierarchy with real semantics”.
+
+Until the model wins on at least one external benchmark family with those metric classes, “disruption” remains a hypothesis, not a demonstrated result.
 
 ## Commercial And Research Application Assessment
 

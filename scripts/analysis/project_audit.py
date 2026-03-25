@@ -22,12 +22,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score
 import torch
+import torch.nn.functional as F
 import yaml
 
 from src.core import TERNARY
+from src.geometry.poincare import poincare_distance
 from src.models.vae import TernaryVAEV6Controllable
 from src.train import compute_accuracy, compute_coverage, compute_hierarchy_metrics
 from src.utils.checkpoint import load_checkpoint_compat
@@ -66,6 +69,18 @@ class DirectionClusteringRow:
     n_samples: int
     n_classes: int
     ari: float
+
+
+@dataclass(frozen=True)
+class ScalarTrajectorySummary:
+    tag: str
+    optimize: str
+    best_step: int
+    best_value: float
+    last_step: int
+    last_value: float
+    tail_mean: float
+    tail_std: float
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
@@ -146,6 +161,68 @@ def summarize_surface(model: TernaryVAEV6Controllable) -> SurfaceSummary:
     )
 
 
+def summarize_scalar_series(
+    tag: str,
+    points: list[tuple[int, float]],
+    optimize: str = "max",
+    tail_size: int = 20,
+) -> ScalarTrajectorySummary | None:
+    if not points:
+        return None
+
+    clean = [(step, value) for step, value in points if not np.isnan(value)]
+    if not clean:
+        return None
+
+    if optimize == "min":
+        best_step, best_value = min(clean, key=lambda item: item[1])
+    else:
+        best_step, best_value = max(clean, key=lambda item: item[1])
+
+    last_step, last_value = clean[-1]
+    tail = [value for _, value in clean[-tail_size:]]
+    return ScalarTrajectorySummary(
+        tag=tag,
+        optimize=optimize,
+        best_step=int(best_step),
+        best_value=float(best_value),
+        last_step=int(last_step),
+        last_value=float(last_value),
+        tail_mean=float(np.mean(tail)),
+        tail_std=float(np.std(tail)),
+    )
+
+
+def summarize_training_curves(run_dir: Path) -> dict[str, Any]:
+    tb_dirs = sorted(path for path in run_dir.iterdir() if path.is_dir() and path.name.startswith("ternary_vae_"))
+    if not tb_dirs:
+        return {"available": False, "summaries": {}}
+
+    acc = EventAccumulator(str(tb_dirs[0]))
+    acc.Reload()
+    tags = {
+        "Accuracy/val": "max",
+        "Coverage": "max",
+        "Hierarchy/Q_VAE_A": "max",
+        "Hierarchy/corr_VAE_A": "max",
+        "Hierarchy/dist_corr": "max",
+        "Direction/ARI_v0": "max",
+        "Direction/ARI_v1": "max",
+        "Direction/ARI_composite": "max",
+        "TreeCoherence/VAE_A": "min",
+    }
+
+    summaries: dict[str, Any] = {}
+    for tag, optimize in tags.items():
+        scalars = acc.Scalars(tag)
+        series = [(event.step, event.value) for event in scalars]
+        summary = summarize_scalar_series(tag, series, optimize=optimize)
+        if summary is not None:
+            summaries[tag] = asdict(summary)
+
+    return {"available": True, "summaries": summaries}
+
+
 def evaluate_direction_clustering(
     z_hyp: torch.Tensor,
     r: torch.Tensor | None,
@@ -186,6 +263,81 @@ def evaluate_direction_clustering(
     return rows
 
 
+def reconstruction_quality(logits: torch.Tensor, targets: torch.Tensor, n_bins: int = 15) -> dict[str, float]:
+    logits_3 = logits.view(-1, 9, 3)
+    targets_3 = (targets.long() + 1)
+    flat_logits = logits_3.reshape(-1, 3)
+    flat_targets = targets_3.reshape(-1)
+
+    cross_entropy = F.cross_entropy(logits_3.permute(0, 2, 1), targets_3).item()
+    probs = flat_logits.softmax(dim=-1)
+    conf, pred = probs.max(dim=-1)
+    correct = (pred == flat_targets).double()
+    bins = torch.linspace(0, 1, n_bins + 1, dtype=torch.float64)
+    ece = torch.tensor(0.0, dtype=torch.float64)
+    for idx in range(n_bins):
+        lo = bins[idx]
+        hi = bins[idx + 1]
+        mask = (conf > lo) & (conf <= hi) if idx > 0 else (conf >= lo) & (conf <= hi)
+        if mask.any():
+            frac = mask.double().mean()
+            acc = correct[mask].mean()
+            avg_conf = conf[mask].mean()
+            ece = ece + frac * (acc - avg_conf).abs()
+
+    one_hot = F.one_hot(flat_targets, num_classes=3).double()
+    brier = ((probs - one_hot) ** 2).sum(dim=-1).mean().item()
+    return {
+        "cross_entropy": float(cross_entropy),
+        "ece_15bin": float(ece.item()),
+        "brier": float(brier),
+    }
+
+
+def retrieval_metrics(
+    z_hyp: torch.Tensor,
+    indices: torch.Tensor,
+    sample_size: int = 2000,
+    k: int = 10,
+    seed: int = 123,
+) -> dict[str, Any]:
+    rng = np.random.default_rng(seed)
+    if len(indices) > sample_size:
+        selected = np.sort(rng.choice(len(indices), sample_size, replace=False))
+        z_eval = z_hyp[selected]
+        idx_eval = indices[selected]
+    else:
+        z_eval = z_hyp
+        idx_eval = indices
+
+    valuations = TERNARY.valuation(idx_eval)
+    parents = TERNARY.parent(idx_eval)
+    with torch.no_grad():
+        distances = poincare_distance(z_eval[:, None, :], z_eval[None, :, :], c=1.0)
+    distances.fill_diagonal_(float("inf"))
+    nn = distances.topk(k, largest=False).indices
+    nn_vals = valuations[nn]
+    nn1 = nn[:, 0]
+
+    present = {int(value.item()): pos for pos, value in enumerate(idx_eval)}
+    parent_hits: list[int] = []
+    for row, parent in enumerate(parents):
+        parent_index = int(parent.item())
+        if parent_index < 0 or parent_index not in present:
+            continue
+        parent_hits.append(int(present[parent_index] in nn[row].tolist()))
+
+    return {
+        "sample_size": int(len(idx_eval)),
+        "k": k,
+        "valuation_nn1_accuracy": float((valuations[nn1] == valuations).double().mean().item()),
+        "same_valuation_precision_at_k": float((nn_vals == valuations[:, None]).double().mean().item()),
+        "parent_hit_at_k": (
+            float(sum(parent_hits) / len(parent_hits)) if parent_hits else float("nan")
+        ),
+    }
+
+
 def sample_decoder_prior(
     model: TernaryVAEV6Controllable,
     latent_dim: int,
@@ -208,6 +360,21 @@ def sample_decoder_prior(
         for level in range(TERNARY.MAX_VALUATION + 1)
         if int((valuations == level).sum().item()) > 0
     }
+    true_counts = torch.tensor(
+        [TERNARY.level_count(level) for level in range(TERNARY.MAX_VALUATION + 1)],
+        dtype=torch.float64,
+    )
+    true_distribution = true_counts / true_counts.sum()
+    generated_counts = torch.tensor(
+        [(valuations == level).sum().item() for level in range(TERNARY.MAX_VALUATION + 1)],
+        dtype=torch.float64,
+    )
+    generated_distribution = generated_counts / generated_counts.sum().clamp(min=1.0)
+    midpoint = 0.5 * (true_distribution + generated_distribution)
+    js_divergence = 0.5 * (
+        (true_distribution * (true_distribution / midpoint).log()).sum()
+        + (generated_distribution * (generated_distribution / midpoint).log()).sum()
+    )
 
     samples = []
     for row in range(min(10, n_samples)):
@@ -224,6 +391,7 @@ def sample_decoder_prior(
         "unique_indices": int(unique_indices.numel()),
         "fraction_unique": float(unique_indices.numel() / n_samples),
         "space_coverage_fraction": float(unique_indices.numel() / TERNARY.N_OPERATIONS),
+        "valuation_js_divergence": float(js_divergence.item()),
         "valuation_histogram": hist,
         "samples": samples,
     }
@@ -329,6 +497,9 @@ def evaluate_run(
             "dist_corr": float(hierarchy["dist_corr"]),
             "Q": float(hierarchy["Q"]),
         },
+        "reconstruction_quality": reconstruction_quality(output["logits_A"], all_ops),
+        "retrieval_metrics": retrieval_metrics(output["z_A_hyp"], all_indices),
+        "training_curves": summarize_training_curves(run_dir),
         "per_level_radii": per_level_radii,
         "direction_clustering": [asdict(row) for row in direction_rows],
         "generation_from_decoder_prior": sample_decoder_prior(model, model.latent_dim, generation_samples, seed=123),
@@ -366,8 +537,28 @@ def format_text_report(run_rows: list[RunResultRow], evaluation: dict[str, Any])
     lines.append(
         f"- decoder-prior generation: unique={gen['unique_indices']} / {gen['n_samples']}, "
         f"fraction_unique={gen['fraction_unique']:.4f}, "
-        f"space_coverage={gen['space_coverage_fraction']:.4f}"
+        f"space_coverage={gen['space_coverage_fraction']:.4f}, "
+        f"valuation_jsd={gen['valuation_js_divergence']:.4f}"
     )
+    recon = evaluation["reconstruction_quality"]
+    lines.append(
+        f"- reconstruction quality: ce={recon['cross_entropy']:.6f}, "
+        f"ece15={recon['ece_15bin']:.6f}, brier={recon['brier']:.6f}"
+    )
+    retrieval = evaluation["retrieval_metrics"]
+    lines.append(
+        f"- retrieval: val-nn1={retrieval['valuation_nn1_accuracy']:.4f}, "
+        f"same-val-p@{retrieval['k']}={retrieval['same_valuation_precision_at_k']:.4f}, "
+        f"parent-hit@{retrieval['k']}={retrieval['parent_hit_at_k']:.4f}"
+    )
+    curve_q = evaluation["training_curves"]["summaries"].get("Hierarchy/Q_VAE_A")
+    if curve_q is not None:
+        lines.append(
+            "- training curve Q: "
+            f"peak={curve_q['best_value']:.6f}@{curve_q['best_step']}, "
+            f"last={curve_q['last_value']:.6f}@{curve_q['last_step']}, "
+            f"tail_mean={curve_q['tail_mean']:.6f}"
+        )
 
     scenario = evaluation["scenario_monte_carlo"]["probabilities"]
     lines.append(

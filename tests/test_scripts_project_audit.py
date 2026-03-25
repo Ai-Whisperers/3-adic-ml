@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from scripts.analysis.project_audit import (
@@ -10,6 +11,7 @@ from scripts.analysis.project_audit import (
     build_model_kwargs,
     collect_run_results,
     monte_carlo_scenarios,
+    summarize_scalar_series,
 )
 
 
@@ -55,3 +57,20 @@ def test_monte_carlo_scenarios_is_deterministic() -> None:
     repeat = monte_carlo_scenarios(2.1454, 0.9957, 0.1254, trials=1000, seed=123)
 
     assert baseline == repeat
+
+
+def test_summarize_scalar_series_supports_max_and_min_modes() -> None:
+    points = [(0, 0.5), (5, 0.7), (10, 0.6)]
+
+    maximize = summarize_scalar_series("metric/max", points, optimize="max", tail_size=2)
+    minimize = summarize_scalar_series("metric/min", points, optimize="min", tail_size=2)
+
+    assert maximize is not None
+    assert maximize.best_step == 5
+    assert maximize.best_value == 0.7
+    assert maximize.last_step == 10
+    assert maximize.tail_mean == pytest.approx(0.65)
+
+    assert minimize is not None
+    assert minimize.best_step == 0
+    assert minimize.best_value == 0.5
