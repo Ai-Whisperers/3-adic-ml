@@ -292,8 +292,38 @@ def _fit_knn_probe(
     }
 
 
+def _probe_feature_family(
+    features_train: np.ndarray,
+    features_test: np.ndarray,
+    labels_train: np.ndarray,
+    labels_test: np.ndarray,
+    raw_train: np.ndarray,
+    knn_neighbors: int,
+    trustworthiness_size: int,
+) -> dict[str, Any]:
+    trust_n = min(trustworthiness_size, len(raw_train))
+    trust_k = min(knn_neighbors, max(1, (trust_n - 1) // 2))
+    trust = float("nan")
+    if trust_n >= 3:
+        trust = float(
+            trustworthiness(raw_train[:trust_n], features_train[:trust_n], n_neighbors=trust_k)
+        )
+    return {
+        "linear_probe": _fit_linear_probe(features_train, features_test, labels_train, labels_test),
+        "knn_probe": _fit_knn_probe(
+            features_train,
+            features_test,
+            labels_train,
+            labels_test,
+            n_neighbors=knn_neighbors,
+        ),
+        "trustworthiness_k15": trust,
+    }
+
+
 def representation_probe_suite(
     z_hyp: torch.Tensor,
+    z_tangent: torch.Tensor,
     raw_inputs: torch.Tensor,
     indices: torch.Tensor,
     sample_budget: int = 2000,
@@ -306,11 +336,13 @@ def representation_probe_suite(
     valuations = TERNARY.valuation(indices).cpu().numpy()
     raw_np = raw_inputs.cpu().numpy()
     z_np = z_hyp.detach().cpu().numpy()
+    z_tangent_np = z_tangent.detach().cpu().numpy()
 
     mask = valuations <= max_level
     filtered_labels = valuations[mask]
     filtered_raw = raw_np[mask]
     filtered_z = z_np[mask]
+    filtered_tangent = z_tangent_np[mask]
     sampled_idx = stratified_probe_indices(
         filtered_labels,
         sample_budget=sample_budget,
@@ -320,23 +352,21 @@ def representation_probe_suite(
     sampled_labels = filtered_labels[sampled_idx]
     sampled_raw = filtered_raw[sampled_idx]
     sampled_z = filtered_z[sampled_idx]
-
-    emb_train, emb_test, labels_train, labels_test = train_test_split(
-        sampled_z,
+    sampled_tangent = filtered_tangent[sampled_idx]
+    split_idx = np.arange(len(sampled_labels))
+    train_idx, test_idx, labels_train, labels_test = train_test_split(
+        split_idx,
         sampled_labels,
         test_size=0.2,
         random_state=seed,
         stratify=sampled_labels,
     )
-    raw_train, raw_test, _, _ = train_test_split(
-        sampled_raw,
-        sampled_labels,
-        test_size=0.2,
-        random_state=seed,
-        stratify=sampled_labels,
-    )
-
-    trust_n = min(trustworthiness_size, len(raw_train))
+    raw_train = sampled_raw[train_idx]
+    raw_test = sampled_raw[test_idx]
+    emb_train = sampled_z[train_idx]
+    emb_test = sampled_z[test_idx]
+    tangent_train = sampled_tangent[train_idx]
+    tangent_test = sampled_tangent[test_idx]
     return {
         "levels_included": list(range(max_level + 1)),
         "levels_excluded_due_to_sparse_support": list(range(max_level + 1, TERNARY.MAX_VALUATION + 1)),
@@ -345,21 +375,35 @@ def representation_probe_suite(
             str(level): int((sampled_labels == level).sum())
             for level in np.unique(sampled_labels)
         },
-        "linear_probe_embedding": _fit_linear_probe(emb_train, emb_test, labels_train, labels_test),
-        "linear_probe_raw_input": _fit_linear_probe(raw_train, raw_test, labels_train, labels_test),
-        "knn_probe_embedding": _fit_knn_probe(
-            emb_train, emb_test, labels_train, labels_test, n_neighbors=knn_neighbors
+        "raw_input": {
+            "linear_probe": _fit_linear_probe(raw_train, raw_test, labels_train, labels_test),
+            "knn_probe": _fit_knn_probe(
+                raw_train, raw_test, labels_train, labels_test, n_neighbors=knn_neighbors
+            ),
+        },
+        "tangent_euclidean": _probe_feature_family(
+            tangent_train,
+            tangent_test,
+            labels_train,
+            labels_test,
+            raw_train,
+            knn_neighbors=knn_neighbors,
+            trustworthiness_size=trustworthiness_size,
         ),
-        "knn_probe_raw_input": _fit_knn_probe(
-            raw_train, raw_test, labels_train, labels_test, n_neighbors=knn_neighbors
-        ),
-        "trustworthiness_k15": float(
-            trustworthiness(raw_train[:trust_n], emb_train[:trust_n], n_neighbors=knn_neighbors)
+        "hyperbolic_embedding": _probe_feature_family(
+            emb_train,
+            emb_test,
+            labels_train,
+            labels_test,
+            raw_train,
+            knn_neighbors=knn_neighbors,
+            trustworthiness_size=trustworthiness_size,
         ),
         "notes": [
             "Probe labels are valuation levels, which are internally derived rather than external semantic labels.",
             "Levels 7-9 are excluded by default because they are too sparse for a defensible stratified train/test split.",
             "Raw-input baselines are reported to prevent overstating learned-feature value when the original digits already encode the label strongly.",
+            "Euclidean tangent baselines are reported to test whether hyperbolic projection adds value beyond the sampled latent fed directly to the decoder.",
         ],
     }
 
@@ -435,26 +479,14 @@ def reconstruction_quality(logits: torch.Tensor, targets: torch.Tensor, n_bins: 
     }
 
 
-def retrieval_metrics(
-    z_hyp: torch.Tensor,
-    indices: torch.Tensor,
-    sample_size: int = 2000,
-    k: int = 10,
-    seed: int = 123,
+def _retrieval_metrics_from_distances(
+    distances: torch.Tensor,
+    idx_eval: torch.Tensor,
+    k: int,
 ) -> dict[str, Any]:
-    rng = np.random.default_rng(seed)
-    if len(indices) > sample_size:
-        selected = np.sort(rng.choice(len(indices), sample_size, replace=False))
-        z_eval = z_hyp[selected]
-        idx_eval = indices[selected]
-    else:
-        z_eval = z_hyp
-        idx_eval = indices
-
     valuations = TERNARY.valuation(idx_eval)
     parents = TERNARY.parent(idx_eval)
-    with torch.no_grad():
-        distances = poincare_distance(z_eval[:, None, :], z_eval[None, :, :], c=1.0)
+    distances = distances.clone()
     distances.fill_diagonal_(float("inf"))
     nn = distances.topk(k, largest=False).indices
     nn_vals = valuations[nn]
@@ -476,6 +508,36 @@ def retrieval_metrics(
         "parent_hit_at_k": (
             float(sum(parent_hits) / len(parent_hits)) if parent_hits else float("nan")
         ),
+    }
+
+
+def retrieval_ablation_suite(
+    z_hyp: torch.Tensor,
+    z_tangent: torch.Tensor,
+    indices: torch.Tensor,
+    sample_size: int = 2000,
+    k: int = 10,
+    seed: int = 123,
+) -> dict[str, Any]:
+    rng = np.random.default_rng(seed)
+    if len(indices) > sample_size:
+        selected = np.sort(rng.choice(len(indices), sample_size, replace=False))
+        z_hyp_eval = z_hyp[selected]
+        z_tangent_eval = z_tangent[selected]
+        idx_eval = indices[selected]
+    else:
+        z_hyp_eval = z_hyp
+        z_tangent_eval = z_tangent
+        idx_eval = indices
+
+    with torch.no_grad():
+        hyp_distances = poincare_distance(z_hyp_eval[:, None, :], z_hyp_eval[None, :, :], c=1.0)
+        tangent_distances = torch.cdist(z_tangent_eval, z_tangent_eval, p=2)
+    return {
+        "sample_size": int(len(idx_eval)),
+        "k": k,
+        "hyperbolic_embedding": _retrieval_metrics_from_distances(hyp_distances, idx_eval, k),
+        "tangent_euclidean": _retrieval_metrics_from_distances(tangent_distances, idx_eval, k),
     }
 
 
@@ -642,8 +704,17 @@ def evaluate_run(
             "Q": float(hierarchy["Q"]),
         },
         "reconstruction_quality": reconstruction_quality(output["logits_A"], all_ops),
-        "retrieval_metrics": retrieval_metrics(output["z_A_hyp"], all_indices),
-        "representation_probe_suite": representation_probe_suite(output["z_A_hyp"], all_ops, all_indices),
+        "retrieval_ablation": retrieval_ablation_suite(
+            output["z_A_hyp"],
+            output["z_A_tangent"],
+            all_indices,
+        ),
+        "representation_probe_suite": representation_probe_suite(
+            output["z_A_hyp"],
+            output["z_A_tangent"],
+            all_ops,
+            all_indices,
+        ),
         "training_curves": summarize_training_curves(run_dir),
         "per_level_radii": per_level_radii,
         "direction_clustering": [asdict(row) for row in direction_rows],
@@ -690,26 +761,30 @@ def format_text_report(run_rows: list[RunResultRow], evaluation: dict[str, Any])
         f"- reconstruction quality: ce={recon['cross_entropy']:.6f}, "
         f"ece15={recon['ece_15bin']:.6f}, brier={recon['brier']:.6f}"
     )
-    retrieval = evaluation["retrieval_metrics"]
+    retrieval = evaluation["retrieval_ablation"]
+    retrieval_hyp = retrieval["hyperbolic_embedding"]
+    retrieval_tangent = retrieval["tangent_euclidean"]
     lines.append(
-        f"- retrieval: val-nn1={retrieval['valuation_nn1_accuracy']:.4f}, "
-        f"same-val-p@{retrieval['k']}={retrieval['same_valuation_precision_at_k']:.4f}, "
-        f"parent-hit@{retrieval['k']}={retrieval['parent_hit_at_k']:.4f}"
+        "- retrieval ablation: "
+        f"hyp_val-nn1={retrieval_hyp['valuation_nn1_accuracy']:.4f}, "
+        f"euc_val-nn1={retrieval_tangent['valuation_nn1_accuracy']:.4f}, "
+        f"hyp_parent-hit@{retrieval['k']}={retrieval_hyp['parent_hit_at_k']:.4f}, "
+        f"euc_parent-hit@{retrieval['k']}={retrieval_tangent['parent_hit_at_k']:.4f}"
     )
     probe = evaluation["representation_probe_suite"]
-    probe_linear = probe["linear_probe_embedding"]
-    probe_linear_raw = probe["linear_probe_raw_input"]
-    probe_knn = probe["knn_probe_embedding"]
-    probe_knn_raw = probe["knn_probe_raw_input"]
+    probe_hyp = probe["hyperbolic_embedding"]
+    probe_tangent = probe["tangent_euclidean"]
+    probe_raw = probe["raw_input"]
     lines.append(
         "- probes (levels 0-6): "
-        f"linear_emb_acc={probe_linear['accuracy']:.4f}, "
-        f"linear_emb_bal_acc={probe_linear['balanced_accuracy']:.4f}, "
-        f"linear_raw_acc={probe_linear_raw['accuracy']:.4f}, "
-        f"knn_emb_acc={probe_knn['accuracy']:.4f}, "
-        f"knn_emb_bal_acc={probe_knn['balanced_accuracy']:.4f}, "
-        f"knn_raw_acc={probe_knn_raw['accuracy']:.4f}, "
-        f"trustworthiness@15={probe['trustworthiness_k15']:.4f}"
+        f"linear_hyp_acc={probe_hyp['linear_probe']['accuracy']:.4f}, "
+        f"linear_euc_acc={probe_tangent['linear_probe']['accuracy']:.4f}, "
+        f"linear_raw_acc={probe_raw['linear_probe']['accuracy']:.4f}, "
+        f"knn_hyp_acc={probe_hyp['knn_probe']['accuracy']:.4f}, "
+        f"knn_euc_acc={probe_tangent['knn_probe']['accuracy']:.4f}, "
+        f"knn_raw_acc={probe_raw['knn_probe']['accuracy']:.4f}, "
+        f"trust_hyp@15={probe_hyp['trustworthiness_k15']:.4f}, "
+        f"trust_euc@15={probe_tangent['trustworthiness_k15']:.4f}"
     )
     curve_q = evaluation["training_curves"]["summaries"].get("Hierarchy/Q_VAE_A")
     if curve_q is not None:

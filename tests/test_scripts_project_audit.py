@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 import yaml
 
 from scripts.analysis.project_audit import (
@@ -12,9 +13,11 @@ from scripts.analysis.project_audit import (
     build_model_kwargs,
     collect_run_results,
     monte_carlo_scenarios,
+    representation_probe_suite,
     stratified_probe_indices,
     summarize_scalar_series,
 )
+from src.core import TERNARY
 
 
 PRESETS_DIR = PROJECT_ROOT / "src" / "presets"
@@ -89,3 +92,27 @@ def test_stratified_probe_indices_is_deterministic_and_keeps_small_classes() -> 
     assert (sampled == 0).sum() >= 4
     assert (sampled == 1).sum() >= 4
     assert (sampled == 2).sum() == 3
+
+
+def test_representation_probe_suite_reports_tangent_and_hyperbolic_views() -> None:
+    all_ops = TERNARY.all_ternary().to(torch.float64)
+    all_indices = torch.arange(len(all_ops), dtype=torch.long)
+
+    suite = representation_probe_suite(
+        z_hyp=all_ops * 0.5,
+        z_tangent=all_ops * 1.5,
+        raw_inputs=all_ops,
+        indices=all_indices,
+        sample_budget=60,
+        max_level=2,
+        min_per_class=3,
+        trustworthiness_size=20,
+    )
+
+    assert suite["levels_included"] == [0, 1, 2]
+    assert suite["levels_excluded_due_to_sparse_support"] == [3, 4, 5, 6, 7, 8, 9]
+    assert "hyperbolic_embedding" in suite
+    assert "tangent_euclidean" in suite
+    assert "raw_input" in suite
+    assert suite["tangent_euclidean"]["trustworthiness_k15"] >= 0.0
+    assert any("Euclidean tangent baselines" in note for note in suite["notes"])

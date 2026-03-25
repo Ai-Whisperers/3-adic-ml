@@ -413,6 +413,77 @@ The disruptive angle, if one emerges, is narrower than broad predictive AI claim
 
 That is a real and useful result, but it is not yet the sort of asymmetrical evidence that would justify aggressive external-performance claims.
 
+## Hyperbolic Vs Euclidean Baseline Ablation
+
+The next wise benchmark was the one the previous section still lacked: an actual Euclidean baseline ablation on the same checkpointed latent sample.
+
+This matters because the architecture does **not** use the hyperbolic code for decoding. In `src/models/vae.py`, the model samples `z_A_tangent`, projects it to `z_A_hyp` for the geometry losses, but still feeds `z_A_tangent` directly into `decoder_A`. So if Euclidean tangent features outperform hyperbolic features on reconstruction-adjacent linear probes, that is not surprising. The question is whether the hyperbolic projection adds a different kind of value anyway.
+
+### Protocol
+
+The audit now compares three representations on the same split:
+
+1. Raw ternary input.
+2. Euclidean tangent latent `z_A_tangent`.
+3. Hyperbolic latent `z_A_hyp`.
+
+For each checkpoint, I measured:
+
+1. Linear probe on valuation levels `0..6`.
+2. 15-NN probe on valuation levels `0..6`.
+3. Trustworthiness@15 relative to raw-input neighborhoods.
+4. Retrieval metrics on a 2,000-state sample using the correct metric for each space:
+   - Poincaré distance for `z_A_hyp`
+   - Euclidean distance for `z_A_tangent`
+
+### Results
+
+For `runs/v7_large_20260324_013725`:
+
+| Checkpoint | Representation | Linear Acc. | Linear Bal. Acc. | Linear Macro-F1 | 15-NN Acc. | 15-NN Bal. Acc. | 15-NN Macro-F1 | Trustworthiness@15 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `best_Q.pt` | Hyperbolic | `0.8845` | `0.4286` | `0.3172` | `0.9951` | `0.9905` | `0.9821` | `0.6365` |
+| `best_Q.pt` | Tangent Euclidean | `0.9361` | `0.6324` | `0.6581` | `0.6757` | `0.2017` | `0.2067` | `0.9648` |
+| `best_Q.pt` | Raw input | `1.0000` | `1.0000` | `1.0000` | `0.9165` | `0.6666` | `0.6674` | - |
+| `final.pt` | Hyperbolic | `0.7396` | `0.4286` | `0.2476` | `1.0000` | `1.0000` | `1.0000` | `0.6152` |
+| `final.pt` | Tangent Euclidean | `0.9558` | `0.7110` | `0.7514` | `0.6560` | `0.1429` | `0.1134` | `0.9692` |
+| `final.pt` | Raw input | `1.0000` | `1.0000` | `1.0000` | `0.9165` | `0.6666` | `0.6674` | - |
+
+Retrieval on a 2,000-state sample:
+
+| Checkpoint | Representation | Valuation NN@1 | Same-Valuation P@10 | Parent-Hit@10 |
+| --- | --- | ---: | ---: | ---: |
+| `best_Q.pt` | Hyperbolic | `1.0000` | `0.99835` | `0.00524` |
+| `best_Q.pt` | Tangent Euclidean | `0.9980` | `0.98855` | `0.0000` |
+| `final.pt` | Hyperbolic | `1.0000` | `0.99880` | `0.01571` |
+| `final.pt` | Tangent Euclidean | `0.9920` | `0.98180` | `0.0000` |
+
+### What this ablation proves
+
+This ablation is more valuable than another high-level slogan because it isolates what the hyperbolic projection is actually doing.
+
+What the Euclidean baseline wins:
+
+1. Tangent Euclidean features are better for linear valuation decoding than hyperbolic features.
+2. Tangent Euclidean features preserve raw-input neighborhoods much more faithfully (`trustworthiness ≈ 0.965-0.969` vs `0.615-0.637`).
+3. So the hyperbolic projection is **not** a free lunch and should not be described as a universal representation improvement.
+
+What the hyperbolic projection wins:
+
+1. Hyperbolic features are dramatically better for valuation-aware k-NN organization than tangent Euclidean features.
+2. Hyperbolic retrieval is better on NN@1, same-valuation precision, and parent-hit@10.
+3. The Euclidean baseline never retrieved a parent in the top 10 on this sample, while the hyperbolic space did.
+
+### Skeptical interpretation
+
+The honest interpretation is:
+
+1. The tangent latent remains the more decoder-friendly and more locally faithful Euclidean representation.
+2. The hyperbolic projection is a task-specific geometric transform that sacrifices local faithfulness to create a stronger hierarchy-aware retrieval metric.
+3. That is a real differentiator, but it is still an internal-domain differentiator, not an external predictive breakthrough.
+
+This is probably the strongest argument currently available for the project’s future commercial direction: not “better generic AI,” but “better metric-space organization for hierarchical discrete state retrieval.” If that idea is going to survive outside the sandbox, it now needs an external dataset where hierarchical retrieval or approximate lookup matters operationally.
+
 ### Metrics that should gate external claims
 
 For future external-task evaluations, I would require:
