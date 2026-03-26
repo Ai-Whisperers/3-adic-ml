@@ -738,6 +738,7 @@ These issues are still real in the current tree:
    `src/presets/v7_large.yaml:1-15` and the loss section still contain hypotheses, expectations, root-cause narratives, and historical notes mixed into the executable preset.
 5. **The “single source of truth” story is still weakened by duplicated constants.**
    `src/core/ternary.py` presents itself as canonical, but `src/config/constants.py:2` still hardcodes `N_TERNARY_OPERATIONS = 19683`.
+   Deeper detail from the live tree: this duplication is now narrower than it first looked. In executable Python code, the duplicated constant currently appears in `src/config/constants.py` and is then re-exported by `src/config/__init__.py`. That makes it a good next fix because it removes real drift with very low behavioral risk: `constants.py` should derive the value from `TERNARY.N_OPERATIONS`, not restate it.
 6. **`CombinedLoss` is still strategically overloaded.**
    It is useful, but it remains the convergence point for too many configuration branches and behavior switches. That is acceptable for research code today, but it is the wrong place to keep adding complexity.
 
@@ -774,7 +775,9 @@ If the goal is to keep only what is worth continuing, the next sequence should b
    1. normalize `src/` headers only
    2. add a regression test that forbids stale PolyForm/commercial strings in `src/`
    3. clean `tests/` and generated docs in a separate pass
-2. **Split `src/train.py` without changing behavior.**
+2. **Remove low-risk single-source-of-truth drift before larger refactors.**
+   The next best candidate is `src/config/constants.py`: make `N_TERNARY_OPERATIONS` derive from `src/core/ternary.py` and add a regression test. This is slop reduction, not redesign.
+3. **Split `src/train.py` without changing behavior.**
    First move code, not logic. The best near-term split is:
    - `src/training/metrics.py`
    - `src/training/validation.py`
@@ -782,11 +785,11 @@ If the goal is to keep only what is worth continuing, the next sequence should b
    - `src/training/loop.py`
    - `src/training/cli.py`
    The requirement is strict behavior preservation, not redesign.
-3. **Freeze new losses and giant preset growth until the split lands.**
+4. **Freeze new losses and giant preset growth until the split lands.**
    Right now the expected value of a new loss is lower than the expected value of reducing orchestration entropy.
-4. **Rewrite `README.md` to match the audit, not the aspiration.**
+5. **Rewrite `README.md` to match the audit, not the aspiration.**
    Claims should be bounded by what the current audit actually verifies: closed-domain hierarchy learning, not general symbolic intelligence or external prediction.
-5. **Convert research journaling in YAML into docs.**
+6. **Convert research journaling in YAML into docs.**
    Keep presets executable and minimal. Move hypotheses, VRAM notes, expected ARI ceilings, and root-cause narratives into `docs/experiments/` or `docs/audits/`.
 
 ### What should be frozen immediately

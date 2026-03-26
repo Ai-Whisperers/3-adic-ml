@@ -9,7 +9,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from src.config import N_TERNARY_OPERATIONS
 from src.config.schema import normalize_config, validate_config
+from src.core import TERNARY
 
 
 PRESETS_DIR = Path(__file__).parent.parent / "src" / "presets"
@@ -57,3 +59,7 @@ def test_normalize_config_preserves_legacy_non_factored_presets() -> None:
     for preset_name in ("5.12.4.yaml", "v6.yaml"):
         normalized = normalize_config(_load_preset(preset_name))
         assert normalized["model"]["factored"] is False
+
+
+def test_config_constant_matches_canonical_ternary_space_size() -> None:
+    assert N_TERNARY_OPERATIONS == TERNARY.N_OPERATIONS
