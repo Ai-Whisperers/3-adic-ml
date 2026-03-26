@@ -1,9 +1,7 @@
-# Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
+# Copyright (c) 2024-2026 AI Whisperers
 #
-# Licensed under the PolyForm Noncommercial License 1.0.0
+# Licensed under the MIT License.
 # See LICENSE file in the repository root for full license text.
-#
-# For commercial licensing inquiries: support@aiwhisperers.com
 
 """Hyperbolic KL Divergence for Poincaré VAEs.
 
@@ -132,73 +130,6 @@ class HyperbolicKLDivergence(nn.Module):
         return f"curvature={self.curvature}, beta={self.beta}, free_bits={self.free_bits}, variance_only={self.variance_only}"
 
 
-class StandardKLDivergence(nn.Module):
-    """Standard Gaussian KL divergence (for comparison).
-
-    KL(q(z|x) || p(z)) where q = N(μ, σ²) and p = N(0, I)
-
-    KL = 0.5 * (σ² + μ² - log(σ²) - 1)
-
-    Args:
-        beta: KL weight for β-VAE (default: 1.0)
-        free_bits: Minimum KL per dimension (default: 0.0)
-        reduction: 'mean', 'sum', or 'none' (default: 'mean')
-    """
-
-    def __init__(
-        self,
-        beta: float = 1.0,
-        free_bits: float = 0.0,
-        reduction: str = "mean",
-    ):
-        super().__init__()
-        self.beta = beta
-        self.free_bits = free_bits
-        self.reduction = reduction
-
-    def forward(
-        self,
-        mu: torch.Tensor,
-        logvar: torch.Tensor,
-        z_hyp: Optional[torch.Tensor] = None,  # Ignored, for API compatibility
-    ) -> torch.Tensor:
-        """Compute standard Gaussian KL divergence.
-
-        Args:
-            mu: Mean of the approximate posterior, shape (B, d)
-            logvar: Log-variance of the approximate posterior, shape (B, d)
-            z_hyp: Ignored (for API compatibility with HyperbolicKLDivergence)
-
-        Returns:
-            KL divergence loss
-        """
-        var = torch.exp(logvar)
-
-        # Standard KL per dimension
-        kl_per_dim = 0.5 * (var + mu.pow(2) - logvar - 1.0)
-
-        # Apply free bits
-        if self.free_bits > 0:
-            kl_per_dim = torch.clamp(kl_per_dim, min=self.free_bits)
-
-        # Sum over dimensions
-        kl_per_sample = kl_per_dim.sum(dim=-1)
-
-        # Apply reduction
-        if self.reduction == "mean":
-            kl = kl_per_sample.mean()
-        elif self.reduction == "sum":
-            kl = kl_per_sample.sum()
-        else:
-            kl = kl_per_sample
-
-        return self.beta * kl
-
-    def extra_repr(self) -> str:
-        return f"beta={self.beta}, free_bits={self.free_bits}"
-
-
 __all__ = [
     "HyperbolicKLDivergence",
-    "StandardKLDivergence",
 ]

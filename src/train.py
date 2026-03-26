@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
+# Copyright (c) 2024-2026 AI Whisperers
 #
-# Licensed under the PolyForm Noncommercial License 1.0.0
+# Licensed under the MIT License.
 # See LICENSE file in the repository root for full license text.
 
 """Unified Training Script for p-adic VAE.
@@ -34,6 +34,7 @@ Usage:
 
 import argparse
 import atexit
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -69,6 +70,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Internal imports
 from src.config import StateNetConfig
 from src.config.paths import RUNS_DIR
+from src.config.schema import normalize_config
 from src.core import TERNARY
 from src.geometry import get_riemannian_optimizer, hyperbolic_radius, poincare_distance
 from src.losses import CombinedLoss
@@ -82,7 +84,9 @@ from src.models import (
     update_optimizer_lr_scales,
 )
 from src.utils import HardwareMonitor, TensorBoardLogger
-from src.utils.checkpoint import get_model_state_dict, load_checkpoint_compat
+from src.utils.checkpoint import load_checkpoint_compat
+from src.utils.scatter_utils import level_scatter_std
+from src.utils.visualization import VisualizationPipeline
 
 # =============================================================================
 # DETERMINISM
@@ -514,22 +518,22 @@ def compute_level_stratified_hierarchy(
         Dict mapping level (0-9) to consistency metric (more negative = better)
     """
     with torch.no_grad():
-        origin = torch.zeros_like(z_hyp)
-        radii = poincare_distance(z_hyp, origin, c=curvature)
+        radii = hyperbolic_radius(z_hyp, c=curvature)
         valuations = TERNARY.valuation(indices)
+        dim_size = TERNARY.MAX_VALUATION + 1
+        vals_long = valuations.long()
+
+        # Vectorized per-level std via scatter (single pass, no Python loop)
+        stds_all = level_scatter_std(radii, vals_long, dim_size=dim_size)  # (dim_size,)
+        counts = torch.zeros(dim_size, dtype=torch.long, device=radii.device)
+        counts.scatter_add_(0, vals_long, torch.ones_like(vals_long))
 
         correlations = {}
-        for level in range(TERNARY.MAX_VALUATION + 1):
-            mask = valuations == level
-            count = mask.sum().item()
-
-            if count < 2:
+        for level in range(dim_size):
+            if counts[level].item() < 2:
                 correlations[level] = float("nan")
-                continue
-
-            level_radii = radii[mask]
-            radius_std = level_radii.std().item()
-            correlations[level] = -1.0 / (1.0 + radius_std)
+            else:
+                correlations[level] = -1.0 / (1.0 + stds_all[level].item())
 
         return correlations
 
@@ -552,9 +556,8 @@ def compute_hierarchy_metrics(
         Dict with hierarchy, dist_corr, Q, tree_coherence, level metrics
     """
     with torch.no_grad():
-        # Compute radii using hyperbolic distance
-        origin = torch.zeros_like(z_hyp)
-        radii = poincare_distance(z_hyp, origin, c=curvature).cpu().numpy()
+        # Compute radii using canonical hyperbolic_radius
+        radii = hyperbolic_radius(z_hyp, c=curvature).cpu().numpy()
         valuations = TERNARY.valuation(indices).cpu().numpy()
 
         # Hierarchy: negated Spearman correlation between valuation and radius.
@@ -733,6 +736,70 @@ class GrokkingDetector:
 
 
 # =============================================================================
+# CHECKPOINT HELPERS
+# =============================================================================
+
+
+def _build_checkpoint_payload(
+    epoch: int,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Any,
+    lr_controller: Any = None,
+    dual_state: Any = None,
+    loss_cfg: Optional[Dict[str, Any]] = None,
+    loss_fn: Optional[nn.Module] = None,
+    loss_fn_b: Optional[nn.Module] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build a checkpoint payload dict with all resumable state.
+
+    Centralises the checkpoint construction that was previously duplicated
+    across best-Q, periodic, and final checkpoint sites.
+
+    Args:
+        epoch: Current epoch number.
+        model: The VAE model.
+        optimizer: Optimizer with state dict.
+        scheduler: LR scheduler with state dict.
+        lr_controller: Optional MetricBasedLR controller.
+        dual_state: Optional LagrangianDualState.
+        loss_cfg: Loss config dict (checked for learnable_weights flag).
+        loss_fn: Primary CombinedLoss (VAE-A). Saved when learnable_weights=True.
+        loss_fn_b: Secondary CombinedLoss (VAE-B). Saved when learnable_weights=True.
+        extra: Optional dict of additional keys merged into the payload
+               (e.g. best_Q, best_hierarchy, best_coverage).
+
+    Returns:
+        Dict ready for ``torch.save()``.
+    """
+    payload: Dict[str, Any] = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+    }
+    if lr_controller is not None:
+        payload["controller_state"] = {
+            "active": dict(lr_controller._active),
+            "best_q": lr_controller._best_q,
+            "coverage_history": list(lr_controller._coverage_history),
+            "hierarchy_a_history": list(lr_controller._hierarchy_a_history),
+            "hierarchy_b_history": list(lr_controller._hierarchy_b_history),
+        }
+    if dual_state is not None:
+        payload["lagrangian_state"] = dual_state.state_dict()
+    if loss_cfg is not None and loss_cfg.get("learnable_weights", False):
+        if loss_fn is not None:
+            payload["loss_fn_state_dict"] = loss_fn.state_dict()
+        if loss_fn_b is not None:
+            payload["loss_fn_b_state_dict"] = loss_fn_b.state_dict()
+    if extra:
+        payload.update(extra)
+    return payload
+
+
+# =============================================================================
 # TRAINING LOOP
 # =============================================================================
 
@@ -805,13 +872,13 @@ def train(
     train_indices = train_ds.tensors[1]  # second element is the index tensor
     train_valuations = TERNARY.valuation(train_indices)
     level_counts = torch.bincount(train_valuations, minlength=TERNARY.MAX_VALUATION + 1)
-    sample_weights = torch.zeros(len(train_ds), dtype=torch.float64)
-    for level in range(TERNARY.MAX_VALUATION + 1):
-        mask = train_valuations == level
-        if level_counts[level] > 0:
-            sample_weights[mask] = 1.0 / (level_counts[level].item() ** 0.5)
+    # Vectorized: compute per-level weight then index into it (no Python loop)
+    level_weights = torch.zeros(TERNARY.MAX_VALUATION + 1, dtype=torch.float64)
+    nonzero = level_counts > 0
+    level_weights[nonzero] = 1.0 / level_counts[nonzero].to(torch.float64).sqrt()
+    sample_weights = level_weights[train_valuations.long()]
     # Warn if highest valuation level is absent from train split (landed in val)
-    absent = [v for v in range(TERNARY.MAX_VALUATION + 1) if level_counts[v] == 0]
+    absent = (~nonzero).nonzero(as_tuple=False).squeeze(-1).tolist()
     if absent:
         print(f"  [WARN] Stratified sampler: valuation levels {absent} absent from "
               f"train split (in val set). Those levels will not appear in batches.")
@@ -990,6 +1057,48 @@ def train(
         print("  [WARN] TensorBoard is NOT available — metrics will NOT be logged.")
         print("         Install with: pip install tensorboard>=2.13.0")
 
+    # Register custom dashboard layout (called once; defines multi-chart views in TB UI).
+    # Uses add_custom_scalars — no phantom sub-run dirs, just layout metadata.
+    if tb_logger.is_available:
+        _layout = {
+            "Q Metric": {
+                "Q (VAE-A vs VAE-B)": ["Multiline", ["Hierarchy/Q_VAE_A", "Hierarchy/Q_VAE_B"]],
+                "dist_corr vs hierarchy": ["Multiline", ["Hierarchy/dist_corr", "Hierarchy/corr_VAE_A", "Hierarchy/corr_VAE_B"]],
+            },
+            "Direction Geometry": {
+                "ARI per level (v=0..5)": ["Multiline", [f"Direction/ARI_v{v}" for v in range(6)]],
+                "ARI composite vs prefix3": ["Multiline", ["Direction/ARI_composite", "Direction/ARI_prefix3"]],
+                "intra vs inter sim": ["Multiline", ["Direction/intra_level_sim", "Direction/inter_level_sim"]],
+            },
+            "Radial Hierarchy": {
+                "r_v per level (A)": ["Multiline", [f"Radius/r_v{v}_A" for v in range(10)]],
+                "std per level (A)": ["Multiline", [f"Radius/std_v{v}_A" for v in range(10)]],
+                "level gaps (A)": ["Multiline", [f"Geometry/level_gap_v{v}" for v in range(9)]],
+                "mean radius A vs B": ["Multiline", ["Radius/mean_VAE_A", "Radius/mean_VAE_B"]],
+            },
+            "Lagrangian": {
+                "margin λ per level": ["Multiline", [f"Lagrangian/margin_v{v}" for v in range(9)]],
+                "scatter λ per level": ["Multiline", [f"Lagrangian/scatter_v{v}" for v in range(10)]],
+                "n_active λ": ["Multiline", ["Lagrangian/n_active"]],
+            },
+            "Topology": {
+                "Betti Numbers": ["Multiline", ["Topology/betti_0", "Topology/betti_1"]],
+                "Persistence Entropy": ["Multiline", ["Topology/persistence_entropy"]],
+                "Betti Ratio (H1/H0)": ["Multiline", ["Topology/betti_ratio"]],
+            },
+        }
+        tb_logger.writer.add_custom_scalars(_layout)
+        # Log full config YAML as text for run reproducibility.
+        tb_logger.writer.add_text("Config/yaml", f"```yaml\n{yaml.dump(config, default_flow_style=False)}```", 0)
+
+    # Phase 2 Visualization Pipeline — hyperbolic geometry projections + topology
+    vis_cfg = config.get("visualization", {})
+    vis_pipeline = VisualizationPipeline(
+        config=vis_cfg,
+        writer=tb_logger.writer,
+        log_callback=lambda msg: print(f"  {msg}"),
+    )
+
     # Hardware monitor for memory tracking
     hw_monitor = HardwareMonitor(device, warn_threshold=0.9)
 
@@ -1058,6 +1167,7 @@ def train(
     best_Q = -1.0
     best_hierarchy = 0.0
     best_coverage = 0.0
+    start_epoch = 0  # overwritten when resume_checkpoint is used
     results = {
         "epochs_trained": 0,
         "best_Q": 0.0,
@@ -1066,8 +1176,76 @@ def train(
         "grokking_events": [],
     }
 
+    # -------------------------------------------------------------------------
+    # Resume checkpoint — full exact-state restore for interrupted runs.
+    #
+    # Distinct from anchor_checkpoint (transfer learning, model weights only,
+    # strict=False, fresh optimizer). resume_checkpoint restores everything:
+    # model (strict=True), optimizer, scheduler, loss_fn, lagrangian, and
+    # lr_controller history, then resumes from the next epoch.
+    # -------------------------------------------------------------------------
+    resume_cfg = config.get("resume_checkpoint", {})
+    resume_path_str = resume_cfg.get("path") if isinstance(resume_cfg, dict) else resume_cfg
+    if resume_path_str and str(resume_path_str) not in ("null", ""):
+        resume_path = PROJECT_ROOT / resume_path_str
+        if not resume_path.exists():
+            raise FileNotFoundError(f"[resume] Checkpoint not found: {resume_path}")
+        print(f"\n  [Resume] Restoring from: {resume_path.name}")
+        ckpt = load_checkpoint_compat(resume_path, map_location=device)
+
+        missing, unexpected = model.load_state_dict(ckpt["model_state_dict"], strict=True)
+        if missing or unexpected:
+            raise RuntimeError(
+                f"[resume] State dict mismatch — missing: {missing}, unexpected: {unexpected}. "
+                "Architecture changed. Use anchor_checkpoint instead."
+            )
+        optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+
+        if loss_cfg.get("learnable_weights", False):
+            if "loss_fn_state_dict" in ckpt:
+                loss_fn.load_state_dict(ckpt["loss_fn_state_dict"])
+                loss_fn_b.load_state_dict(ckpt["loss_fn_b_state_dict"])
+                print("  [Resume] Learnable loss weights restored.")
+            else:
+                print(
+                    "  [Resume][WARN] learnable_weights=true but checkpoint has no "
+                    "loss_fn_state_dict — log-sigma params reset to initial values."
+                )
+
+        if dual_state is not None and "lagrangian_state" in ckpt:
+            dual_state.load_state_dict(ckpt["lagrangian_state"])
+            print("  [Resume] Lagrangian dual state restored.")
+
+        if lr_controller is not None and "controller_state" in ckpt:
+            cs = ckpt["controller_state"]
+            lr_controller._active.update(cs.get("active", {}))
+            lr_controller._best_q = cs.get("best_q", -1.0)
+            lr_controller._coverage_history = deque(
+                cs.get("coverage_history", []),
+                maxlen=lr_controller._coverage_history.maxlen,
+            )
+            lr_controller._hierarchy_a_history = deque(
+                cs.get("hierarchy_a_history", []),
+                maxlen=lr_controller._hierarchy_a_history.maxlen,
+            )
+            lr_controller._hierarchy_b_history = deque(
+                cs.get("hierarchy_b_history", []),
+                maxlen=lr_controller._hierarchy_b_history.maxlen,
+            )
+            print("  [Resume] LR controller state restored.")
+
+        best_Q = float(ckpt.get("Q", ckpt.get("best_Q", -1.0)) or -1.0)
+        best_hierarchy = float(ckpt.get("hierarchy_A", ckpt.get("best_hierarchy", 0.0)) or 0.0)
+        best_coverage = float(ckpt.get("coverage", ckpt.get("best_coverage", 0.0)) or 0.0)
+        start_epoch = int(ckpt.get("epoch", 0)) + 1
+        print(f"  [Resume] Resuming from epoch {start_epoch} / {epochs}.")
+        if start_epoch >= epochs:
+            print(f"  [Resume][WARN] start_epoch={start_epoch} >= epochs={epochs}. "
+                  "Nothing to train — increase training.epochs in config.")
+
     print(f"\n{'=' * 60}")
-    print(f"  TRAINING: {epochs} epochs, batch_size={batch_size}, lr={base_lr}")
+    print(f"  TRAINING: epochs {start_epoch}–{epochs}, batch_size={batch_size}, lr={base_lr}")
     if TQDM_AVAILABLE:
         print("  Progress: tqdm enabled")
     print(f"{'=' * 60}\n")
@@ -1077,9 +1255,9 @@ def train(
 
     # Epoch iterator (with or without tqdm)
     epoch_iter = (
-        tqdm(range(epochs), desc="Training", unit="epoch")
+        tqdm(range(start_epoch, epochs), desc="Training", unit="epoch")
         if TQDM_AVAILABLE
-        else range(epochs)
+        else range(start_epoch, epochs)
     )
 
     for epoch in epoch_iter:
@@ -1096,6 +1274,8 @@ def train(
         train_loss_sum = 0.0
         train_acc_sum = 0.0
         n_batches = 0
+        ac_loss_per_level_sum: dict = {}  # v -> accumulated loss sum
+        r_std_per_level_sum: dict = {}   # v -> accumulated per-level radius std sum
 
         # Batch iterator (with or without tqdm)
         if TQDM_AVAILABLE:
@@ -1163,8 +1343,11 @@ def train(
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
+                # Clip model + loss_fn params together so learnable log_sigma
+                # weights are subject to the same norm bound as model parameters.
+                _params_to_clip = list(model.parameters()) + loss_params
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_grad_norm
+                    _params_to_clip, max_grad_norm
                 )
                 scaler.step(optimizer)
                 scaler.update()
@@ -1195,6 +1378,20 @@ def train(
             train_loss_sum += loss.item()
             train_acc_sum += compute_accuracy(logits_A, batch_ops)
             n_batches += 1
+
+            # Accumulate per-level AC loss (for TB logging at eval cadence)
+            _ac_m = losses.get("angular_coherence_metrics", {})
+            for _v in range(10):
+                _k = f"ac_loss_v{_v}"
+                if _k in _ac_m:
+                    ac_loss_per_level_sum[_v] = ac_loss_per_level_sum.get(_v, 0.0) + _ac_m[_k]
+
+            # Accumulate per-level radius std from RichHierarchyLoss (scatter refactor bonus)
+            _rh_m = losses.get("rich_hierarchy_detail", {})
+            for _v in range(10):
+                _k = f"r_std_v{_v}"
+                if _k in _rh_m:
+                    r_std_per_level_sum[_v] = r_std_per_level_sum.get(_v, 0.0) + _rh_m[_k]
             global_step += 1
 
             # Batch-level TensorBoard logging
@@ -1257,12 +1454,15 @@ def train(
                     val_hyperbolic_coverage_sum += compute_hyperbolic_coverage(out["z_A_hyp"], curvature)
                     val_batches += 1
 
-                    # Collect both VAE embeddings for separate hierarchy computation
-                    z_A_all.append(out["z_A_hyp"])
-                    z_B_all.append(out["z_B_hyp"])
-                    idx_all.append(batch_idx)
+                    # Collect both VAE embeddings for separate hierarchy computation.
+                    # .detach() releases the forward-graph reference: under no_grad()
+                    # grad_fn is still present on tensors, keeping all intermediate
+                    # activations alive. Detaching lets them be freed after each batch.
+                    z_A_all.append(out["z_A_hyp"].detach())
+                    z_B_all.append(out["z_B_hyp"].detach())
+                    idx_all.append(batch_idx.detach())
                     if out.get("r_A") is not None:
-                        r_A_all.append(out["r_A"])
+                        r_A_all.append(out["r_A"].detach())
 
             avg_val_acc = val_acc_sum / val_batches
             avg_val_coverage = val_coverage_sum / val_batches
@@ -1309,24 +1509,48 @@ def train(
             # v=9: single sample, skipped
             ari_per_level = {}  # {v: float}
             ari_prefix3 = float("nan")  # backward compat (v=0 ARI)
+            _r_full_cat = None  # full-dataset radii (set inside if r_A_all block)
+            _vals_full = None
             if r_A_all:
+                # Bug 7 fix: use full-dataset embeddings for ARI so sparse levels
+                # (v=5: 54 ops) are not dropped when val set has < 6 samples per level.
+                # Quick no_grad forward pass on all 19683 ops in chunks (~5 batches).
+                _all_ops = TERNARY.all_ternary().to(device)
+                _all_idx = torch.arange(len(_all_ops), device=device)
+                _z_full, _r_full, _idx_full = [], [], []
+                model.eval()
+                with torch.no_grad():
+                    for _s in range(0, len(_all_ops), batch_size):
+                        _co = _all_ops[_s:_s + batch_size]
+                        _ci = _all_idx[_s:_s + batch_size]
+                        _out = model(_co)
+                        _z_full.append(_out["z_A_hyp"].detach().cpu())
+                        _r_full.append(_out["r_A"].detach().cpu())
+                        _idx_full.append(_ci.cpu())
+                _z_full_cat = torch.cat(_z_full)
+                _r_full_cat = torch.cat(_r_full)
+                _idx_full_cat = torch.cat(_idx_full)
+                _eps = 1e-10
+                _dir_full = _z_full_cat / _r_full_cat.unsqueeze(-1).clamp(min=_eps)
+                _dir_full = _dir_full / _dir_full.norm(dim=-1, keepdim=True).clamp(min=_eps)
+                _vals_full = TERNARY.valuation(_idx_full_cat)
+
                 # prefix depth per level: matches AC loss level_prefix_k
                 # v=0:k=3→18cls, v=1:k=4→18cls, v=2:k=3→2cls, v=3:k=4→2cls, v=4:k=5→2cls, v=5:k=6→2cls
                 level_pfx = {0: 3, 1: 4, 2: 3, 3: 4, 4: 5, 5: 6, 6: 2, 7: 2, 8: 2}
-                level_pfx = {0: 3, 1: 4, 2: 5, 3: 2, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2}
                 for v, pfx_k in level_pfx.items():
-                    v_mask = (vals == v)
+                    v_mask = (_vals_full == v)
                     n_v = v_mask.sum().item()
-                    if n_v < 6:  # skip if too few samples
+                    if n_v < 2:  # skip only if truly too few
                         continue
-                    dir_v = dir_A[v_mask].detach().cpu().numpy()
-                    idx_v = idx_cat[v_mask]
+                    dir_v = _dir_full[v_mask].numpy()
+                    idx_v = _idx_full_cat[v_mask]
                     if n_v > 5000:
                         sub = np.random.choice(n_v, 5000, replace=False)
                         dir_v = dir_v[sub]
                         idx_v = idx_v[sub]
                     # Determine true class count and cap k_means
-                    pfx = TERNARY.digit_prefix_class(idx_v, pfx_k).cpu().numpy()
+                    pfx = TERNARY.digit_prefix_class(idx_v, pfx_k).numpy()
                     n_classes = len(np.unique(pfx))
                     km_k = min(n_classes, max(2, n_v // 3))
                     if km_k < 2:
@@ -1448,6 +1672,44 @@ def train(
                 tb_logger.writer.add_scalar("Radius/mean_VAE_A", hier_metrics_A["mean_radius"], epoch)
                 tb_logger.writer.add_scalar("Radius/mean_VAE_B", hier_metrics_B["mean_radius"], epoch)
 
+                # Per-level mean radii — full dataset (from full-dataset pass done for ARI)
+                # Falls back to val-set norms if ARI pass wasn't triggered.
+                if r_A_all and _r_full_cat is not None:
+                    _r_norms_full = _r_full_cat  # r_A IS the Poincaré radius
+                    for _v in range(10):
+                        _mask = (_vals_full == _v)
+                        if _mask.sum() >= 2:
+                            tb_logger.writer.add_scalar(
+                                f"Radius/r_v{_v}_A", _r_norms_full[_mask].mean().item(), epoch
+                            )
+                else:
+                    with torch.no_grad():
+                        r_norms = z_A_cat.norm(dim=-1)
+                        vals_all = TERNARY.valuation(idx_cat)
+                        for _v in range(10):
+                            _mask = (vals_all == _v)
+                            if _mask.sum() >= 2:
+                                tb_logger.writer.add_scalar(
+                                    f"Radius/r_v{_v}_A", r_norms[_mask].mean().item(), epoch
+                                )
+
+                # Per-level radius std (from RichHierarchyLoss scatter refactor — batch-averaged)
+                if r_std_per_level_sum and n_batches > 0:
+                    for _v, _sum in r_std_per_level_sum.items():
+                        tb_logger.writer.add_scalar(
+                            f"Radius/std_v{_v}_A", _sum / n_batches, epoch
+                        )
+
+                # Per-level gaps between adjacent mean radii (from full-dataset pass)
+                if r_A_all and _r_full_cat is not None:
+                    _gaps = {}
+                    for _v in range(9):
+                        _m0 = ((_vals_full == _v).sum() >= 2)
+                        _m1 = ((_vals_full == _v + 1).sum() >= 2)
+                        if _m0 and _m1:
+                            _g = _r_full_cat[_vals_full == _v].mean() - _r_full_cat[_vals_full == _v + 1].mean()
+                            tb_logger.writer.add_scalar(f"Geometry/level_gap_v{_v}", _g.item(), epoch)
+
                 # Angular Q metric (direction geometry)
                 if r_A_all:
                     tb_logger.writer.add_scalar("Direction/AQ", aq_value, epoch)
@@ -1463,6 +1725,13 @@ def train(
                         w = {0: 0.60, 1: 0.20, 2: 0.10, 3: 0.05, 4: 0.02, 5: 0.01, 6: 0.01, 7: 0.005, 8: 0.005}
                         ari_composite = sum(w.get(v, 0) * a for v, a in ari_per_level.items())
                         tb_logger.writer.add_scalar("Direction/ARI_composite", ari_composite, epoch)
+
+                # Per-level AC loss (Bug 5 fix: per-level breakdown, epoch-averaged from train batches)
+                if ac_loss_per_level_sum and n_batches > 0:
+                    for _v, _sum in ac_loss_per_level_sum.items():
+                        tb_logger.writer.add_scalar(
+                            f"Direction/AC_loss_v{_v}", _sum / n_batches, epoch
+                        )
 
                 # Tree coherence (lower = better tree structure)
                 tb_logger.writer.add_scalar("TreeCoherence/VAE_A", hier_metrics_A["tree_coherence"], epoch)
@@ -1522,6 +1791,37 @@ def train(
                         "Hardware/GPU_peak_GB", gpu_mem["peak"], epoch
                     )
 
+                # Lagrangian dual variable values (λ per constraint level).
+                # Logs whether constraints are violated (λ growing) or satisfied
+                # (λ at 0). valuation_prior is disabled → lambda_prior stays 0;
+                # logged anyway so future activation is immediately visible.
+                if dual_state is not None:
+                    dw = dual_state.get_dual_weights()
+                    for v, lam in enumerate(dw.get("lambda_margin", [])):
+                        tb_logger.writer.add_scalar(
+                            f"Lagrangian/margin_v{v}", lam, epoch
+                        )
+                    for v, lam in enumerate(dw.get("lambda_scatter", [])):
+                        tb_logger.writer.add_scalar(
+                            f"Lagrangian/scatter_v{v}", lam, epoch
+                        )
+                    all_lams = (
+                        dw.get("lambda_margin", [])
+                        + dw.get("lambda_scatter", [])
+                        + dw.get("lambda_prior", [])
+                    )
+                    tb_logger.writer.add_scalar(
+                        "Lagrangian/n_active",
+                        sum(1 for x in all_lams if x > 0),
+                        epoch,
+                    )
+
+                # Phase 2: Visualization pipeline (UMAP, PaCMAP, TriMAP, topology)
+                # Uses z_A_cat (Poincaré ball) + idx_cat (for valuations).
+                # All computation is CPU/numpy; runs under no_grad inside pipeline.
+                _vis_vals = TERNARY.valuation(idx_cat.cpu())
+                vis_pipeline.run(epoch, z_A_cat.cpu(), _vis_vals)
+
                 # Flush for real-time updates
                 tb_logger.flush()
 
@@ -1543,27 +1843,20 @@ def train(
             # Track best metrics (use VAE-A as primary)
             if hier_metrics_A["Q"] > best_Q:
                 best_Q = hier_metrics_A["Q"]
-                ckpt_payload = {
-                    "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "scheduler_state_dict": scheduler.state_dict(),
-                    "Q": best_Q,
-                    "hierarchy_A": hier_metrics_A["hierarchy"],
-                    "hierarchy_B": hier_metrics_B["hierarchy"],
-                    "coverage": avg_val_coverage,
-                }
-                if lr_controller is not None:
-                    ckpt_payload["controller_state"] = {
-                        "active": dict(lr_controller._active),
-                        "best_q": lr_controller._best_q,
-                        "coverage_history": list(lr_controller._coverage_history),
-                        "hierarchy_a_history": list(lr_controller._hierarchy_a_history),
-                        "hierarchy_b_history": list(lr_controller._hierarchy_b_history),
-                    }
-                if dual_state is not None:
-                    ckpt_payload["lagrangian_state"] = dual_state.state_dict()
-                torch.save(ckpt_payload, ckpt_dir / "best_Q.pt")
+                torch.save(
+                    _build_checkpoint_payload(
+                        epoch, model, optimizer, scheduler,
+                        lr_controller=lr_controller, dual_state=dual_state,
+                        loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
+                        extra={
+                            "Q": best_Q,
+                            "hierarchy_A": hier_metrics_A["hierarchy"],
+                            "hierarchy_B": hier_metrics_B["hierarchy"],
+                            "coverage": avg_val_coverage,
+                        },
+                    ),
+                    ckpt_dir / "best_Q.pt",
+                )
 
             if avg_val_coverage > best_coverage:
                 best_coverage = avg_val_coverage
@@ -1606,45 +1899,55 @@ def train(
 
         # Periodic checkpoint
         if epoch % save_every == 0 and epoch > 0:
-            periodic_ckpt = {
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(),
-            }
-            if lr_controller is not None:
-                periodic_ckpt["controller_state"] = {
-                    "active": dict(lr_controller._active),
-                    "best_q": lr_controller._best_q,
-                    "coverage_history": list(lr_controller._coverage_history),
-                    "hierarchy_a_history": list(lr_controller._hierarchy_a_history),
-                    "hierarchy_b_history": list(lr_controller._hierarchy_b_history),
-                }
-            torch.save(periodic_ckpt, ckpt_dir / f"epoch_{epoch}.pt")
+            torch.save(
+                _build_checkpoint_payload(
+                    epoch, model, optimizer, scheduler,
+                    lr_controller=lr_controller, dual_state=dual_state,
+                    loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
+                ),
+                ckpt_dir / f"epoch_{epoch}.pt",
+            )
 
         # Periodic memory cleanup
         if device.type == "cuda" and epoch % empty_cache_freq == 0 and epoch > 0:
             torch.cuda.empty_cache()
 
     # Final checkpoint
-    final_ckpt = {
-        "epoch": epochs,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "scheduler_state_dict": scheduler.state_dict(),
-        "best_Q": best_Q,
-        "best_hierarchy": best_hierarchy,
-        "best_coverage": best_coverage,
-    }
-    if lr_controller is not None:
-        final_ckpt["controller_state"] = {
-            "active": dict(lr_controller._active),
-            "best_q": lr_controller._best_q,
-            "coverage_history": list(lr_controller._coverage_history),
-            "hierarchy_a_history": list(lr_controller._hierarchy_a_history),
-            "hierarchy_b_history": list(lr_controller._hierarchy_b_history),
+    torch.save(
+        _build_checkpoint_payload(
+            epochs, model, optimizer, scheduler,
+            lr_controller=lr_controller, dual_state=dual_state,
+            loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
+            extra={
+                "best_Q": best_Q,
+                "best_hierarchy": best_hierarchy,
+                "best_coverage": best_coverage,
+            },
+        ),
+        ckpt_dir / "final.pt",
+    )
+
+    # Log hparams + final metrics together (run_name='.' avoids phantom sub-run dirs).
+    if tb_logger.is_available:
+        _mc = config.get("model", {})
+        _tc = config.get("training", {})
+        _hparam_dict = {
+            "latent_dim": int(_mc.get("latent_dim", 0)),
+            "hidden_dim": int(_mc.get("hidden_dim", 0)),
+            "radial_dims": int(_mc.get("radial_dims", 0)),
+            "epochs": int(epochs),
+            "batch_size": int(_tc.get("batch_size", 0)),
+            "lr": float(_tc.get("lr", 0)),
+            "ac_weight": float(loss_cfg.get("angular_coherence", {}).get("weight", 0)),
+            "hierarchy_weight": float(loss_cfg.get("rich_hierarchy", {}).get("hierarchy_weight", 0)),
+            "n_pairs_ac": int(loss_cfg.get("angular_coherence", {}).get("n_pairs", 0)),
         }
-    torch.save(final_ckpt, ckpt_dir / "final.pt")
+        _metric_dict = {
+            "hparam/best_Q": best_Q,
+            "hparam/best_hierarchy": best_hierarchy,
+            "hparam/best_coverage": best_coverage,
+        }
+        tb_logger.writer.add_hparams(_hparam_dict, _metric_dict, run_name=".")
 
     # Close TensorBoard logger
     tb_logger.close()
@@ -1714,15 +2017,20 @@ def main():
     print(f"  Device: {device}")
     print(f"  Seed: {args.seed}")
     print(f"{'=' * 60}")
-
-    # Load config
     config_path = Path(args.config)
-    if not config_path.exists():
-        print(f"[ERROR] Config not found: {config_path}")
-        sys.exit(1)
-
     with open(config_path) as f:
-        config = yaml.safe_load(f)
+        raw_config = yaml.safe_load(f) or {}
+
+    # Validate config against Pydantic schema
+    try:
+        config = normalize_config(raw_config)
+        print(f"  Schema validation: PASSED")
+    except Exception as e:
+        print(f"[ERROR] Schema validation FAILED: {e}")
+        if not args.force:
+            sys.exit(1)
+        print("  Continuing anyway due to --force flag")
+        config = raw_config
 
     # Override device settings from YAML if not specified on command line
     device_cfg = config.get("device", {})

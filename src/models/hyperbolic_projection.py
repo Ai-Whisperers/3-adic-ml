@@ -1,9 +1,7 @@
-# Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
+# Copyright (c) 2024-2026 AI Whisperers
 #
-# Licensed under the PolyForm Noncommercial License 1.0.0
+# Licensed under the MIT License.
 # See LICENSE file in the repository root for full license text.
-#
-# For commercial licensing inquiries: support@aiwhisperers.com
 
 """Hyperbolic Projection Layer.
 
@@ -28,9 +26,7 @@ from typing import Optional, Tuple, Union, cast
 import geoopt
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-from src.geometry import ManifoldParameter, exp_map_zero
+from src.geometry import ManifoldParameter
 
 
 class HyperbolicProjection(nn.Module):
@@ -200,14 +196,9 @@ class HyperbolicProjection(nn.Module):
         origin = torch.zeros_like(z_transformed)
         z_hyp = self.manifold.expmap(origin, z_transformed)
 
-        # Apply max_radius constraint (explicit float64 for numerical stability)
-        norm = torch.norm(z_hyp, dim=-1, keepdim=True)
-        eps = torch.tensor(1e-10, device=z_hyp.device, dtype=torch.float64)
-        scale = torch.where(
-            norm > self.max_radius,
-            self.max_radius / (norm + eps),
-            torch.ones(1, device=z_hyp.device, dtype=torch.float64)
-        )
+        # Apply max_radius constraint (clamp avoids per-call tensor allocations)
+        norm = torch.norm(z_hyp, dim=-1, keepdim=True).clamp(min=1e-10)
+        scale = (self.max_radius / norm).clamp(max=1.0)
         z_hyp = z_hyp * scale
 
         if as_manifold:
@@ -247,8 +238,7 @@ class HyperbolicProjection(nn.Module):
         # Direction: residual transform of z_θ, then normalize to unit sphere
         z_theta_scaled = self.tangent_scale * z_theta
         dir_unnorm = z_theta_scaled + self.tangent_net(z_theta_scaled)
-        eps = torch.tensor(1e-10, device=z_tangent.device, dtype=torch.float64)
-        dir_norm = torch.norm(dir_unnorm, dim=-1, keepdim=True).clamp(min=eps)
+        dir_norm = torch.norm(dir_unnorm, dim=-1, keepdim=True).clamp(min=1e-10)
         dir = dir_unnorm / dir_norm                     # (B, D-k), unit norm
 
         # Poincaré ball point: ||z_hyp|| = r < max_radius < 1 by construction
@@ -280,14 +270,9 @@ class HyperbolicProjection(nn.Module):
         origin = torch.zeros_like(z_transformed)
         z_hyp = self.manifold.expmap(origin, z_transformed)
 
-        # Apply max_radius constraint (explicit float64 for numerical stability)
-        norm = torch.norm(z_hyp, dim=-1, keepdim=True)
-        eps = torch.tensor(1e-10, device=z_hyp.device, dtype=torch.float64)
-        scale = torch.where(
-            norm > self.max_radius,
-            self.max_radius / (norm + eps),
-            torch.ones(1, device=z_hyp.device, dtype=torch.float64)
-        )
+        # Apply max_radius constraint (clamp avoids per-call tensor allocations)
+        norm = torch.norm(z_hyp, dim=-1, keepdim=True).clamp(min=1e-10)
+        scale = (self.max_radius / norm).clamp(max=1.0)
         z_hyp = z_hyp * scale
 
         tangent_norm = torch.norm(z_transformed, dim=-1)

@@ -1,6 +1,6 @@
-# Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
+# Copyright (c) 2024-2026 AI Whisperers
 #
-# Licensed under the PolyForm Noncommercial License 1.0.0
+# Licensed under the MIT License.
 # See LICENSE file in the repository root for full license text.
 
 """Configuration module for TernaryVAE project.
@@ -22,6 +22,21 @@ from .statenet_config import (
     TimingConfig,
 )
 
+# Pydantic schema validation (V7.2+)
+from .schema import (
+    TrainingConfigSchema,
+    validate_config,
+    validate,
+    normalize_config,
+    validate_and_normalize,
+    # Sub-schemas for granular validation
+    AngularCoherenceLossConfig,
+    LossConfig,
+    ModelConfig,
+    TrainingConfig,
+    VisualizationConfig,
+)
+
 __all__ = [
     # Constants
     "N_TERNARY_OPERATIONS",
@@ -31,7 +46,7 @@ __all__ = [
     "CHECKPOINTS_DIR",
     "MODELS_DIR",
     "SRC_PRESETS_DIR",
-    # StateNet Configuration
+    # StateNet Configuration (dataclass)
     "StateNetConfig",
     "CoverageThresholds",
     "HierarchyThresholds",
@@ -39,4 +54,15 @@ __all__ = [
     "TimingConfig",
     "LRScales",
     "InitialStates",
+    # Pydantic Schema Validation
+    "TrainingConfigSchema",
+    "validate_config",
+    "validate",
+    "normalize_config",
+    "validate_and_normalize",
+    "AngularCoherenceLossConfig",
+    "LossConfig",
+    "ModelConfig",
+    "TrainingConfig",
+    "VisualizationConfig",
 ]

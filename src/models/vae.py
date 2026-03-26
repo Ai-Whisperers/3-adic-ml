@@ -1,6 +1,6 @@
-# Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
+# Copyright (c) 2024-2026 AI Whisperers
 #
-# Licensed under the PolyForm Noncommercial License 1.0.0
+# Licensed under the MIT License.
 # See LICENSE file in the repository root for full license text.
 
 """Ternary VAE with True Hyperbolic Geometry.
@@ -44,7 +44,7 @@ Reference:
     Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import torch
 import torch.nn as nn
@@ -310,7 +310,7 @@ class TernaryVAEV6(nn.Module):
         # Enforce float64 precision for numerical stability
         self.to(torch.float64)
 
-    def encode(self, x: torch.Tensor) -> tuple:
+    def encode(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Encode input to latent distribution parameters for both VAEs.
 
         Each encoder head produces mu and logvar in tangent space at origin.

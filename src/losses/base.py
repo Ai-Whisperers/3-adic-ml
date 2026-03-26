@@ -1,6 +1,6 @@
-# Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
+# Copyright (c) 2024-2026 AI Whisperers
 #
-# Licensed under the PolyForm Noncommercial License 1.0.0
+# Licensed under the MIT License.
 # See LICENSE file in the repository root for full license text.
 
 """Abstract base classes for all hierarchy losses.
@@ -24,6 +24,10 @@ MetricsDict
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Tuple, Union
+try:
+    from typing import TypedDict
+except ImportError:  # Python <3.8 fallback (not expected, but safe)
+    from typing_extensions import TypedDict
 
 import torch
 import torch.nn as nn
@@ -38,6 +42,68 @@ import torch.nn as nn
 # Convention: keys ending in '_tensor' hold torch.Tensor; all others are
 # int/float and safe for .item() / logging.
 MetricsDict = Dict[str, Any]
+
+
+class CombinedLossOutput(TypedDict, total=False):
+    """Typed return value of ``CombinedLoss.forward()``.
+
+    All keys except ``total`` are optional — they are only present when the
+    corresponding loss component is enabled in the config.  Keys ending in
+    ``_metrics`` are MetricsDict sub-dicts (safe to log, no gradients).
+    Keys ending in ``_tensor`` inside the sub-dicts are in-graph tensors
+    used by the Lagrangian dual; all other values are float/int.
+
+    Quick reference for the most common keys:
+        total           → scalar differentiable loss tensor (always present)
+        reconstruction  → cross-entropy reconstruction loss component
+        kl_loss         → hyperbolic KL divergence component
+        rich_hierarchy  → RichHierarchyLoss weighted sum
+        radial          → RadialHierarchyLoss component
+        geodesic        → PAdicGeodesicLoss component
+        rank            → GlobalRankLoss component
+        monotonic       → MonotonicRadialLoss component
+        angular         → AngularCoherenceLoss component
+        valuation_prior → ValuationPriorLoss component
+        within_contrastive → WithinLevelContrastiveLoss component
+        lagrangian_margin   → Lagrangian margin penalty (if dual enabled)
+        lagrangian_scatter  → Lagrangian scatter penalty (if dual enabled)
+        lagrangian_prior    → Lagrangian prior penalty (if dual enabled)
+        rich_metrics        → sub-dict from RichHierarchyLoss
+        monotonic_metrics   → sub-dict from MonotonicRadialLoss (r_v0..r_v9)
+        rank_metrics        → sub-dict from GlobalRankLoss
+        angular_metrics     → sub-dict from AngularCoherenceLoss
+        valuation_prior_metrics → sub-dict from ValuationPriorLoss
+
+    When ``learnable_weights=True`` the effective weights are logged via
+    ``loss_fn.get_learned_weights()`` — they are not present in this dict.
+
+    Usage::
+
+        losses: CombinedLossOutput = loss_fn(z_hyp, indices, logits, targets, epoch=ep)
+        losses["total"].backward()       # always safe
+        h_metrics = losses.get("rich_metrics", {})
+        r_v0 = h_metrics.get("r_v0", float("nan"))
+    """
+
+    total: Any          # torch.Tensor — always present
+    reconstruction: Any
+    kl_loss: Any
+    rich_hierarchy: Any
+    radial: Any
+    geodesic: Any
+    rank: Any
+    monotonic: Any
+    angular: Any
+    valuation_prior: Any
+    within_contrastive: Any
+    lagrangian_margin: Any
+    lagrangian_scatter: Any
+    lagrangian_prior: Any
+    rich_metrics: MetricsDict
+    monotonic_metrics: MetricsDict
+    rank_metrics: MetricsDict
+    angular_metrics: MetricsDict
+    valuation_prior_metrics: MetricsDict
 
 
 class HierarchyLossBase(ABC, nn.Module):
@@ -159,4 +225,5 @@ __all__ = [
     "HierarchyLossBase",
     "RichHierarchyLossBase",
     "MetricsDict",
+    "CombinedLossOutput",
 ]

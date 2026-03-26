@@ -1,9 +1,7 @@
-# Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
+# Copyright (c) 2024-2026 AI Whisperers
 #
-# Licensed under the PolyForm Noncommercial License 1.0.0
+# Licensed under the MIT License.
 # See LICENSE file in the repository root for full license text.
-#
-# For commercial licensing inquiries: support@aiwhisperers.com
 
 """Unified P-Adic Geodesic Loss for V5.11.
 
@@ -34,6 +32,7 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..geometry import hyperbolic_radius, poincare_distance
 from .base import HierarchyLossBase, MetricsDict, RichHierarchyLossBase
+from ..utils.scatter_utils import level_scatter_mean, level_has_data
 
 
 def _exponential_target_radii(
@@ -733,26 +732,21 @@ class MonotonicRadialLoss(HierarchyLossBase):
         # V5.12.2: Use hyperbolic distance instead of Euclidean norm
         radii = hyperbolic_radius(z_hyp, c=self.curvature)
 
-        # Compute mean radius per valuation level
-        level_means = []
-        level_counts = []
-        levels_present = []
-
-        for v in range(self.max_valuation + 1):
-            mask = valuations == v
-            if mask.any():
-                level_means.append(radii[mask].mean())
-                level_counts.append(mask.sum().item())
-                levels_present.append(v)
+        # Compute mean radius per valuation level (scatter — differentiable)
+        dim_size = self.max_valuation + 1
+        vals_long = valuations.long()
+        present_mask = level_has_data(vals_long, dim_size=dim_size)  # (dim_size,) bool
+        levels_present = present_mask.nonzero(as_tuple=False).squeeze(-1).tolist()
 
         if len(levels_present) < 2:
-            # Need at least 2 levels to enforce ordering
             return torch.tensor(0.0, device=device, dtype=torch.float64), {
                 "n_levels": len(levels_present),
                 "margin_violations": 0,
             }
 
-        level_means = torch.stack(level_means)
+        level_means_all = level_scatter_mean(radii, vals_long, dim_size=dim_size)
+        level_means = level_means_all[present_mask]  # (n_present,) — differentiable
+        level_counts = [(vals_long == v).sum().item() for v in levels_present]
         n_levels = len(levels_present)
 
         # Compute target margins between adjacent present levels
@@ -921,24 +915,54 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         # 1. Hierarchy loss (MSE on mean radius + within-level variance)
         # Mean-only MSE leaves per-level scatter unpunished (CV up to 34% at v=3),
         # directly limiting Spearman Q. Adding variance_loss tightens each level.
-        hierarchy_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
-        variance_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
-        present_levels = torch.unique(valuations)
+        # Compute per-level mean and std via scatter (differentiable)
+        dim_size = 10
+        vals_long = valuations.long()
+        present_mask = level_has_data(vals_long, dim_size=dim_size)  # (10,) bool
+        present_levels = present_mask.nonzero(as_tuple=False).squeeze(-1)  # for separation block
+        n_levels = int(present_mask.sum().item())
 
-        for v in present_levels:
-            mask = valuations == v
-            level_radii = radii[mask]
-            if level_radii.numel() > 0:
-                mean_r = level_radii.mean()
-                target_r = target_radii[int(v.item())]
-                hierarchy_loss = hierarchy_loss + (mean_r - target_r) ** 2
-                if level_radii.numel() > 1:
-                    variance_loss = variance_loss + level_radii.var()
+        means_all = level_scatter_mean(radii, vals_long, dim_size=dim_size)   # (10,)
 
-        n_levels = len(present_levels)
+        means_present = means_all[present_mask]        # (n_present,) differentiable
+        targets_present = target_radii[present_mask]   # (n_present,)
+
+        # Variance via scatter_add_ (NOT scatter_std / sqrt) to guarantee safe gradients.
+        #
+        # Root cause: torch_scatter.scatter_std backward computes d/dx sqrt(var(x)).
+        # At var=0 (singleton or empty groups) the gradient is 1/(2*sqrt(0)) = inf → NaN.
+        # This NaN propagates to ALL elements in the kernel, not just the singleton group.
+        # (Confirmed: backprop through group v=2 NaNs elements in group v=0 in the same call.)
+        #
+        # Per-level sample counts and when NaN would occur (batch_size=4096):
+        #   v=0 (13122 ops, E=2731): never empty/singleton — would be safe with scatter_std
+        #   v=1 (4374,  E=910):  never singleton — safe
+        #   v=2 (1458,  E=303):  never singleton — safe
+        #   v=3 (486,   E=101):  essentially never singleton — safe
+        #   v=4 (162,   E=34):   P(count=1) ≈ 7e-14 — effectively safe
+        #   v=5 (54,    E=11):   P(count=1) ≈ 1e-4  — rare but possible
+        #   v=6 (18,    E=3.7):  P(count=1) ≈ 9%    — frequent
+        #   v=7 (6,     E=1.2):  P(count=1) ≈ 36%   — most batches
+        #   v=8 (2,     E=0.4):  P(count=1) ≈ 28%   — common
+        #   v=9 (1,     E=0.2):  P(count=1) ≈ 17%   — common
+        #
+        # Variance (sum of squared deviations / count) is safe: no sqrt, gradient is 2*(r-mean)/count.
+        deviations = radii - means_all[vals_long]
+        variance_all = torch.zeros(dim_size, dtype=radii.dtype, device=device)
+        counts_all = torch.zeros(dim_size, dtype=radii.dtype, device=device)
+        variance_all.scatter_add_(0, vals_long, deviations ** 2)
+        counts_all.scatter_add_(0, vals_long, torch.ones_like(radii))
+        variance_all = variance_all / counts_all.clamp(min=1.0)
+        # std = sqrt(variance) under no_grad — safe for metrics only, never backpropagated
+        with torch.no_grad():
+            stds_all = variance_all.clamp(min=0.0).sqrt()  # (10,) — metrics only, no backward
+
         if n_levels > 0:
-            hierarchy_loss = hierarchy_loss / n_levels
-            variance_loss = variance_loss / n_levels
+            hierarchy_loss = ((means_present - targets_present) ** 2).mean()
+            variance_loss = variance_all[present_mask].mean()
+        else:
+            hierarchy_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
+            variance_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
         # Fold variance penalty into hierarchy_loss.
         # variance_weight controls within-level tightening; higher values drive dist_corr.
         # At plateau, mean-MSE gradient ≈ 0 so variance_loss becomes the primary radial signal.
@@ -1009,6 +1033,15 @@ class RichHierarchyLoss(RichHierarchyLossBase):
             "separation": separation_loss.item(),
             "variance": variance_loss.item(),
         }
+        # Per-level mean and std metrics (stds_all computed under no_grad — safe to log)
+        # NaN guard: v=6..9 are frequently absent; stds_all is 0.0 for absent levels (not NaN)
+        # but guard defensively against any edge case.
+        with torch.no_grad():
+            for _v in range(dim_size):
+                if present_mask[_v]:
+                    metrics[f"r_mean_v{_v}"] = means_all[_v].item()
+                    std_val = stds_all[_v].item()
+                    metrics[f"r_std_v{_v}"] = std_val if not (std_val != std_val) else 0.0  # isnan check
         # Pass raw tensors under _tensors key for CombinedLoss gradient flow
         _raw = {
             "hierarchy": hierarchy_loss,
@@ -1104,19 +1137,18 @@ class ValuationPriorLoss(nn.Module):
 
         # Per-level gap tensors for Lagrangian dual (remain in computation graph).
         # vp_gap_tensor_v{v} = |mean(||μ||_v) - target_v| for each level present.
+        dim_size = self.max_valuation + 1
+        present_mask = level_has_data(valuations, dim_size=dim_size)
+        mean_norms_all = level_scatter_mean(mu_norms, valuations, dim_size=dim_size)  # (dim_size,)
+        gaps_all = (mean_norms_all - target_tangent_norms.to(device)).abs()  # (dim_size,)
+
         per_level_gap_tensors: Dict[str, torch.Tensor] = {}
         per_level_gaps: Dict[str, float] = {}
         per_level_norms: Dict[str, float] = {}
-
-        for v in range(self.max_valuation + 1):
-            mask = valuations == v
-            if mask.any():
-                mu_norm_v = mu_norms[mask].mean()
-                target_v = target_tangent_norms[v]
-                gap_v = (mu_norm_v - target_v).abs()
-                per_level_gap_tensors[f'vp_gap_tensor_v{v}'] = gap_v
-                per_level_gaps[f'vp_gap_v{v}'] = gap_v.detach().item()
-                per_level_norms[f'vp_mu_norm_v{v}'] = mu_norm_v.detach().item()
+        for v in present_mask.nonzero(as_tuple=False).squeeze(-1).tolist():
+            per_level_gap_tensors[f'vp_gap_tensor_v{v}'] = gaps_all[v]
+            per_level_gaps[f'vp_gap_v{v}'] = gaps_all[v].detach().item()
+            per_level_norms[f'vp_mu_norm_v{v}'] = mean_norms_all[v].detach().item()
 
         # Metrics: aggregate values (logged every step)
         with torch.no_grad():
@@ -1368,6 +1400,7 @@ class AngularCoherenceLoss(nn.Module):
                 total_loss = total_loss + level_loss
                 total_pairs += int(n_same)
                 n_active_levels += 1
+                metrics[f"ac_loss_v{v}"] = level_loss.item()
 
             if n_active_levels == 0:
                 metrics["angular_coherence_loss"] = 0.0

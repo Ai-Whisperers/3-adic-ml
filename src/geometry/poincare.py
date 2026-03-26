@@ -1,9 +1,7 @@
-# Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
+# Copyright (c) 2024-2026 AI Whisperers
 #
-# Licensed under the PolyForm Noncommercial License 1.0.0
+# Licensed under the MIT License.
 # See LICENSE file in the repository root for full license text.
-#
-# For commercial licensing inquiries: support@aiwhisperers.com
 
 """Poincare Ball geometry with geoopt backend.
 
@@ -34,6 +32,8 @@ Reference:
     Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincare VAEs"
 """
 
+from typing import Any
+
 # geoopt is a required dependency
 import geoopt
 from geoopt import ManifoldParameter, ManifoldTensor
@@ -43,6 +43,7 @@ import torch
 
 # Global manifold cache for efficiency - keyed by (curvature, device)
 _manifold_cache = {}
+RiemannianOptimizer = RiemannianAdam | RiemannianSGD
 
 
 def get_manifold(c: float = 1.0, device: torch.device | str | None = None) -> GeooptPoincareBall:
@@ -147,8 +148,8 @@ def project_to_poincare(z: torch.Tensor, max_norm: float = 0.95, c: float = 1.0)
     z_proj = manifold.projx(z)
 
     # Apply additional max_norm constraint if needed
-    norm = torch.norm(z_proj, dim=-1, keepdim=True)
-    scale = torch.where(norm > max_norm, max_norm / (norm + 1e-10), torch.ones_like(norm))
+    norm = torch.norm(z_proj, dim=-1, keepdim=True).clamp(min=1e-10)
+    scale = (max_norm / norm).clamp(max=1.0)
     return z_proj * scale
 
 
@@ -191,12 +192,8 @@ def log_map_zero(z: torch.Tensor, c: float = 1.0, max_norm: float | None = None)
     # Never exceed ball boundary regardless of what caller passes
     effective_max_norm = min(effective_max_norm, ball_radius - 1e-5)
 
-    norm = torch.norm(z, dim=-1, keepdim=True)
-    scale = torch.where(
-        norm > effective_max_norm,
-        effective_max_norm / (norm + 1e-10),
-        torch.ones_like(norm),
-    )
+    norm = torch.norm(z, dim=-1, keepdim=True).clamp(min=1e-10)
+    scale = (effective_max_norm / norm).clamp(max=1.0)
     z_clamped = z * scale
 
     manifold = get_manifold(c, device=z.device)
@@ -333,7 +330,12 @@ def create_manifold_tensor(data: torch.Tensor, c: float = 1.0) -> ManifoldTensor
     return ManifoldTensor(data_proj, manifold=manifold)
 
 
-def get_riemannian_optimizer(params, lr: float = 1e-3, optimizer_type: str = "adam", **kwargs):
+def get_riemannian_optimizer(
+    params: Any,
+    lr: float = 1e-3,
+    optimizer_type: str = "adam",
+    **kwargs: Any,
+) -> RiemannianOptimizer:
     """Get a Riemannian optimizer for hyperbolic parameters.
 
     Args:

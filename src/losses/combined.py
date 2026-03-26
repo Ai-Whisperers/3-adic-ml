@@ -1,6 +1,6 @@
-# Copyright 2024-2025 AI Whisperers (https://github.com/Ai-Whisperers)
+# Copyright (c) 2024-2026 AI Whisperers
 #
-# Licensed under the PolyForm Noncommercial License 1.0.0
+# Licensed under the MIT License.
 # See LICENSE file in the repository root for full license text.
 
 """Combined Loss Module - Config-driven loss composition.
@@ -30,7 +30,9 @@ Usage:
     # loss_fn.get_learned_weights()  # returns current effective weights
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
+from .base import CombinedLossOutput
+import warnings
 
 import torch
 import torch.nn as nn
@@ -282,6 +284,9 @@ class CombinedLoss(nn.Module):
             self.wlc_loss = None
 
         # AngularCoherenceLoss (pull same-prefix operations together in direction space)
+        # NOTE: AC loss requires a factored latent (model.factored=True) so that the
+        # radial component r is available in forward(). When r=None (non-factored mode)
+        # the loss is silently skipped. A one-time warning is emitted in that case.
         ac_cfg = self.config.get('angular_coherence', {})
         if ac_cfg.get('enabled', False):
             self.angular_coherence = AngularCoherenceLoss(
@@ -292,8 +297,10 @@ class CombinedLoss(nn.Module):
                 level_prefix_k=ac_cfg.get('level_prefix_k', None),
                 target_sim=ac_cfg.get('target_sim', 1.0),
             )
+            self._ac_warned_no_r = False  # emit the missing-r warning at most once
         else:
             self.angular_coherence = None
+            self._ac_warned_no_r = True  # nothing to warn about
 
         # Guard: at least one loss must be enabled, or training will be gradient-free
         active = [
@@ -432,7 +439,7 @@ class CombinedLoss(nn.Module):
         curvature: Optional[float] = None,
         dual_weights: Optional[Dict[str, List[float]]] = None,
         r: Optional[torch.Tensor] = None,
-    ) -> Dict[str, Any]:
+    ) -> CombinedLossOutput:
         """Compute combined loss.
 
         Args:
@@ -605,11 +612,25 @@ class CombinedLoss(nn.Module):
             total = total + wlc_out
 
         # 10. Angular coherence loss (sharpen direction sub-clusters by digit prefix)
+        # Requires r (radial component from factored latent). In non-factored mode
+        # r=None, making AC structurally inapplicable: there is no separate direction
+        # space to align, only the combined z_hyp vector.
         if self.angular_coherence is not None and r is not None:
             ac_out, ac_metrics = self.angular_coherence(z_hyp, r, indices, epoch)
             losses['angular_coherence'] = ac_out
             losses['angular_coherence_metrics'] = ac_metrics
             total = total + ac_out
+        elif self.angular_coherence is not None and r is None and not self._ac_warned_no_r:
+            warnings.warn(
+                "AngularCoherenceLoss is enabled (angular_coherence.enabled=true) but "
+                "r=None was passed to CombinedLoss.forward(). AC loss is producing ZERO "
+                "gradient. This happens when model.factored=False — the model does not "
+                "produce a separate radial component. Either set model.factored=True or "
+                "disable angular_coherence in your config.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self._ac_warned_no_r = True
 
         # 11. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:

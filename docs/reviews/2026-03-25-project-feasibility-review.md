@@ -751,6 +751,29 @@ If the goal is to keep only what is worth continuing, the next sequence should b
 
 1. **Legal and provenance cleanup first.**
    Before more experimentation, align the root LICENSE, file headers, and any stale commercial-license notices. This is external-credibility debt, not cosmetic debt.
+   Deeper detail from the live tree: as of March 26, 2026, I count **18 Python files under `src/`** still carrying stale PolyForm/commercial-era headers:
+   - `src/config/__init__.py`
+   - `src/config/schema.py`
+   - `src/config/statenet_config.py`
+   - `src/core/ternary.py`
+   - `src/geometry/poincare.py`
+   - `src/losses/base.py`
+   - `src/losses/combined.py`
+   - `src/losses/hyperbolic_kl.py`
+   - `src/losses/lagrangian.py`
+   - `src/losses/padic_geodesic.py`
+   - `src/models/hyperbolic_projection.py`
+   - `src/models/lr_controller.py`
+   - `src/models/vae.py`
+   - `src/train.py`
+   - `src/utils/checkpoint.py`
+   - `src/utils/hardware_monitor.py`
+   - `src/utils/tensorboard_logger.py`
+   - `src/utils/visualization.py`
+   Two of those (`src/core/ternary.py`, `src/models/hyperbolic_projection.py`) still also carry direct “commercial licensing inquiries” language. The safest implementation order is:
+   1. normalize `src/` headers only
+   2. add a regression test that forbids stale PolyForm/commercial strings in `src/`
+   3. clean `tests/` and generated docs in a separate pass
 2. **Split `src/train.py` without changing behavior.**
    First move code, not logic. The best near-term split is:
    - `src/training/metrics.py`
