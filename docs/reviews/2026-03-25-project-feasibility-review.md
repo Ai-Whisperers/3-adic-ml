@@ -817,3 +817,197 @@ That is the part of the project that is still worth continuing.
 This project is already a strong **closed-domain hyperbolic geometry learner** over the full balanced-ternary state space. That is real, reproducible, and more technically solid than I initially expected.
 
 It is **not yet** evidence of disruptive external statistical prediction or a commercially superior AI system. To become that, it needs an external task, a faithful input bridge, comparative baselines, and repeatable wins outside the native 19,683-state sandbox.
+
+## Appendix: Full `src/train.py` Audit (Current Live Tree, March 26, 2026)
+
+This appendix replaces broad impressions with a line-bounded audit of the current live [`src/train.py`](/d1/VAEs/3-adic-ml/src/train.py). The file is still a **god file**, but the stronger claim is more precise than “it is all slop”:
+
+1. Several internal subroutines are individually coherent and worth preserving.
+2. The orchestration layer is structurally overgrown and mixes too many concerns.
+3. One earlier critique item was stale: I do **not** reproduce the duplicate immediate overwrite of `level_pfx`; in the live file there is only one active assignment at [`src/train.py:1540`](/d1/VAEs/3-adic-ml/src/train.py:1540).
+
+### Structural map
+
+The file is currently about 2,130 lines and still owns all of these responsibilities:
+
+1. Process setup and determinism at [`src/train.py:35`](/d1/VAEs/3-adic-ml/src/train.py:35) to [`src/train.py:132`](/d1/VAEs/3-adic-ml/src/train.py:132).
+2. Dataset auditing and split preparation at [`src/train.py:142`](/d1/VAEs/3-adic-ml/src/train.py:142) to [`src/train.py:219`](/d1/VAEs/3-adic-ml/src/train.py:219).
+3. Model construction and health checks at [`src/train.py:221`](/d1/VAEs/3-adic-ml/src/train.py:221) to [`src/train.py:374`](/d1/VAEs/3-adic-ml/src/train.py:374).
+4. Metric definitions at [`src/train.py:382`](/d1/VAEs/3-adic-ml/src/train.py:382) to [`src/train.py:615`](/d1/VAEs/3-adic-ml/src/train.py:615).
+5. Grokking instrumentation at [`src/train.py:624`](/d1/VAEs/3-adic-ml/src/train.py:624) to [`src/train.py:740`](/d1/VAEs/3-adic-ml/src/train.py:740).
+6. Checkpoint payload assembly at [`src/train.py:743`](/d1/VAEs/3-adic-ml/src/train.py:743) to [`src/train.py:804`](/d1/VAEs/3-adic-ml/src/train.py:804).
+7. Full training orchestration at [`src/train.py:807`](/d1/VAEs/3-adic-ml/src/train.py:807) to [`src/train.py:1964`](/d1/VAEs/3-adic-ml/src/train.py:1964).
+8. CLI parsing, validation-only mode, run-directory creation, audits, and final result serialization at [`src/train.py:1972`](/d1/VAEs/3-adic-ml/src/train.py:1972) to [`src/train.py:2130`](/d1/VAEs/3-adic-ml/src/train.py:2130).
+
+That is the core architectural drift. Even though many blocks are sensible, they should not still all live in one file.
+
+### What is genuinely solid and should survive the split
+
+#### 1. Determinism setup is explicit and mostly battle-tested
+
+[`set_determinism()`](/d1/VAEs/3-adic-ml/src/train.py:96) is not cosmetic. It seeds Python, NumPy, and Torch, configures cuDNN determinism, sets `CUBLAS_WORKSPACE_CONFIG`, and opts into deterministic algorithms with `warn_only=True` where supported. That is defensible research hygiene, especially given the repo’s sensitivity to geometry metrics and audit reproducibility.
+
+Two caveats remain:
+
+1. The function also globally flips the default dtype to `float64` at [`src/train.py:112`](/d1/VAEs/3-adic-ml/src/train.py:112), which is intentional for geometric stability but is still a global side effect that belongs in a narrower runtime/bootstrap layer.
+2. The file mutates `sys.path` at [`src/train.py:67`](/d1/VAEs/3-adic-ml/src/train.py:67) to [`src/train.py:68`](/d1/VAEs/3-adic-ml/src/train.py:68), which is practical but still shell-layer drift rather than clean package execution.
+
+#### 2. Data and model audits are worth keeping, just not here
+
+[`DataAuditor`](/d1/VAEs/3-adic-ml/src/train.py:142) and [`ModelAuditor`](/d1/VAEs/3-adic-ml/src/train.py:221) are not fake ceremony. They represent legitimate preflight checks:
+
+1. Data preparation is centralized through the canonical ternary core and split deterministically.
+2. Model creation validates parameter counts, output shapes, and gradient flow before training.
+
+These are good ideas. The architectural problem is placement, not existence. They belong in `src/training/audit.py` or equivalent, not in the same file that also does TensorBoard dashboards, ARI clustering, checkpoint I/O, and CLI exit handling.
+
+#### 3. The metric definitions are more careful than the README history suggested
+
+The current live file clearly separates three different notions that were previously conflated in docs:
+
+1. [`compute_accuracy()`](/d1/VAEs/3-adic-ml/src/train.py:382) is **per-trit reconstruction accuracy**.
+2. [`compute_coverage()`](/d1/VAEs/3-adic-ml/src/train.py:405) is **perfect 9-trit reconstruction coverage**.
+3. [`compute_hyperbolic_coverage()`](/d1/VAEs/3-adic-ml/src/train.py:429) is not reconstruction coverage at all, but a **radial entropy/spread proxy** over hyperbolic radii.
+
+This distinction is important, and the code gets it right even though other project surfaces have historically muddied the labels.
+
+#### 4. Hierarchy metrics are coherent, but still tightly coupled to training
+
+[`compute_hierarchy_metrics()`](/d1/VAEs/3-adic-ml/src/train.py:541) is a reasonable research helper:
+
+1. It computes hierarchy as negated Spearman correlation between valuation and hyperbolic radius.
+2. It computes sample-based distance correlation with an explicit RNG seed.
+3. It aggregates tree coherence and per-level radial consistency.
+
+That is real scientific machinery. The drift issue is that these metrics are defined in the training script rather than in a stable metrics module that can be imported independently by audits, tests, and downstream evaluators.
+
+### Where the god-file drift is concrete and serious
+
+#### 1. `train()` still owns far too many policy decisions
+
+[`train()`](/d1/VAEs/3-adic-ml/src/train.py:807) is doing at least nine jobs:
+
+1. Config parsing and defaulting.
+2. Dataloader construction and stratified sampling.
+3. Loss construction for both VAE-A and VAE-B.
+4. LR controller setup and optional Option C merging.
+5. Optimizer and scheduler creation.
+6. TensorBoard setup and dashboard metadata.
+7. Visualization pipeline orchestration.
+8. Resume-checkpoint restoration.
+9. Epoch loop, validation, ARI diagnostics, controller updates, checkpointing, and result summarization.
+
+This is the main architectural drift that still needs fixing. The file is not “bad because it is long”; it is bad because many responsibilities change for different reasons and therefore should be isolated.
+
+#### 2. There is still research-journal narrative embedded directly in execution code
+
+The comments around the stratified sampler at [`src/train.py:860`](/d1/VAEs/3-adic-ml/src/train.py:860) to [`src/train.py:871`](/d1/VAEs/3-adic-ml/src/train.py:871), the VAE-B coverage conflict at [`src/train.py:913`](/d1/VAEs/3-adic-ml/src/train.py:913) to [`src/train.py:921`](/d1/VAEs/3-adic-ml/src/train.py:921), the scheduler behavior at [`src/train.py:992`](/d1/VAEs/3-adic-ml/src/train.py:992) to [`src/train.py:1037`](/d1/VAEs/3-adic-ml/src/train.py:1037), the resume semantics at [`src/train.py:1179`](/d1/VAEs/3-adic-ml/src/train.py:1179) to [`src/train.py:1186`](/d1/VAEs/3-adic-ml/src/train.py:1186), and the ARI full-domain pass at [`src/train.py:1515`](/d1/VAEs/3-adic-ml/src/train.py:1515) to [`src/train.py:1518`](/d1/VAEs/3-adic-ml/src/train.py:1518) are all technically useful, but they also show the file acting as an executable lab notebook.
+
+This is exactly the “kernel real, shell accretive” pattern. The comments are often informative, but the file should not be the storage layer for so much experiment narrative.
+
+#### 3. Validation combines routine metrics with expensive full-domain diagnostics
+
+Inside the validation block at [`src/train.py:1432`](/d1/VAEs/3-adic-ml/src/train.py:1432) to [`src/train.py:1600`](/d1/VAEs/3-adic-ml/src/train.py:1600), the script does all of this at once:
+
+1. Val accuracy and perfect coverage.
+2. Hyperbolic radial spread proxy.
+3. Full aggregation of `z_A` and `z_B`.
+4. Hierarchy metrics for both heads.
+5. Direction metric `AQ`.
+6. A full-domain forward pass over all 19,683 states to compute ARI diagnostics.
+7. Controller gradient statistics.
+
+That is useful for research, but it is architecturally poor coupling. The right split is:
+
+1. Fast validation metrics every eval step.
+2. Heavy diagnostics in a separate evaluator hook or audit module.
+3. Full-domain direction diagnostics on a configurable slower cadence or external script.
+
+#### 4. The LR controller interface is still semantically misleading
+
+The live code still feeds the controller with `coverage=avg_val_acc` at [`src/train.py:1584`](/d1/VAEs/3-adic-ml/src/train.py:1584) to [`src/train.py:1588`](/d1/VAEs/3-adic-ml/src/train.py:1588), while the variable name `coverage` suggests perfect-sample reconstruction. This is not a runtime bug if the controller was designed around per-trit accuracy, but it is still naming drift. The code comment acknowledges the mismatch, which is helpful, but the abstraction remains semantically muddy.
+
+#### 5. TensorBoard logging is useful, but it further proves the orchestration overload
+
+The logging block at [`src/train.py:1659`](/d1/VAEs/3-adic-ml/src/train.py:1659) to [`src/train.py:1826`](/d1/VAEs/3-adic-ml/src/train.py:1826) handles:
+
+1. Core train/val metrics.
+2. Hierarchy and Q metrics.
+3. Per-level radii.
+4. Level-gap metrics.
+5. Direction geometry metrics and composite ARI.
+6. Controller state.
+7. Hardware metrics.
+8. Lagrangian state.
+9. Visualization pipeline execution.
+
+No single function should still own all of that. Even if every individual scalar is reasonable, this is a textbook sign that `train.py` became the integration sink for every new experiment feature.
+
+#### 6. Checkpointing is duplicated across normal, best, periodic, emergency, and final flows
+
+The helper [`_build_checkpoint_payload()`](/d1/VAEs/3-adic-ml/src/train.py:743) is the right instinct, but checkpoint policy is still scattered:
+
+1. Emergency OOM checkpoint at [`src/train.py:1363`](/d1/VAEs/3-adic-ml/src/train.py:1363) to [`src/train.py:1373`](/d1/VAEs/3-adic-ml/src/train.py:1373).
+2. Best-Q checkpoint at [`src/train.py:1843`](/d1/VAEs/3-adic-ml/src/train.py:1843) to [`src/train.py:1859`](/d1/VAEs/3-adic-ml/src/train.py:1859).
+3. Periodic checkpoint at [`src/train.py:1900`](/d1/VAEs/3-adic-ml/src/train.py:1900) to [`src/train.py:1909`](/d1/VAEs/3-adic-ml/src/train.py:1909).
+4. Final checkpoint at [`src/train.py:1915`](/d1/VAEs/3-adic-ml/src/train.py:1915) to [`src/train.py:1928`](/d1/VAEs/3-adic-ml/src/train.py:1928).
+
+That should be centralized into a checkpoint manager module so policy changes do not keep touching the training loop.
+
+#### 7. `main()` is still a heavy operational entrypoint, not a thin CLI wrapper
+
+[`main()`](/d1/VAEs/3-adic-ml/src/train.py:1972) is still doing:
+
+1. CLI parsing.
+2. Device fallback.
+3. Determinism bootstrap.
+4. Config loading and schema normalization.
+5. Device override handling.
+6. cuDNN benchmark policy.
+7. Run directory creation and config snapshotting.
+8. Data and model audits.
+9. Validation-only exit behavior.
+10. Training invocation and result serialization.
+
+This should collapse into a thin CLI wrapper once the file is split.
+
+### Specific observations that matter for future refactor accuracy
+
+#### 1. The earlier duplicate `level_pfx` overwrite is gone
+
+This matters because the refactor plan should not preserve stale claims. The current live file has one active mapping at [`src/train.py:1540`](/d1/VAEs/3-adic-ml/src/train.py:1540), not a back-to-back overwrite pair.
+
+#### 2. The VAE-B loss specialization is an intentional architectural choice, not accidental drift
+
+The duplicated `CombinedLoss` construction at [`src/train.py:917`](/d1/VAEs/3-adic-ml/src/train.py:917) to [`src/train.py:922`](/d1/VAEs/3-adic-ml/src/train.py:922) looks messy, but it reflects a real design decision: VAE-B should carry hierarchy pressure without reconstruction conflict. That logic should survive the refactor, but be moved into a dedicated loss-builder function with tests.
+
+#### 3. Resume support is more complete than many research repos
+
+The resume block at [`src/train.py:1187`](/d1/VAEs/3-adic-ml/src/train.py:1187) to [`src/train.py:1245`](/d1/VAEs/3-adic-ml/src/train.py:1245) restores model, optimizer, scheduler, optional learnable loss weights, lagrangian state, and LR controller state. That is better than average research code. It is not slop. It is evidence that the repo does have operational discipline in parts.
+
+#### 4. Full-domain ARI evaluation is both useful and architecturally expensive
+
+The full sweep over all native states at [`src/train.py:1518`](/d1/VAEs/3-adic-ml/src/train.py:1518) to [`src/train.py:1536`](/d1/VAEs/3-adic-ml/src/train.py:1536) is a serious diagnostic, not fluff. But it is still the wrong thing to embed directly in the central training loop if the goal is future maintainability and predictable runtime.
+
+### What this means for the refactor plan
+
+The live-file audit makes the next behavior-preserving split more concrete. The best first extraction order is:
+
+1. `src/training/metrics.py`
+   Move `compute_accuracy`, `compute_coverage`, `compute_hyperbolic_coverage`, `compute_tree_coherence`, `compute_level_stratified_hierarchy`, and `compute_hierarchy_metrics`.
+2. `src/training/audit.py`
+   Move `DataAuditor` and `ModelAuditor`.
+3. `src/training/checkpoints.py`
+   Move `_build_checkpoint_payload` and all save/resume helpers.
+4. `src/training/validation.py`
+   Move the validation pass, hierarchy evaluation, and ARI diagnostics behind explicit entry points.
+5. `src/training/runtime.py`
+   Move TensorBoard, visualization, hardware-monitor, and controller logging glue.
+6. `src/training/cli.py`
+   Shrink `main()` into a wrapper that only parses args and calls a runner.
+
+### Hard conclusion from the live file
+
+The current `train.py` still supports the original critique’s broad thesis: **architectural drift is real, peripheral orchestration is over-accreted, and slop reduction still has high expected value**.
+
+What the live file does **not** support is a lazy blanket dismissal. Several core pieces inside `train.py` are competent and worth preserving. The right move is not a rewrite-from-scratch. The right move is a subtractive split that preserves the deterministic, audited, geometry-aware core while pulling narrative residue and orchestration overload out of the central execution path.
