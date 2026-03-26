@@ -484,6 +484,97 @@ The honest interpretation is:
 
 This is probably the strongest argument currently available for the project’s future commercial direction: not “better generic AI,” but “better metric-space organization for hierarchical discrete state retrieval.” If that idea is going to survive outside the sandbox, it now needs an external dataset where hierarchical retrieval or approximate lookup matters operationally.
 
+## Symbolic Engine And Hidden-Capability Tests
+
+The next question was whether there is any hidden, more general-purpose capability in the current model that is **not** visible from valuation-only benchmarks.
+
+The most defensible way to test that, without inventing fake external evidence, was to add a small symbolic engine that generates exact transformation orbits and feedback pairs over the current domain.
+
+### Scope of the symbolic engine
+
+The new module is intentionally narrow:
+
+1. It is a finite transformation-group engine over `{-1,0,1}^9`.
+2. Its generators are cyclic rotation, reflection, and global sign flip.
+3. Together they define a closed 36-element group action over the current ternary word space.
+
+This is **not** a full implementation of a 3-adic field, ring extension, or homeomorphic algebraic closure. Claiming that from the current codebase would be false. What it does provide is something much more useful right now: exact, compositional symbolic programs, orbit canonicalization, and positive/negative feedback pairs that can be used to audit or later train a neurosymbolic loop.
+
+### What hidden capability is actually testable now
+
+Given the current architecture, the only realistic hidden capabilities worth testing are:
+
+1. Whether the learned space supports transformation-orbit retrieval better than raw digits.
+2. Whether the learned space can verify exact symbolic equivalence classes better than raw digits.
+3. Whether the geometry captures algebraic invariances that were **not** explicit in the current training losses.
+
+High-dimensional external prediction is still **not** directly testable here, because the model still consumes fixed 9-trit inputs. There is no validated high-dimensional bridge or adaptive front-end in the repository yet.
+
+### Standard tests added
+
+Using the symbolic engine, I added two standard metric families:
+
+1. **Orbit retrieval benchmark**:
+   - task: query with a non-identity symbolic transform and retrieve the correct orbit representative
+   - metrics: Recall@1, Recall@10, MRR
+2. **Pair verification benchmark**:
+   - task: distinguish exact same-orbit positive pairs from valuation-matched different-orbit negatives
+   - metrics: ROC-AUC, Average Precision
+
+Both are standard metric-learning / retrieval diagnostics and are much harder to game than another internal scalar.
+
+### Results
+
+For `runs/v7_large_20260324_013725`:
+
+Orbit retrieval (`512` sampled orbits, group size `36`):
+
+| Checkpoint | Representation | Recall@1 | Recall@10 | MRR |
+| --- | --- | ---: | ---: | ---: |
+| `best_Q.pt` | Hyperbolic | `0.0020` | `0.0293` | `0.0168` |
+| `best_Q.pt` | Tangent Euclidean | `0.0039` | `0.0430` | `0.0216` |
+| `best_Q.pt` | Raw input | `0.0059` | `0.0469` | `0.0246` |
+| `final.pt` | Hyperbolic | `0.0059` | `0.0273` | `0.0206` |
+| `final.pt` | Tangent Euclidean | `0.0039` | `0.0449` | `0.0206` |
+| `final.pt` | Raw input | `0.0059` | `0.0469` | `0.0246` |
+
+Pair verification (`2,048` positive + `2,048` negative pairs):
+
+| Checkpoint | Representation | ROC-AUC | Average Precision |
+| --- | --- | ---: | ---: |
+| `best_Q.pt` | Hyperbolic | `0.2467` | `0.3753` |
+| `best_Q.pt` | Tangent Euclidean | `0.2951` | `0.4111` |
+| `best_Q.pt` | Raw input | `0.4101` | `0.4860` |
+| `final.pt` | Hyperbolic | `0.2360` | `0.3727` |
+| `final.pt` | Tangent Euclidean | `0.2999` | `0.4145` |
+| `final.pt` | Raw input | `0.4101` | `0.4860` |
+
+### What these results mean
+
+These new tests are valuable precisely because the answer is mostly negative.
+
+What the results rule out:
+
+1. The current learned spaces are **not** secretly strong transformation-invariant symbolic feature extractors.
+2. The current hyperbolic embedding does **not** outperform simple raw digits on these symbolic-equivalence tasks.
+3. There is no evidence yet that the model has uncovered a latent algebraic closure structure beyond the valuation hierarchy it was trained to optimize.
+
+What the results still justify:
+
+1. The symbolic engine is a useful exact benchmark and future feedback-loop generator.
+2. It gives the project a rigorous neurosymbolic interface for future losses, self-supervised pairs, or orbit-consistency objectives.
+3. It clarifies the present boundary: the model is currently a strong hierarchy-aware retrieval learner, not a general symbolic reasoner.
+
+### Most honest systemic conclusion
+
+If this project is going to evolve into something commercially broader, the path is now clearer:
+
+1. Keep the hyperbolic retrieval strength.
+2. Add a real symbolic supervision channel using exact group-action or orbit-consistency losses.
+3. Only after that should the project attempt claims about general symbolic reasoning or high-dimensional external prediction.
+
+Right now, the symbolic-engine benchmarks are best interpreted as a map of what is **missing**, not as proof that the broader neurosymbolic goal has already been achieved.
+
 ### Metrics that should gate external claims
 
 For future external-task evaluations, I would require:

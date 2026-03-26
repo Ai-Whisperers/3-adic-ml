@@ -26,7 +26,14 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from sklearn.linear_model import SGDClassifier
 from sklearn.cluster import KMeans
 from sklearn.manifold import trustworthiness
-from sklearn.metrics import accuracy_score, adjusted_rand_score, balanced_accuracy_score, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    adjusted_rand_score,
+    average_precision_score,
+    balanced_accuracy_score,
+    f1_score,
+    roc_auc_score,
+)
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
@@ -37,6 +44,7 @@ import yaml
 from src.core import TERNARY
 from src.geometry.poincare import poincare_distance
 from src.models.vae import TernaryVAEV6Controllable
+from src.symbolic import TERNARY_GROUP_ENGINE
 from src.train import compute_accuracy, compute_coverage, compute_hierarchy_metrics
 from src.utils.checkpoint import load_checkpoint_compat
 
@@ -541,6 +549,127 @@ def retrieval_ablation_suite(
     }
 
 
+def _pair_distances(
+    lhs: torch.Tensor,
+    rhs: torch.Tensor,
+    metric: str,
+) -> torch.Tensor:
+    with torch.no_grad():
+        if metric == "poincare":
+            return poincare_distance(lhs, rhs, c=1.0)
+        return torch.norm(lhs - rhs, dim=-1)
+
+
+def _cross_distances(
+    queries: torch.Tensor,
+    bank: torch.Tensor,
+    metric: str,
+) -> torch.Tensor:
+    with torch.no_grad():
+        if metric == "poincare":
+            return poincare_distance(queries[:, None, :], bank[None, :, :], c=1.0)
+        return torch.cdist(queries, bank, p=2)
+
+
+def _ranking_metrics(distance_matrix: torch.Tensor, target_positions: torch.Tensor, k: int = 10) -> dict[str, float]:
+    order = distance_matrix.argsort(dim=1)
+    target_positions = target_positions[:, None]
+    ranks = (order == target_positions).nonzero(as_tuple=False)[:, 1] + 1
+    return {
+        "recall_at_1": float((ranks <= 1).double().mean().item()),
+        "recall_at_10": float((ranks <= k).double().mean().item()),
+        "mrr": float((1.0 / ranks.double()).mean().item()),
+    }
+
+
+def symbolic_orbit_retrieval_benchmark(
+    z_hyp: torch.Tensor,
+    z_tangent: torch.Tensor,
+    raw_inputs: torch.Tensor,
+    indices: torch.Tensor,
+    orbit_sample_size: int = 512,
+    seed: int = 321,
+) -> dict[str, Any]:
+    canon = TERNARY_GROUP_ENGINE.canonicalize(indices.cpu())
+    orbit_reps = torch.unique(canon)
+    rng = np.random.default_rng(seed)
+    if len(orbit_reps) > orbit_sample_size:
+        selected = np.sort(rng.choice(len(orbit_reps), size=orbit_sample_size, replace=False))
+        orbit_reps = orbit_reps[selected]
+
+    queries = TERNARY_GROUP_ENGINE.choose_non_identity_partner(orbit_reps, seed=seed).to(indices.device)
+    bank_positions = orbit_reps.long()
+    query_positions = queries.long()
+    target_positions = torch.arange(len(bank_positions), dtype=torch.long)
+
+    banks = {
+        "hyperbolic_embedding": z_hyp[bank_positions],
+        "tangent_euclidean": z_tangent[bank_positions],
+        "raw_input": raw_inputs[bank_positions],
+    }
+    query_reps = {
+        "hyperbolic_embedding": z_hyp[query_positions],
+        "tangent_euclidean": z_tangent[query_positions],
+        "raw_input": raw_inputs[query_positions],
+    }
+    metrics = {}
+    for key, metric in (
+        ("hyperbolic_embedding", "poincare"),
+        ("tangent_euclidean", "euclidean"),
+        ("raw_input", "euclidean"),
+    ):
+        distances = _cross_distances(query_reps[key], banks[key], metric=metric)
+        metrics[key] = _ranking_metrics(distances, target_positions)
+    return {
+        "sample_size": int(len(bank_positions)),
+        "group_size": int(len(TERNARY_GROUP_ENGINE.elements)),
+        "notes": [
+            "Each query is a non-identity symbolic transform of one orbit representative.",
+            "Candidate banks contain one canonical representative per sampled symbolic orbit.",
+        ],
+        **metrics,
+    }
+
+
+def symbolic_pair_verification_benchmark(
+    z_hyp: torch.Tensor,
+    z_tangent: torch.Tensor,
+    raw_inputs: torch.Tensor,
+    indices: torch.Tensor,
+    pair_sample_size: int = 2048,
+    seed: int = 321,
+) -> dict[str, Any]:
+    pairs = TERNARY_GROUP_ENGINE.sample_feedback_pairs(indices.cpu(), sample_size=pair_sample_size, seed=seed)
+    anchors = pairs["anchors"].long()
+    positives = pairs["positives"].long()
+    negatives = pairs["negatives"].long()
+
+    labels = np.concatenate([np.ones(len(anchors)), np.zeros(len(anchors))])
+    metrics = {}
+    for key, metric in (
+        ("hyperbolic_embedding", "poincare"),
+        ("tangent_euclidean", "euclidean"),
+        ("raw_input", "euclidean"),
+    ):
+        features = {
+            "hyperbolic_embedding": z_hyp,
+            "tangent_euclidean": z_tangent,
+            "raw_input": raw_inputs,
+        }[key]
+        positive_scores = -_pair_distances(features[anchors], features[positives], metric=metric).cpu().numpy()
+        negative_scores = -_pair_distances(features[anchors], features[negatives], metric=metric).cpu().numpy()
+        scores = np.concatenate([positive_scores, negative_scores])
+        metrics[key] = {
+            "roc_auc": float(roc_auc_score(labels, scores)),
+            "average_precision": float(average_precision_score(labels, scores)),
+        }
+    return {
+        "sample_size": int(len(anchors)),
+        "notes": pairs["notes"],
+        **metrics,
+    }
+
+
 def sample_decoder_prior(
     model: TernaryVAEV6Controllable,
     latent_dim: int,
@@ -709,6 +838,18 @@ def evaluate_run(
             output["z_A_tangent"],
             all_indices,
         ),
+        "symbolic_orbit_retrieval": symbolic_orbit_retrieval_benchmark(
+            output["z_A_hyp"],
+            output["z_A_tangent"],
+            all_ops,
+            all_indices,
+        ),
+        "symbolic_pair_verification": symbolic_pair_verification_benchmark(
+            output["z_A_hyp"],
+            output["z_A_tangent"],
+            all_ops,
+            all_indices,
+        ),
         "representation_probe_suite": representation_probe_suite(
             output["z_A_hyp"],
             output["z_A_tangent"],
@@ -785,6 +926,22 @@ def format_text_report(run_rows: list[RunResultRow], evaluation: dict[str, Any])
         f"knn_raw_acc={probe_raw['knn_probe']['accuracy']:.4f}, "
         f"trust_hyp@15={probe_hyp['trustworthiness_k15']:.4f}, "
         f"trust_euc@15={probe_tangent['trustworthiness_k15']:.4f}"
+    )
+    symbolic_retrieval = evaluation["symbolic_orbit_retrieval"]
+    sym_pair = evaluation["symbolic_pair_verification"]
+    lines.append(
+        "- symbolic orbit retrieval: "
+        f"hyp_r1={symbolic_retrieval['hyperbolic_embedding']['recall_at_1']:.4f}, "
+        f"euc_r1={symbolic_retrieval['tangent_euclidean']['recall_at_1']:.4f}, "
+        f"raw_r1={symbolic_retrieval['raw_input']['recall_at_1']:.4f}, "
+        f"hyp_mrr={symbolic_retrieval['hyperbolic_embedding']['mrr']:.4f}"
+    )
+    lines.append(
+        "- symbolic pair verification: "
+        f"hyp_auc={sym_pair['hyperbolic_embedding']['roc_auc']:.4f}, "
+        f"euc_auc={sym_pair['tangent_euclidean']['roc_auc']:.4f}, "
+        f"raw_auc={sym_pair['raw_input']['roc_auc']:.4f}, "
+        f"hyp_ap={sym_pair['hyperbolic_embedding']['average_precision']:.4f}"
     )
     curve_q = evaluation["training_curves"]["summaries"].get("Hierarchy/Q_VAE_A")
     if curve_q is not None:
