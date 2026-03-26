@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from src.core import TERNARY
-from src.symbolic import TERNARY_GROUP_ENGINE
+from src.symbolic import TERNARY_GROUP_ENGINE, build_symbolic_subsystem
 
 
 def test_group_engine_preserves_valid_ternary_domain() -> None:
@@ -34,3 +34,21 @@ def test_feedback_pairs_match_orbit_and_separate_negatives() -> None:
 
     assert torch.equal(anchor_canon, positive_canon)
     assert (anchor_canon != negative_canon).all()
+
+
+def test_build_symbolic_subsystem_defaults_to_disabled() -> None:
+    subsystem = build_symbolic_subsystem()
+
+    assert subsystem.enabled is False
+    assert subsystem.name == "disabled"
+    assert "baseline path unchanged" in subsystem.describe()
+
+
+def test_build_symbolic_subsystem_enables_finite_group_backend() -> None:
+    subsystem = build_symbolic_subsystem({"enabled": True, "backend": "finite_group", "seed": 123})
+    indices = torch.tensor([5, 17, 901], dtype=torch.long)
+
+    assert subsystem.enabled is True
+    assert subsystem.name == "finite_group"
+    assert subsystem.describe().startswith("finite_group orbit engine")
+    assert torch.equal(subsystem.canonicalize(indices), TERNARY_GROUP_ENGINE.canonicalize(indices))

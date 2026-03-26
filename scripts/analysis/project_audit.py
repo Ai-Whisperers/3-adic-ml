@@ -44,13 +44,14 @@ import yaml
 from src.core import TERNARY
 from src.geometry.poincare import poincare_distance
 from src.models.vae import TernaryVAEV6Controllable
-from src.symbolic import TERNARY_GROUP_ENGINE
+from src.symbolic import build_symbolic_subsystem
 from src.train import compute_accuracy, compute_coverage, compute_hierarchy_metrics
 from src.utils.checkpoint import load_checkpoint_compat
 
 
 DEFAULT_RUN = PROJECT_ROOT / "runs" / "v7_large_20260324_013725"
 LEVEL_PREFIX_DEPTHS = {0: 3, 1: 4, 2: 3, 3: 4, 4: 5, 5: 6}
+SYMBOLIC_SUBSYSTEM = build_symbolic_subsystem({"enabled": True, "backend": "finite_group"})
 
 
 @dataclass(frozen=True)
@@ -590,14 +591,14 @@ def symbolic_orbit_retrieval_benchmark(
     orbit_sample_size: int = 512,
     seed: int = 321,
 ) -> dict[str, Any]:
-    canon = TERNARY_GROUP_ENGINE.canonicalize(indices.cpu())
+    canon = SYMBOLIC_SUBSYSTEM.canonicalize(indices.cpu())
     orbit_reps = torch.unique(canon)
     rng = np.random.default_rng(seed)
     if len(orbit_reps) > orbit_sample_size:
         selected = np.sort(rng.choice(len(orbit_reps), size=orbit_sample_size, replace=False))
         orbit_reps = orbit_reps[selected]
 
-    queries = TERNARY_GROUP_ENGINE.choose_non_identity_partner(orbit_reps, seed=seed).to(indices.device)
+    queries = SYMBOLIC_SUBSYSTEM.choose_non_identity_partner(orbit_reps, seed=seed).to(indices.device)
     bank_positions = orbit_reps.long()
     query_positions = queries.long()
     target_positions = torch.arange(len(bank_positions), dtype=torch.long)
@@ -622,7 +623,9 @@ def symbolic_orbit_retrieval_benchmark(
         metrics[key] = _ranking_metrics(distances, target_positions)
     return {
         "sample_size": int(len(bank_positions)),
-        "group_size": int(len(TERNARY_GROUP_ENGINE.elements)),
+        "backend": SYMBOLIC_SUBSYSTEM.name,
+        "description": SYMBOLIC_SUBSYSTEM.describe(),
+        "group_size": int(len(SYMBOLIC_SUBSYSTEM.engine.elements)),
         "notes": [
             "Each query is a non-identity symbolic transform of one orbit representative.",
             "Candidate banks contain one canonical representative per sampled symbolic orbit.",
@@ -639,7 +642,7 @@ def symbolic_pair_verification_benchmark(
     pair_sample_size: int = 2048,
     seed: int = 321,
 ) -> dict[str, Any]:
-    pairs = TERNARY_GROUP_ENGINE.sample_feedback_pairs(indices.cpu(), sample_size=pair_sample_size, seed=seed)
+    pairs = SYMBOLIC_SUBSYSTEM.sample_feedback_pairs(indices.cpu(), sample_size=pair_sample_size)
     anchors = pairs["anchors"].long()
     positives = pairs["positives"].long()
     negatives = pairs["negatives"].long()

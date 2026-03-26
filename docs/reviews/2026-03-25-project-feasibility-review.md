@@ -575,6 +575,12 @@ If this project is going to evolve into something commercially broader, the path
 
 Right now, the symbolic-engine benchmarks are best interpreted as a map of what is **missing**, not as proof that the broader neurosymbolic goal has already been achieved.
 
+One concrete engineering implication from the codebase matters here: the decoder still consumes `z_A_tangent`, while the hierarchy losses shape `z_A_hyp`. So a future unsupervised neurosymbolic path should probably stay split:
+
+1. Tangent-space objectives for local algebraic consistency, reconstruction-faithful symbolic invariance, and Euclidean verification tasks.
+2. Hyperbolic objectives for orbit retrieval, coarse hierarchy organization, and 3-adic tree structure.
+3. A thin optional symbolic subsystem around exact radix-3 / 3-adic transforms, rather than hard-wiring symbolic logic directly into the baseline training path.
+
 ### Metrics that should gate external claims
 
 For future external-task evaluations, I would require:
