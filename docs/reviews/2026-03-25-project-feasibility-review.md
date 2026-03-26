@@ -709,6 +709,83 @@ This prevents schema normalization from silently mutating old checkpoints into a
 4. Build a proper inference API only after an external task is validated.
 5. If external adapters matter, formalize the bridge layer instead of leaving it as an isolated C utility.
 
+## Codebase Continuation Plan (March 26, 2026)
+
+I rechecked the live repository state against the harsher codebase critique and the result is: the critique is directionally right, but a few specifics need updating.
+
+### What is still worth continuing
+
+These parts still look like the right foundation to preserve:
+
+1. `src/core/ternary.py` as the canonical radix-3 / 3-adic kernel.
+2. The encoder / projection / decoder split in `src/models/vae.py`.
+3. The experimental audit surface in `scripts/analysis/project_audit.py`.
+4. The explicit contract style in `src/config/statenet_config.py`.
+
+Those are the pieces that still justify continuing the project.
+
+### Verified remaining issues
+
+These issues are still real in the current tree:
+
+1. **`src/train.py` is still a god file.**
+   It still mixes setup, training loop, validation, metric computation, hierarchy diagnostics, checkpointing, CLI handling, and controller logic in one file. Even where the code is technically correct, the file layout raises maintenance risk.
+2. **Legal / provenance drift is real.**
+   The root repo advertises MIT, but source headers in `src/train.py`, `src/losses/combined.py`, `src/core/ternary.py`, `src/models/vae.py`, `src/models/hyperbolic_projection.py`, and `src/config/statenet_config.py` still reference PolyForm Noncommercial and commercial-licensing language.
+3. **README drift is real.**
+   `README.md:10-18` still overstates what is proven, and `README.md:18` still labels “Coverage” as per-digit reconstruction accuracy even though the audit and the code distinguish per-digit accuracy from perfect-reconstruction coverage.
+4. **`v7_large.yaml` is still partly a lab notebook.**
+   `src/presets/v7_large.yaml:1-15` and the loss section still contain hypotheses, expectations, root-cause narratives, and historical notes mixed into the executable preset.
+5. **The “single source of truth” story is still weakened by duplicated constants.**
+   `src/core/ternary.py` presents itself as canonical, but `src/config/constants.py:2` still hardcodes `N_TERNARY_OPERATIONS = 19683`.
+6. **`CombinedLoss` is still strategically overloaded.**
+   It is useful, but it remains the convergence point for too many configuration branches and behavior switches. That is acceptable for research code today, but it is the wrong place to keep adding complexity.
+
+### One earlier issue that does NOT reproduce anymore
+
+As of **March 26, 2026**, I do **not** reproduce the exact duplicate immediate overwrite of `level_pfx` that appeared in the earlier critique. In the current working tree I only see one active `level_pfx` assignment in `src/train.py:1540`. So that specific residue appears to have been removed already, even though `train.py` remains overgrown overall.
+
+### Highest-value refactor sequence
+
+If the goal is to keep only what is worth continuing, the next sequence should be subtractive and credibility-oriented:
+
+1. **Legal and provenance cleanup first.**
+   Before more experimentation, align the root LICENSE, file headers, and any stale commercial-license notices. This is external-credibility debt, not cosmetic debt.
+2. **Split `src/train.py` without changing behavior.**
+   First move code, not logic. The best near-term split is:
+   - `src/training/metrics.py`
+   - `src/training/validation.py`
+   - `src/training/checkpoints.py`
+   - `src/training/loop.py`
+   - `src/training/cli.py`
+   The requirement is strict behavior preservation, not redesign.
+3. **Freeze new losses and giant preset growth until the split lands.**
+   Right now the expected value of a new loss is lower than the expected value of reducing orchestration entropy.
+4. **Rewrite `README.md` to match the audit, not the aspiration.**
+   Claims should be bounded by what the current audit actually verifies: closed-domain hierarchy learning, not general symbolic intelligence or external prediction.
+5. **Convert research journaling in YAML into docs.**
+   Keep presets executable and minimal. Move hypotheses, VRAM notes, expected ARI ceilings, and root-cause narratives into `docs/experiments/` or `docs/audits/`.
+
+### What should be frozen immediately
+
+To keep the project on a productive path, I would freeze these categories for now:
+
+1. New loss classes.
+2. New large presets with embedded experiment diaries.
+3. README-level performance claims stronger than the audit.
+4. More direction-geometry tuning unless it is attached to a real downstream benchmark.
+
+### What the codebase itself suggests for future neurosymbolic work
+
+Reading the actual architecture suggests a narrower but more defensible path:
+
+1. Keep `src/core/ternary.py` as the exact symbolic substrate.
+2. Keep tangent-space and hyperbolic-space objectives split, because the decoder still consumes tangent latents while the hierarchy objectives act on hyperbolic latents.
+3. Keep symbolic machinery optional and isolated until there is evidence that orbit-consistency or other exact symbolic objectives improve real downstream behavior.
+4. Treat the current symbolic engine as a benchmark generator and future supervision source, not yet as proof of neurosymbolic capability.
+
+That is the part of the project that is still worth continuing.
+
 ## Bottom Line
 
 This project is already a strong **closed-domain hyperbolic geometry learner** over the full balanced-ternary state space. That is real, reproducible, and more technically solid than I initially expected.
