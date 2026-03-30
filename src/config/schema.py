@@ -208,6 +208,14 @@ class RichHierarchyLossConfig(StrictConfigModel):
     richness_weight: float | None = Field(default=None, ge=0)
     min_richness_ratio: float | None = Field(default=None, ge=0, le=1.0)
 
+    @model_validator(mode="after")
+    def validate_radius_ordering(self) -> "RichHierarchyLossConfig":
+        if self.inner_radius >= self.outer_radius:
+            raise ValueError(
+                f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
+            )
+        return self
+
 
 class RadialLossConfig(StrictConfigModel):
     """RadialHierarchyLoss configuration."""
@@ -224,6 +232,14 @@ class RadialLossConfig(StrictConfigModel):
     margin_step_factor: float = Field(default=0.01, gt=0)
     margin_weight: float = Field(default=1.0, ge=0)
 
+    @model_validator(mode="after")
+    def validate_radius_ordering(self) -> "RadialLossConfig":
+        if self.inner_radius >= self.outer_radius:
+            raise ValueError(
+                f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
+            )
+        return self
+
 
 class GeodesicLossConfig(StrictConfigModel):
     """PAdicGeodesicLoss configuration."""
@@ -232,7 +248,8 @@ class GeodesicLossConfig(StrictConfigModel):
     phase_start_epoch: int = Field(default=30, ge=0)
     weight: float = Field(default=0.4, ge=0)
     curvature: float = Field(default=1.0, gt=0)
-    max_target_distance: float = Field(default=0.8, gt=0)
+    max_target_distance: float = Field(default=3.0, gt=0)
+    valuation_scale: float = Field(default=3.0, gt=0)
     n_pairs: int = Field(default=2000, ge=100)
     use_smooth_l1: bool = True
     use_individual_valuation: bool = False
@@ -245,6 +262,7 @@ class RankLossConfig(StrictConfigModel):
     weight: float = Field(default=0.5, ge=0)
     temperature: float = Field(default=0.1, gt=0)
     n_pairs: int = Field(default=2000, ge=100)
+    use_all_pairs: bool = False
     scatter_weight: float = Field(default=0.0, ge=0)
 
 
@@ -253,18 +271,29 @@ class MonotonicLossConfig(StrictConfigModel):
 
     enabled: bool = True
     weight: float = Field(default=1.0, ge=0)
-    target_loss_weight: float = Field(default=0.1, ge=0)
+    target_loss_weight: float = Field(default=0.5, ge=0)
     inner_radius: float = Field(default=0.08, gt=0, lt=1.0)
     outer_radius: float = Field(default=0.90, gt=0, lt=1.0)
     min_margin: float = Field(default=0.02, gt=0)
+    margin_scale: float = Field(default=1.0, gt=0)
+    use_soft_margin: bool = True
+    temperature: float = Field(default=0.05, gt=0)
+
+    @model_validator(mode="after")
+    def validate_radius_ordering(self) -> "MonotonicLossConfig":
+        if self.inner_radius >= self.outer_radius:
+            raise ValueError(
+                f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
+            )
+        return self
 
 
 class AngularCoherenceLossConfig(StrictConfigModel):
     """AngularCoherenceLoss configuration."""
 
     enabled: bool = True
-    weight: float = Field(default=1.0, ge=0)
-    prefix_k: int = Field(default=3, ge=0, le=9)
+    weight: float = Field(default=0.3, ge=0)
+    prefix_k: int = Field(default=2, ge=0, le=9)
     level_prefix_k: list[int] | None = None
     target_sim: list[float] | None = None
     n_pairs: int = Field(default=3000, ge=100)
@@ -285,6 +314,18 @@ class AngularCoherenceLossConfig(StrictConfigModel):
     def validate_target_sim_length(cls, value: list[float] | None) -> list[float] | None:
         if value is not None and len(value) != 10:
             raise ValueError(f"target_sim must have 10 elements (v=0 to v=9), got {len(value)}")
+        return value
+
+    @field_validator("target_sim", mode="before")
+    @classmethod
+    def validate_target_sim_range(cls, value: list[float] | None) -> list[float] | None:
+        if value is not None:
+            for i, v in enumerate(value):
+                if not (0.0 <= v <= 1.0):
+                    raise ValueError(
+                        f"target_sim[{i}]={v} is out of range [0, 1]. "
+                        "Values are cosine similarity targets."
+                    )
         return value
 
     @field_validator("level_prefix_k", mode="before")
@@ -324,14 +365,27 @@ class ValuationPriorConfig(StrictConfigModel):
     inner_radius: float | None = Field(default=None, gt=0, lt=1.0)
     outer_radius: float | None = Field(default=None, gt=0, lt=1.0)
 
+    @model_validator(mode="after")
+    def validate_radius_ordering(self) -> "ValuationPriorConfig":
+        if (
+            self.inner_radius is not None
+            and self.outer_radius is not None
+            and self.inner_radius >= self.outer_radius
+        ):
+            raise ValueError(
+                f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
+            )
+        return self
+
 
 class LagrangianConfig(StrictConfigModel):
     """Dual-ascent Lagrangian configuration."""
 
     enabled: bool = False
-    lr: float = Field(default=0.1, gt=0)
+    n_levels: int = Field(default=10, ge=1)
+    lr: float = Field(default=0.01, gt=0)
     max_lambda: float = Field(default=5.0, gt=0)
-    warmup_epochs: int = Field(default=10, ge=0)
+    warmup_epochs: int = Field(default=20, ge=0)
 
 
 class ZeroStructureConfig(StrictConfigModel):

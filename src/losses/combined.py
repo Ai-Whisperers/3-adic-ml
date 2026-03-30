@@ -165,7 +165,7 @@ class CombinedLoss(nn.Module):
                 inner_radius=radius_cfg.inner_radius,
                 outer_radius=radius_cfg.outer_radius,
                 curvature=self.curvature,
-                separation_margin=rich_cfg.get('separation_margin', 0.01),
+                separation_margin=rich_cfg.get('separation_margin', 0.1),
                 variance_weight=rich_cfg.get('variance_weight', 0.1),
             )
             self.rich_hierarchy_weights = {
@@ -184,8 +184,8 @@ class CombinedLoss(nn.Module):
                 outer_radius=radius_configs['radial'].outer_radius,
                 margin_weight=radial_cfg.get('margin_weight', 1.0),
                 curvature=self.curvature,
-                valuation_weight_exponent=radial_cfg.get('valuation_weight_exponent', 0.25),
-                margin_step_factor=radial_cfg.get('margin_step_factor', 0.5),
+                valuation_weight_exponent=radial_cfg.get('valuation_weight_exponent', 0.3),
+                margin_step_factor=radial_cfg.get('margin_step_factor', 0.01),
                 seed=43,  # Distinct seed: avoids identical pairs with geodesic_loss (seed=42)
             )
             self.radial_weight = radial_cfg.get('weight', 1.0)
@@ -199,11 +199,12 @@ class CombinedLoss(nn.Module):
             self.geodesic_loss = PAdicGeodesicLoss(
                 curvature=geodesic_cfg.get('curvature', self.curvature),
                 max_target_distance=geodesic_cfg.get('max_target_distance', 3.0),
+                valuation_scale=geodesic_cfg.get('valuation_scale', 3.0),
                 n_pairs=geodesic_cfg.get('n_pairs', 2000),
                 use_smooth_l1=geodesic_cfg.get('use_smooth_l1', True),
                 use_individual_valuation=geodesic_cfg.get('use_individual_valuation', False),
             )
-            self.geodesic_weight = geodesic_cfg.get('weight', 0.3)
+            self.geodesic_weight = geodesic_cfg.get('weight', 0.4)
             self.geodesic_phase_start = geodesic_cfg.get('phase_start_epoch', 0)
         else:
             self.geodesic_loss = None
@@ -216,6 +217,7 @@ class CombinedLoss(nn.Module):
             self.rank_loss = GlobalRankLoss(
                 temperature=rank_cfg.get('temperature', 0.1),
                 n_pairs=rank_cfg.get('n_pairs', 2000),
+                use_all_pairs=rank_cfg.get('use_all_pairs', False),
                 curvature=self.curvature,
                 seed=44,  # Distinct seed: avoids identical pairs with geodesic_loss (42) and radial_loss (43)
                 scatter_weight=rank_cfg.get('scatter_weight', 0.0),
@@ -232,6 +234,9 @@ class CombinedLoss(nn.Module):
                 inner_radius=radius_configs['monotonic'].inner_radius,
                 outer_radius=radius_configs['monotonic'].outer_radius,
                 min_margin=monotonic_cfg.get('min_margin', 0.02),
+                margin_scale=monotonic_cfg.get('margin_scale', 1.0),
+                use_soft_margin=monotonic_cfg.get('use_soft_margin', True),
+                temperature=monotonic_cfg.get('temperature', 0.05),
                 curvature=self.curvature,
                 target_loss_weight=monotonic_cfg.get('target_loss_weight', 0.5),
             )

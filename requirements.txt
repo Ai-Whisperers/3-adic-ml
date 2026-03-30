@@ -9,8 +9,14 @@ scipy>=1.10.0
 # Hyperbolic Geometry
 geoopt>=0.5.0  # Riemannian optimization and manifold operations
 
+# Optional: Vectorized Scatter Ops (auto-fallback to pure torch if absent)
+# torch-scatter>=2.1.2  # Uncomment for GPU-accelerated scatter_mean/scatter_std
+# NOTE: Requires CUDA-specific wheel: pip install torch-scatter -f https://data.pyg.org/whl/torch-2.X.X+cuXXX.html
+
 # Configuration
 pyyaml>=6.0
+yamllint>=1.33.0  # YAML linting
+pydantic>=2.0    # Schema validation for YAML configs
 
 # Machine Learning (used in training loop for live ARI computation)
 scikit-learn>=1.3.0  # KMeans, adjusted_rand_score
@@ -24,9 +30,14 @@ tqdm>=4.65.0
 # System Monitoring
 psutil>=5.9.0  # RAM/GPU monitoring for HardwareMonitor
 
-# Visualization (used by diagnose_direction_geometry.py and analysis scripts)
+# Visualization (used by diagnose_direction_geometry.py and VisualizationPipeline)
 matplotlib>=3.7.0
-umap-learn>=0.5.0  # UMAP dimensionality reduction for direction space analysis
+umap-learn>=0.5.0  # UMAP; metric='precomputed' for Poincaré distance matrix input
+pacmap>=0.7.0      # PaCMAP; pair_neighbors injected from hyperbolic kNN
+trimap>=1.1.0      # TriMAP; use_dist_matrix=True for Poincaré distance matrix input
+ripser>=0.6.0      # Vietoris-Rips persistent homology on hyperbolic distance matrix
+persim>=0.3.0      # Persistence diagram utilities (plot_diagrams, persistent_entropy)
+plotly>=5.0.0      # Interactive HTML outputs (poincare_3d.html, umap_3d.html, etc.)
 pillow>=10.0.0     # Image backend for matplotlib
 
 # Data Analysis

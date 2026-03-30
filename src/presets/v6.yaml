@@ -158,7 +158,7 @@ loss:
     n_pairs: 2000
     use_smooth_l1: true
     weight: 2.0
-    use_individual_valuation: true  # Skip same-level pairs; target = max_dist*|val_diff|/9
+    use_individual_valuation: false  # Reverted: linear target compresses v=0 pairs; see roadmap Step 1 notes
 
   # Global rank loss (soft ordering violations + within-level scatter)
   rank:

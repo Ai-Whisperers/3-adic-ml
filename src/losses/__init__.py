@@ -1,8 +1,9 @@
-from .base import HierarchyLossBase, MetricsDict, RichHierarchyLossBase
+from .base import CombinedLossOutput, HierarchyLossBase, MetricsDict, RichHierarchyLossBase
 from .combined import CombinedLoss
-from .hyperbolic_kl import HyperbolicKLDivergence, StandardKLDivergence
+from .hyperbolic_kl import HyperbolicKLDivergence
 from .lagrangian import LagrangianDualState
 from .padic_geodesic import (
+    AngularCoherenceLoss,
     GlobalRankLoss,
     MonotonicRadialLoss,
     PAdicGeodesicLoss,
@@ -17,7 +18,9 @@ __all__ = [
     "HierarchyLossBase",
     "RichHierarchyLossBase",
     "MetricsDict",
+    "CombinedLossOutput",
     # P-adic geodesic losses
+    "AngularCoherenceLoss",
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",
     "GlobalRankLoss",
@@ -27,9 +30,8 @@ __all__ = [
     "WithinLevelContrastiveLoss",
     # Combined loss
     "CombinedLoss",
-    # KL divergences
+    # KL divergence
     "HyperbolicKLDivergence",
-    "StandardKLDivergence",
     # Lagrangian dual adaptive weighting
     "LagrangianDualState",
 ]

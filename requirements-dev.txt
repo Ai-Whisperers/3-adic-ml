@@ -1,0 +1,18 @@
+# Development & quality tooling for 3-adic-ml
+# Install with: pip install -r requirements-dev.txt
+# (These are NOT needed at runtime — only for local development and CI)
+
+# Testing
+pytest>=7.3.0
+pytest-cov>=4.1.0
+
+# Linting + formatting (ruff replaces: flake8, isort, pyupgrade, pep8, pyflakes)
+ruff>=0.15.0
+
+# Static type checking
+mypy>=1.9.0
+
+# Runtime dependency versions pinned to what's in the venv (for reproducibility)
+# torch, geoopt, scipy, numpy, pyyaml, tensorboard, tqdm, psutil
+# are declared in pyproject.toml [project.dependencies] — install those via:
+#   pip install -e ".[dev]"

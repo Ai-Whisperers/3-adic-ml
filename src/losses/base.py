@@ -53,26 +53,31 @@ class CombinedLossOutput(TypedDict, total=False):
     Keys ending in ``_tensor`` inside the sub-dicts are in-graph tensors
     used by the Lagrangian dual; all other values are float/int.
 
-    Quick reference for the most common keys:
-        total           → scalar differentiable loss tensor (always present)
-        reconstruction  → cross-entropy reconstruction loss component
-        kl_loss         → hyperbolic KL divergence component
-        rich_hierarchy  → RichHierarchyLoss weighted sum
-        radial          → RadialHierarchyLoss component
-        geodesic        → PAdicGeodesicLoss component
-        rank            → GlobalRankLoss component
-        monotonic       → MonotonicRadialLoss component
-        angular         → AngularCoherenceLoss component
-        valuation_prior → ValuationPriorLoss component
-        within_contrastive → WithinLevelContrastiveLoss component
-        lagrangian_margin   → Lagrangian margin penalty (if dual enabled)
-        lagrangian_scatter  → Lagrangian scatter penalty (if dual enabled)
-        lagrangian_prior    → Lagrangian prior penalty (if dual enabled)
-        rich_metrics        → sub-dict from RichHierarchyLoss
-        monotonic_metrics   → sub-dict from MonotonicRadialLoss (r_v0..r_v9)
-        rank_metrics        → sub-dict from GlobalRankLoss
-        angular_metrics     → sub-dict from AngularCoherenceLoss
+    Quick reference for loss component keys:
+        total                   → scalar differentiable tensor (always present)
+        kl                      → HyperbolicKLDivergence component
+        rich_hierarchy          → RichHierarchyLoss weighted sum
+        radial                  → RadialHierarchyLoss component
+        geodesic                → PAdicGeodesicLoss component
+        rank                    → GlobalRankLoss component
+        monotonic               → MonotonicRadialLoss component
+        angular_coherence       → AngularCoherenceLoss component
+        valuation_prior         → ValuationPriorLoss component
+        within_level_contrastive → WithinLevelContrastiveLoss component
+        coverage                → fallback cross-entropy (only when rich_hierarchy disabled)
+        lagrangian_margin       → Lagrangian margin penalty (if dual enabled)
+        lagrangian_scatter      → Lagrangian scatter penalty (if dual enabled)
+        lagrangian_prior        → Lagrangian prior penalty (if dual enabled)
+
+    Metrics sub-dicts (float/int values, no gradients):
+        rich_hierarchy_detail   → sub-dict from RichHierarchyLoss
+        radial_metrics          → sub-dict from RadialHierarchyLoss
+        geodesic_metrics        → sub-dict from PAdicGeodesicLoss
+        rank_metrics            → sub-dict from GlobalRankLoss
+        monotonic_metrics       → sub-dict from MonotonicRadialLoss (r_v0..r_v9)
+        angular_coherence_metrics → sub-dict from AngularCoherenceLoss
         valuation_prior_metrics → sub-dict from ValuationPriorLoss
+        wlc_metrics             → sub-dict from WithinLevelContrastiveLoss
 
     When ``learnable_weights=True`` the effective weights are logged via
     ``loss_fn.get_learned_weights()`` — they are not present in this dict.
@@ -80,30 +85,34 @@ class CombinedLossOutput(TypedDict, total=False):
     Usage::
 
         losses: CombinedLossOutput = loss_fn(z_hyp, indices, logits, targets, epoch=ep)
-        losses["total"].backward()       # always safe
-        h_metrics = losses.get("rich_metrics", {})
+        losses["total"].backward()                       # always safe
+        h_metrics = losses.get("rich_hierarchy_detail", {})
         r_v0 = h_metrics.get("r_v0", float("nan"))
+        ac_m = losses.get("angular_coherence_metrics", {})
     """
 
     total: Any          # torch.Tensor — always present
-    reconstruction: Any
-    kl_loss: Any
+    kl: Any
     rich_hierarchy: Any
     radial: Any
     geodesic: Any
     rank: Any
     monotonic: Any
-    angular: Any
+    angular_coherence: Any
     valuation_prior: Any
-    within_contrastive: Any
+    within_level_contrastive: Any
+    coverage: Any
     lagrangian_margin: Any
     lagrangian_scatter: Any
     lagrangian_prior: Any
-    rich_metrics: MetricsDict
-    monotonic_metrics: MetricsDict
+    rich_hierarchy_detail: MetricsDict
+    radial_metrics: MetricsDict
+    geodesic_metrics: MetricsDict
     rank_metrics: MetricsDict
-    angular_metrics: MetricsDict
+    monotonic_metrics: MetricsDict
+    angular_coherence_metrics: MetricsDict
     valuation_prior_metrics: MetricsDict
+    wlc_metrics: MetricsDict
 
 
 class HierarchyLossBase(ABC, nn.Module):

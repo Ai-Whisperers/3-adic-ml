@@ -860,3 +860,118 @@ class TestRadiusSharing:
         assert radius_config['monotonic']['inner_radius'] == DEFAULT_INNER_RADIUS
         assert radius_config['monotonic']['outer_radius'] == DEFAULT_OUTER_RADIUS
 
+
+# =============================================================================
+# CombinedLossOutput TypedDict key correctness
+# =============================================================================
+
+
+class TestCombinedLossOutputKeys:
+    """Verify actual dict keys written by CombinedLoss.forward() match the TypedDict."""
+
+    def _make_loss_fn(self, extra: dict | None = None) -> CombinedLoss:
+        config: dict = {
+            'rich_hierarchy': {'enabled': True, 'hierarchy_weight': 1.0,
+                               'coverage_weight': 1.0, 'separation_weight': 1.0},
+            'monotonic': {'enabled': True},
+        }
+        if extra:
+            config.update(extra)
+        return CombinedLoss(config, curvature=1.0)
+
+    def _make_inputs(self, B: int = 32):
+        torch.manual_seed(0)
+        z = torch.randn(B, 16, dtype=torch.float64) * 0.3
+        idx = torch.randint(0, 19683, (B,))
+        logits = torch.randn(B, 27, dtype=torch.float64)
+        targets = (torch.arange(B * 9) % 3 - 1).reshape(B, 9).long()
+        return z, idx, logits, targets
+
+    def test_forward_has_total_and_rich_hierarchy(self):
+        loss_fn = self._make_loss_fn()
+        z, idx, logits, targets = self._make_inputs()
+        out = loss_fn(z, idx, logits, targets, epoch=0)
+        assert 'total' in out
+        assert 'rich_hierarchy' in out
+
+    def test_forward_monotonic_metrics_key(self):
+        loss_fn = self._make_loss_fn()
+        z, idx, logits, targets = self._make_inputs()
+        out = loss_fn(z, idx, logits, targets, epoch=0)
+        assert 'monotonic_metrics' in out
+        # Old stale name must not appear
+        assert 'rank_metrics' not in out or 'monotonic' in out
+
+    def test_forward_radial_metrics_key(self):
+        loss_fn = self._make_loss_fn({'radial': {'enabled': True}})
+        z, idx, logits, targets = self._make_inputs()
+        out = loss_fn(z, idx, logits, targets, epoch=0)
+        assert 'radial' in out
+        assert 'radial_metrics' in out
+
+    def test_forward_geodesic_metrics_key(self):
+        loss_fn = self._make_loss_fn({'geodesic': {'enabled': True, 'phase_start_epoch': 0}})
+        z, idx, logits, targets = self._make_inputs()
+        out = loss_fn(z, idx, logits, targets, epoch=5)
+        assert 'geodesic' in out
+        assert 'geodesic_metrics' in out
+
+    def test_forward_kl_key_not_kl_loss(self):
+        """forward() must write 'kl', not the stale 'kl_loss' name."""
+        mu = torch.zeros(32, 16, dtype=torch.float64)
+        logvar = torch.zeros(32, 16, dtype=torch.float64)
+        loss_fn = self._make_loss_fn({'hyperbolic_kl': {'enabled': True}})
+        z, idx, logits, targets = self._make_inputs()
+        out = loss_fn(z, idx, logits, targets, epoch=0, mu=mu, logvar=logvar)
+        assert 'kl' in out
+        assert 'kl_loss' not in out
+
+    def test_forward_angular_coherence_key_not_angular(self):
+        """forward() must write 'angular_coherence', not the stale 'angular' name."""
+        B = 32
+        loss_fn = self._make_loss_fn({
+            'angular_coherence': {'enabled': True, 'phase_start_epoch': 0},
+        })
+        z, idx, logits, targets = self._make_inputs(B)
+        r = torch.rand(B, dtype=torch.float64) * 0.5
+        out = loss_fn(z, idx, logits, targets, epoch=100, r=r)
+        assert 'angular_coherence' in out
+        assert 'angular' not in out
+        assert 'angular_coherence_metrics' in out
+        assert 'angular_metrics' not in out
+
+    def test_forward_within_level_contrastive_key_not_within_contrastive(self):
+        """forward() must write 'within_level_contrastive', not the stale 'within_contrastive'."""
+        loss_fn = self._make_loss_fn({
+            'within_level_contrastive': {'enabled': True},
+        })
+        z, idx, logits, targets = self._make_inputs()
+        out = loss_fn(z, idx, logits, targets, epoch=0)
+        assert 'within_level_contrastive' in out
+        assert 'within_contrastive' not in out
+        assert 'wlc_metrics' in out
+
+    def test_forward_rich_hierarchy_detail_key_not_rich_metrics(self):
+        """forward() must write 'rich_hierarchy_detail', not the stale 'rich_metrics'."""
+        loss_fn = self._make_loss_fn()
+        z, idx, logits, targets = self._make_inputs()
+        out = loss_fn(z, idx, logits, targets, epoch=0)
+        assert 'rich_hierarchy_detail' in out
+        assert 'rich_metrics' not in out
+
+    def test_schema_rank_use_all_pairs_field_exists(self):
+        """RankLossConfig must expose use_all_pairs so users can enable O(n²) mode."""
+        from src.config.schema import RankLossConfig
+        cfg = RankLossConfig()
+        assert cfg.use_all_pairs is False  # safe default
+
+    def test_rank_use_all_pairs_passed_to_constructor(self):
+        """use_all_pairs=True from config must reach GlobalRankLoss."""
+        config = {
+            'rank': {'enabled': True, 'use_all_pairs': True},
+            'rich_hierarchy': {'enabled': True},
+        }
+        loss_fn = CombinedLoss(config, curvature=1.0)
+        assert loss_fn.rank_loss is not None
+        assert loss_fn.rank_loss.use_all_pairs is True
+

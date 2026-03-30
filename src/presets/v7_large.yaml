@@ -32,9 +32,9 @@ model:
   name: TernaryVAEV6Controllable
   latent_dim: 64   # 32→64: direction_dims = 60 (was 28) — 2x more angular capacity
   hidden_dim: 128  # 64→128: wider backbone for richer representations
-  max_radius: 0.95
+  max_radius: 0.99   # was 0.95 — gives v=0 cluster room past Lagrangian margin ceiling
   curvature: 1.0
-  learnable_curvature: true
+  learnable_curvature: true  # No-op in factored mode: expmap0 is never called → manifold.c gets no grads
 
   # V7 factored latent: split z_tangent into z_r (radial) and z_θ (direction)
   factored: true
@@ -118,8 +118,8 @@ loss:
     enabled: true
     hierarchy_weight: 5.0
     coverage_weight: 1.0
-    separation_weight: 3.0
-    variance_weight: 0.5
+    separation_weight: 5.0  # was 3.0 — harder push on v=0/v=1 gap to satisfy Lagrangian margin_v0
+    variance_weight: 2.0  # Root Cause B fix: was 0.5 — compresses within-level radial spread (std≈0.05 → Spearman 0.84)
     inner_radius: 0.08
     outer_radius: 0.85
 
@@ -136,7 +136,7 @@ loss:
     n_pairs: 2000
     use_smooth_l1: true
     weight: 2.0
-    use_individual_valuation: false
+    use_individual_valuation: true   # Root Cause A fix: target=|val_i-val_j|/max_val instead of v_3(|i-j|)
 
   rank:
     enabled: true
@@ -264,6 +264,17 @@ targets:
 memory:
   empty_cache_freq: 25
   cudnn_benchmark: true
+
+# =============================================================================
+# Phase 2 Visualization Pipeline
+# =============================================================================
+visualization:
+  max_per_level: 500        # Points per valuation level in stratified subsample (~4501 total)
+  persist_every: 50         # Epochs between persistent homology computation
+  html_dir: runs/visualizations/v7_large   # Interactive HTML output directory
+  save_html: true
+  umap_neighbors: 15        # UMAP n_neighbors (default); also used for PaCMAP kNN
+  curvature: 1.0            # Must match model.curvature
 
 # =============================================================================
 # Version Tracking

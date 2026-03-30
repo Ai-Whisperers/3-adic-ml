@@ -142,7 +142,34 @@ Key TensorBoard scalars:
 | `Hierarchy/A` | Spearman correlation (valuation vs radius) |
 | `Direction/AQ` | Angular coherence (intra - inter level sim) |
 | `Direction/ARI_prefix3` | K-means vs digit prefix ARI at v=0 (live) |
+| `Topology/betti_0` | Persistent homology H0 (connected components) |
 | `LRController/*` | Per-component learning rate multipliers |
+
+### Visualization Pipeline
+
+The `VisualizationPipeline` generates interactive HTML visualizations using **precomputed hyperbolic distance matrices** (not Euclidean coordinates). Runs automatically during training eval.
+
+```bash
+# Outputs saved to runs/visualizations/<run_name>/
+ls runs/visualizations/v7_large/epoch_050_*.html
+```
+
+| Algorithm | What it shows | Hyperbolic integration |
+|-----------|--------------|----------------------|
+| **UMAP** | 2D/3D manifold layout | Precomputed Poincare distance matrix |
+| **PaCMAP** | Balanced local/global structure | Hyperbolic kNN injected via `pair_neighbors` |
+| **TriMAP** | Triplet-based embedding | Precomputed distance matrix |
+| **Poincare PCA** | Tangent-space PCA (radius-preserving) | logmap0 -> PCA projection |
+| **Persistent homology** | Topological signature (Betti numbers) | ripser on hyperbolic distance matrix |
+
+Configure in YAML:
+```yaml
+visualization:
+  max_per_level: 500     # Stratified subsample cap per valuation level
+  persist_every: 50      # Generate HTML every N epochs
+  html_dir: runs/visualizations/v7_large
+  save_html: true
+```
 
 ## Project Structure
 
@@ -154,7 +181,7 @@ src/
 ├── models/         # VAE architectures (encoder/decoder/projection)
 ├── config/         # Constants, paths, StateNetConfig
 ├── presets/        # YAML experiment configurations
-├── utils/          # Checkpoints, TensorBoard, hardware monitoring
+├── utils/          # Checkpoints, TensorBoard, hardware monitoring, visualization pipeline
 └── train.py        # Training entry point (includes hierarchy metrics)
 ```
 
@@ -265,9 +292,14 @@ This creates a natural hierarchical structure where "more fundamental" operation
 | Document | Contents |
 |----------|----------|
 | [`CLAUDE.md`](CLAUDE.md) | Detailed architecture documentation (V6.2 base + V7 extensions) |
-| [`docs/FAQ.md`](docs/FAQ.md) | Frequently asked questions |
 | [`docs/SPECS.md`](docs/SPECS.md) | Technical specifications and engineering constraints |
+| [`docs/DATA-SEMANTICS.md`](docs/DATA-SEMANTICS.md) | 3-adic data semantics, valuation conventions, dataset expansion options |
+| [`docs/FAQ.md`](docs/FAQ.md) | Frequently asked questions |
+| [`docs/STATUS.md`](docs/STATUS.md) | Current project status, run history, metric tracking |
+| [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) | Dependency manifest and version requirements |
+| [`docs/SOURCES.md`](docs/SOURCES.md) | Academic references and prior work |
 | [`src/README.md`](src/README.md) | Module documentation and integration guide |
+| [`docs/plans/`](docs/plans/) | Implementation plans (visualization, tests, roadmap) |
 | [`docs/audits/`](docs/audits/) | Codebase audit reports (chronological) |
 
 ## Related Projects
@@ -300,6 +332,7 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for detai
 
 | Date | Version | Key Changes |
 |------|---------|-------------|
+| 2026-03-24 | V7.2+ | Phase 2 visualization pipeline (UMAP/PaCMAP/TriMAP/persistent homology on hyperbolic distances), full codebase audit, dead code removal (F1-F5), docs coverage update |
 | 2026-03-23 | V7.2+ | `level_prefix_k` per-level prefix depth, soft-margin `target_sim`, live ARI in training loop, `target_sim[0]=0.90` regression identified and fixed to 1.0, repo moved to `gesttaltt/3-adic-ml` |
 | 2026-03-22 | V7.2 | Identity geometry audit, 4-run ARI comparison (0.721->0.844), Q=2.163 ceiling analysis |
 | 2026-03-21 | V7.1 | AngularCoherenceLoss + AQ metric, tangent_scale collapse fix |

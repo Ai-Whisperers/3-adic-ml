@@ -11,6 +11,7 @@ Key features:
 - Cross-block validation to catch configuration inconsistencies
 """
 
+import warnings
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
@@ -106,30 +107,24 @@ def auto_share_radius_config(
 
     # Determine the shared radius config
     if len(radius_sources) == 0:
-        # No explicit radii specified - use defaults for all
+        # No explicit radii specified - use defaults silently
         shared_config = RadiusConfig()
-        print(
-            f"[RadiusDefaults] No explicit radii found. Using defaults: "
-            f"inner={shared_config.inner_radius}, outer={shared_config.outer_radius}"
-        )
 
     elif len(radius_sources) == 1:
-        # One block specified radii - use it for all
-        block_name, shared_config = next(iter(radius_sources.items()))
-        print(
-            f"[RadiusDefaults] Using radii from '{block_name}': "
-            f"inner={shared_config.inner_radius}, outer={shared_config.outer_radius}"
-        )
+        # One block specified radii - use it for all (expected case, no output needed)
+        _block_name, shared_config = next(iter(radius_sources.items()))
 
     else:
         # Multiple blocks specified radii - use first one with warning
         block_name, shared_config = next(iter(radius_sources.items()))
         other_blocks = [b for b in radius_sources.keys() if b != block_name]
-        print(
-            f"[RadiusDefaults] WARNING: Multiple blocks specified radii. "
-            f"Using first from '{block_name}': inner={shared_config.inner_radius}, "
-            f"outer={shared_config.outer_radius}. "
-            f"Ignoring radii from: {other_blocks}"
+        warnings.warn(
+            f"[RadiusDefaults] Multiple loss blocks specify radius hyperparameters. "
+            f"Using values from '{block_name}' (inner={shared_config.inner_radius}, "
+            f"outer={shared_config.outer_radius}); ignoring: {other_blocks}. "
+            f"Set radii in only one block to suppress this warning.",
+            UserWarning,
+            stacklevel=2,
         )
 
     # Apply shared config to all blocks

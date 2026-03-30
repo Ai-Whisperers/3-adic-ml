@@ -16,8 +16,14 @@
 ### What Makes It "P-Adic"
 
 1. **Data**: All 19,683 ternary operations (3^9) with values {-1, 0, 1}
-2. **3-adic valuation**: v_3(n) measures divisibility by powers of 3
+2. **3-adic valuation**: v_3(n) measures divisibility of the **index integer n** by powers of 3
 3. **Geometric encoding**: High valuation → near origin, low valuation → near boundary
+
+> **Important**: `v_3(n)` is a property of the **index n as an integer**, not of the algebraic
+> content of the 9-digit operation it represents. All hierarchy losses are indexing-derived.
+> Only `AngularCoherenceLoss` uses intrinsic digit content (via `digit_prefix_class`).
+> See `docs/DATA-SEMANTICS.md` for full analysis including the v=9 singleton convention
+> and dataset expansion options.
 4. **Loss aligns**: Poincaré distances to 3-adic valuations (ultrametric → hyperbolic)
 
 ### Architecture Flow (V6.0 - True Hyperbolic)

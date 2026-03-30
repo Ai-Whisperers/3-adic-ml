@@ -52,3 +52,44 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "gpu: marks tests that require GPU"
     )
+# YAML Validation Tests
+import subprocess
+
+
+# Get all YAML files in presets
+PRESETS_DIR = Path(__file__).parent.parent / "src" / "presets"
+YAML_FILES = list(PRESETS_DIR.glob("*.yaml"))
+
+
+@pytest.mark.parametrize("yaml_file", YAML_FILES)
+def test_yaml_syntax(yaml_file):
+    """Test that all preset YAML files have valid syntax."""
+    import yaml
+    with open(yaml_file) as f:
+        # This will raise if syntax is invalid
+        yaml.safe_load(f)
+
+
+@pytest.mark.parametrize("yaml_file", YAML_FILES)
+def test_yaml_linting(yaml_file):
+    """Test that all preset YAML files pass yamllint."""
+    result = subprocess.run(
+        ["yamllint", "-c", ".yamllint", str(yaml_file)],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"YAML linting failed for {yaml_file}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.parametrize("yaml_file", YAML_FILES)
+def test_yaml_schema(yaml_file):
+    """Test that all preset YAML files pass Pydantic schema validation."""
+    from src.config.schema import validate_config
+    import yaml
+
+    with open(yaml_file) as f:
+        config = yaml.safe_load(f)
+
+    # Should not raise
+    validated = validate_config(config)
+    assert validated is not None

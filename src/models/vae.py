@@ -127,7 +127,7 @@ class EncoderHead(nn.Module):
         """Whether this encoder head is currently trainable."""
         return self._trainable
 
-    def get_trainable_params(self) -> list:
+    def get_trainable_params(self) -> List[torch.nn.Parameter]:
         """Get list of parameters that currently require gradients.
 
         Returns:
