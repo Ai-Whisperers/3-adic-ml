@@ -1235,9 +1235,9 @@ def train(
             )
             print("  [Resume] LR controller state restored.")
 
-        best_Q = float(ckpt.get("Q", ckpt.get("best_Q", -1.0)) or -1.0)
-        best_hierarchy = float(ckpt.get("hierarchy_A", ckpt.get("best_hierarchy", 0.0)) or 0.0)
-        best_coverage = float(ckpt.get("coverage", ckpt.get("best_coverage", 0.0)) or 0.0)
+        best_Q = float(ckpt["Q"]) if ckpt.get("Q") is not None else float(ckpt.get("best_Q", -1.0))
+        best_hierarchy = float(ckpt["hierarchy_A"]) if ckpt.get("hierarchy_A") is not None else float(ckpt.get("best_hierarchy", 0.0))
+        best_coverage = float(ckpt["coverage"]) if ckpt.get("coverage") is not None else float(ckpt.get("best_coverage", 0.0))
         start_epoch = int(ckpt.get("epoch", 0)) + 1
         print(f"  [Resume] Resuming from epoch {start_epoch} / {epochs}.")
         if start_epoch >= epochs:
