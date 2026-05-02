@@ -56,9 +56,6 @@ statenet:
   controller:
     grad_threshold: 0.005      # More sensitive gradient monitoring
     grad_patience: 5
-  annealing:
-    enabled: true
-    step: 0.002                # Slower annealing for long training
   timing:
     warmup_epochs: 10          # Longer warmup for stability
     hysteresis_epochs: 5       # More conservative state changes

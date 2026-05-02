@@ -141,14 +141,6 @@ class StateNetControllerConfig(StrictConfigModel):
     spike_multiplier: float = Field(default=2.0, ge=1.0)
 
 
-class StateNetAnnealingConfig(StrictConfigModel):
-    """StateNet threshold annealing config."""
-
-    enabled: bool = False
-    step: float = Field(default=0.002, ge=0)
-    q_decrease_threshold: float = Field(default=-0.05, le=0)
-
-
 class StateNetTimingConfig(StrictConfigModel):
     """StateNet timing configuration."""
 
@@ -183,7 +175,6 @@ class StateNetConfigSchema(StrictConfigModel):
     coverage: StateNetCoverageConfig = Field(default_factory=StateNetCoverageConfig)
     hierarchy: StateNetHierarchyConfig = Field(default_factory=StateNetHierarchyConfig)
     controller: StateNetControllerConfig = Field(default_factory=StateNetControllerConfig)
-    annealing: StateNetAnnealingConfig = Field(default_factory=StateNetAnnealingConfig)
     timing: StateNetTimingConfig = Field(default_factory=StateNetTimingConfig)
     lr_scales: StateNetLRScalesConfig = Field(default_factory=StateNetLRScalesConfig)
 

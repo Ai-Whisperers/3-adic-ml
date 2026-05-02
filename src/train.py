@@ -284,7 +284,7 @@ class ModelAuditor:
         print(f"       Parameters: {n_params:,} total, {n_trainable:,} trainable")
 
         # Load anchor checkpoint if specified
-        anchor_cfg = self.config.get("anchor_checkpoint", {})
+        anchor_cfg = self.config.get("anchor_checkpoint") or {}
         ckpt_path_str = anchor_cfg.get("path")
 
         if ckpt_path_str and ckpt_path_str != "null":
@@ -1820,7 +1820,8 @@ def train(
                 # Uses z_A_cat (Poincaré ball) + idx_cat (for valuations).
                 # All computation is CPU/numpy; runs under no_grad inside pipeline.
                 _vis_vals = TERNARY.valuation(idx_cat.cpu())
-                vis_pipeline.run(epoch, z_A_cat.cpu(), _vis_vals)
+                if epoch > 0:
+                    vis_pipeline.run(epoch, z_A_cat.cpu(), _vis_vals)
 
                 # Flush for real-time updates
                 tb_logger.flush()
