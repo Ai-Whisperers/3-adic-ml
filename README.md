@@ -193,155 +193,29 @@ src/
 | `src/models/vae.py` | TernaryVAEV6, TernaryVAEV6Controllable, EncoderHead |
 | `src/models/lr_controller.py` | MetricBasedLR, TrainingMetrics, LR scale control |
 | `src/models/hyperbolic_projection.py` | expmap0/logmap0 projections |
-| `src/config/statenet_config.py` | StateNetConfig dataclass |
+| `src/config/statenet_config.py" | StateNetConfig dataclass |
 | `src/geometry/poincare.py` | Riemannian backend (geoopt) |
 | `src/core/ternary.py` | Immutable 3-adic field logic |
 | `src/losses/combined.py` | Config-driven loss composition |
 
 </details>
 
-## Configuration
+---
 
-Training uses YAML configuration files. See `src/presets/v7_large.yaml` for the current recommended config.
+## The P-Adic Ecosystem
 
-<details>
-<summary><b>Key Configuration Sections (V7.2)</b></summary>
+This repository is part of a tri-fold ecosystem exploring the intersection of $p$-adic mathematics, ternary logic, and high-performance computing:
 
-```yaml
-# Model architecture (factored latent)
-model:
-  name: TernaryVAEV6Controllable
-  latent_dim: 64       # z_r (4 dims) + z_θ (60 dims)
-  hidden_dim: 128
-  factored: true       # V7: split z_tangent into radial + direction
-  radial_dims: 4
-  init_identity: true
-  tangent_scale: 0.1
+*   **[3-Adic ML](https://github.com/gesttaltt/3-adic-ml)**: (This Repo) Mathematical foundation and framework for $p$-adic Variational Autoencoders and geometric deep learning.
+*   **[3-Adic Bioinformatics](https://github.com/gesttaltt/3-adic-bioinformatics)**: Application of ultrametric geometry to genomic sequences, protein folding, and biological hierarchy analysis.
+*   **[Ternary Engine](https://github.com/gesttaltt/ternary-engine)**: High-performance C++/C backend for native ternary arithmetic and efficient $p$-adic valuation processing.
 
-# Training parameters
-training:
-  epochs: 800
-  batch_size: 4096
-  lr: 8.0e-4
+## Status & Engagement
 
-# Loss functions (config-driven, 11 available)
-loss:
-  rich_hierarchy:
-    enabled: true
-    hierarchy_weight: 5.0
-  angular_coherence:
-    enabled: true
-    weight: 1.0
-    level_prefix_k: [3, 4, 5, 0, 0, 0, 0, 0, 0, 0]  # Per-level prefix depth
-    target_sim: [1.0, 0.85, 0.70, 0, 0, 0, 0, 0, 0, 0]  # Soft-margin targets (v=0 MUST be 1.0)
-    n_pairs: 3000  # ~1000 per active level
+**Current Phase**: Active Low-Profile Research (V10.0 Algebraic Consistency)
 
-# LR Controller (differential learning rates)
-option_c:
-  enabled: true
-  encoder_a_lr_scale: 0.2
-  encoder_b_lr_scale: 0.1
-  projections_lr_scale: 1.0
-```
+We are committed to the scientific validation of "Meaning = Geometry." While the code is now public to facilitate peer review and academic collaboration, we are maintaining a cautious and focused development pace. 
 
-</details>
-
-## Mathematical Background
-
-<details>
-<summary><b>3-Adic Valuation</b></summary>
-
-The 3-adic valuation v_3(n) is the largest k such that 3^k divides n:
-
-| n | v_3(n) | Interpretation |
-|---|--------|----------------|
-| 1, 2, 4, 5, 7, 8 | 0 | Not divisible by 3 |
-| 3, 6, 12, 15 | 1 | Divisible by 3 |
-| 9, 18, 36 | 2 | Divisible by 9 |
-| 27, 54 | 3 | Divisible by 27 |
-| 0 | 9 | Convention (infinity) |
-
-</details>
-
-<details>
-<summary><b>Hierarchy Encoding</b></summary>
-
-Operations with high valuation map to small radii (near Poincare ball origin):
-- v=0 -> radius ~ 0.85 (boundary)
-- v=9 -> radius ~ 0.10 (origin)
-
-This creates a natural hierarchical structure where "more fundamental" operations (higher valuation) are geometrically central.
-
-</details>
-
-### Active Loss Functions (V7.2)
-
-| Loss | Weight | Purpose |
-|------|--------|---------|
-| **RichHierarchyLoss** | 5.0 | Unified hierarchy + coverage + separation |
-| **PAdicGeodesicLoss** | 2.0 | Poincare distance alignment to 3-adic metric |
-| **RadialHierarchyLoss** | 1.0 | Direct radius enforcement per valuation |
-| **MonotonicRadialLoss** | 1.0 | Per-level ordering constraints |
-| **AngularCoherenceLoss** | 1.0 | Direction clustering by digit prefix (V7) |
-| **HyperbolicKLDivergence** | 0.01 | KL divergence in Poincare ball |
-
-> Full list of all 11 loss classes: see [docs/SPECS.md](docs/SPECS.md)
-
-## Documentation
-
-| Document | Contents |
-|----------|----------|
-| [`CLAUDE.md`](CLAUDE.md) | Detailed architecture documentation (V6.2 base + V7 extensions) |
-| [`docs/SPECS.md`](docs/SPECS.md) | Technical specifications and engineering constraints |
-| [`docs/DATA-SEMANTICS.md`](docs/DATA-SEMANTICS.md) | 3-adic data semantics, valuation conventions, dataset expansion options |
-| [`docs/FAQ.md`](docs/FAQ.md) | Frequently asked questions |
-| [`docs/STATUS.md`](docs/STATUS.md) | Current project status, run history, metric tracking |
-| [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) | Dependency manifest and version requirements |
-| [`docs/SOURCES.md`](docs/SOURCES.md) | Academic references and prior work |
-| [`src/README.md`](src/README.md) | Module documentation and integration guide |
-| [`docs/plans/`](docs/plans/) | Implementation plans (visualization, tests, roadmap) |
-| [`docs/audits/`](docs/audits/) | Codebase audit reports (chronological) |
-
-## Related Projects
-
-| Repository | Focus |
-|------------|-------|
-| **[3-adic-ml](https://github.com/gesttaltt/3-adic-ml)** (this repo) | VAE architectures, hyperbolic geometry, training pipelines |
-| **[ultrametric-antigen-AI](https://github.com/Ai-Whisperers/ultrametric-antigen-AI)** | Bioinformatics application: antigen/protein/codon analysis using trained models from this repo |
-
-## Hardware Requirements
-
-- **GPU**: NVIDIA RTX 3050 (6GB VRAM) or better
-- **RAM**: 16GB minimum
-- **Storage**: ~100MB for checkpoints
-
-The pipeline includes automatic OOM handling, emergency checkpoint saving, and GPU/RAM monitoring via `HardwareMonitor`.
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-## Contributing
-
-1. Fork the repository and create a feature branch
-2. Ensure all tests pass: `pytest tests/ -v`
-3. Follow existing code patterns (float64 throughout, geoopt for geometry)
-4. Submit a pull request with a clear description of changes
-
-## Changelog
-
-| Date | Version | Key Changes |
-|------|---------|-------------|
-| 2026-03-24 | V7.2+ | Phase 2 visualization pipeline (UMAP/PaCMAP/TriMAP/persistent homology on hyperbolic distances), full codebase audit, dead code removal (F1-F5), docs coverage update |
-| 2026-03-23 | V7.2+ | `level_prefix_k` per-level prefix depth, soft-margin `target_sim`, live ARI in training loop, `target_sim[0]=0.90` regression identified and fixed to 1.0, repo moved to `gesttaltt/3-adic-ml` |
-| 2026-03-22 | V7.2 | Identity geometry audit, 4-run ARI comparison (0.721->0.844), Q=2.163 ceiling analysis |
-| 2026-03-21 | V7.1 | AngularCoherenceLoss + AQ metric, tangent_scale collapse fix |
-| 2026-03-19 | V6.2 | Sampling fix (sqrt-inverse weighting), loss weight rebalancing, dist_corr root cause analysis |
-| 2026-03-11 | V6.2 | Critical bug fixes (VAE-B dead, max_radius saturation, config key mismatch, KL wiring) |
-| 2026-01-26 | V6.0 | True hyperbolic geometry (expmap0/logmap0), learnable loss weights, codebase review |
-
-## Acknowledgments
-
-This work builds on:
-- [geoopt](https://github.com/geoopt/geoopt) - Riemannian optimization in PyTorch
-- Theoretical foundations from p-adic analysis and hyperbolic geometry
+*   **Proposals**: We are not actively seeking investment, acquisition, or commercial partnerships at this time. Our priority is technical integrity and core research.
+*   **Contributions**: We welcome code contributions, bug reports, and mathematical critiques from the niche community of $p$-adic and geometric ML researchers.
+*   **Limitations**: This software is experimental. The `ternary-engine` requires specific C++ environments, and V10 training is ongoing.
