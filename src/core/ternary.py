@@ -98,6 +98,16 @@ class TernarySpace:
         'last_nonzero', 'parent', 'level_rank'
     )
 
+    # Algebraic property indices — binary-operation interpretation of ternary digits.
+    # Each operation is f: {-1,0,1}² → {-1,0,1} with digit[k] = f(a,b),
+    # a=(k//3)-1, b=(k%3)-1 (row-major 3×3 table).
+    # These are precomputed from the ternary LUT; O(1) lookup after init.
+    PROP_ALG_COMMUTATIVE  = 0   # f(a,b) = f(b,a) for all a,b
+    PROP_ALG_IDEMPOTENT   = 1   # f(a,a) = a for all a ∈ {-1,0,1}
+    PROP_ALG_HAS_IDENTITY = 2   # ∃ e ∈ {-1,0,1}: f(e,a)=f(a,e)=a for all a
+    PROP_ALG_HAS_ABSORBING = 3  # ∃ z ∈ {-1,0,1}: f(z,a)=f(a,z)=z for all a
+    N_ALG_PROPERTIES = 4
+
     def __init__(self):
         """Initialize precomputed lookup tables."""
         # Precompute valuation LUT: index -> v_3(index)
@@ -117,6 +127,10 @@ class TernarySpace:
 
         # Precompute level population counts (how many indices at each valuation)
         self._level_counts = self._compute_level_counts()
+
+        # Precompute algebraic properties LUT (binary-operation interpretation)
+        # Memory: 19,683 × 4 × 1 byte = ~79 KB (bool)
+        self._algebraic_lut = self._build_algebraic_lut()
 
         # Device-cached versions (populated on first use)
         self._device_cache = {}
@@ -218,6 +232,83 @@ class TernarySpace:
         for v in range(self.MAX_VALUATION + 1):
             counts[v] = (self._valuation_lut == v).sum()
         return counts
+
+    def _build_algebraic_lut(self) -> torch.Tensor:
+        """Build algebraic property LUT for binary-operation interpretation.
+
+        Interprets each operation as f: {-1,0,1}² → {-1,0,1} via its 9-digit table:
+            digit[k] = f(a, b),  a = (k // 3) - 1,  b = (k % 3) - 1
+
+        Anti-symmetric pairs (commutativity check): (1,3), (2,6), (5,7)
+        Diagonal positions (idempotency check):     0, 4, 8  → values -1, 0, 1
+
+        Identity element e (row+col conditions):
+          e=-1: d[0]==-1, d[1]==0, d[2]==1 AND d[3]==0, d[6]==1
+          e= 0: d[3]==-1, d[4]==0, d[5]==1 AND d[1]==-1, d[7]==1
+          e= 1: d[6]==-1, d[7]==0, d[8]==1 AND d[2]==-1, d[5]==0
+
+        Absorbing element z:
+          z=-1: d[0,1,2]==-1 AND d[3,6]==-1
+          z= 0: d[3,4,5]==0  AND d[1,7]==0
+          z= 1: d[6,7,8]==1  AND d[2,5]==1
+
+        Returns:
+            Bool tensor of shape (N_OPERATIONS, N_ALG_PROPERTIES)
+        """
+        import numpy as np
+        ops = self._ternary_lut.numpy()  # (19683, 9) float64, values in {-1,0,1}
+        N = self.N_OPERATIONS
+        result = torch.zeros((N, self.N_ALG_PROPERTIES), dtype=torch.bool)
+
+        # Commutative: 3 anti-symmetric pairs must match
+        comm = (
+            (ops[:, 1] == ops[:, 3]) &
+            (ops[:, 2] == ops[:, 6]) &
+            (ops[:, 5] == ops[:, 7])
+        )
+        result[:, self.PROP_ALG_COMMUTATIVE] = torch.from_numpy(comm)
+
+        # Idempotent: all 3 diagonal entries equal their expected value
+        idmpt = (
+            (ops[:, 0] == -1.0) &
+            (ops[:, 4] ==  0.0) &
+            (ops[:, 8] ==  1.0)
+        )
+        result[:, self.PROP_ALG_IDEMPOTENT] = torch.from_numpy(idmpt)
+
+        # Has identity element (any of e=-1, e=0, e=1)
+        id_e_neg1 = (
+            (ops[:, 0] == -1.0) & (ops[:, 1] ==  0.0) & (ops[:, 2] ==  1.0) &
+            (ops[:, 3] ==  0.0) & (ops[:, 6] ==  1.0)
+        )
+        id_e_zero = (
+            (ops[:, 3] == -1.0) & (ops[:, 4] ==  0.0) & (ops[:, 5] ==  1.0) &
+            (ops[:, 1] == -1.0) & (ops[:, 7] ==  1.0)
+        )
+        id_e_pos1 = (
+            (ops[:, 6] == -1.0) & (ops[:, 7] ==  0.0) & (ops[:, 8] ==  1.0) &
+            (ops[:, 2] == -1.0) & (ops[:, 5] ==  0.0)
+        )
+        has_id = id_e_neg1 | id_e_zero | id_e_pos1
+        result[:, self.PROP_ALG_HAS_IDENTITY] = torch.from_numpy(has_id)
+
+        # Has absorbing element (any of z=-1, z=0, z=1)
+        abs_z_neg1 = (
+            (ops[:, 0] == -1.0) & (ops[:, 1] == -1.0) & (ops[:, 2] == -1.0) &
+            (ops[:, 3] == -1.0) & (ops[:, 6] == -1.0)
+        )
+        abs_z_zero = (
+            (ops[:, 3] ==  0.0) & (ops[:, 4] ==  0.0) & (ops[:, 5] ==  0.0) &
+            (ops[:, 1] ==  0.0) & (ops[:, 7] ==  0.0)
+        )
+        abs_z_pos1 = (
+            (ops[:, 6] ==  1.0) & (ops[:, 7] ==  1.0) & (ops[:, 8] ==  1.0) &
+            (ops[:, 2] ==  1.0) & (ops[:, 5] ==  1.0)
+        )
+        has_abs = abs_z_neg1 | abs_z_zero | abs_z_pos1
+        result[:, self.PROP_ALG_HAS_ABSORBING] = torch.from_numpy(has_abs)
+
+        return result
 
     def _get_cached_lut(self, name: str, lut: torch.Tensor, device: torch.device) -> torch.Tensor:
         """Get device-cached version of a LUT."""
@@ -344,6 +435,37 @@ class TernarySpace:
 
         # Compute index as base-3 number
         return (digits * weights).sum(dim=-1)
+
+    def ternary_add(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
+        """Perform 3-adic modular addition of two indices.
+        
+        Operation-wise addition: (a_i + b_i + 1) % 3 - 1
+        Maps {-1, 0, 1} digits such that:
+           1 + 1 = -1
+          -1 - 1 = 1
+           0 + x = x
+        
+        Args:
+            idx_a: Tensor of indices, shape (N,)
+            idx_b: Tensor of indices, shape (N,)
+            
+        Returns:
+            Tensor of indices of the sums, shape (N,)
+        """
+        t_a = self.to_ternary(idx_a) # (N, 9)
+        t_b = self.to_ternary(idx_b) # (N, 9)
+        
+        # Shift to {0, 1, 2} for standard modulo
+        d_a = t_a + 1
+        d_b = t_b + 1
+        
+        # Modular addition in {0, 1, 2}
+        d_sum = (d_a + d_b) % 3
+        
+        # Shift back to {-1, 0, 1}
+        t_sum = d_sum - 1
+        
+        return self.from_ternary(t_sum)
 
     # =========================================================================
     # Convenience Methods
@@ -753,6 +875,88 @@ class TernarySpace:
             return self._properties_lut.clone()
         return self._get_cached_lut("properties", self._properties_lut, device).clone()
 
+    # =========================================================================
+    # Algebraic Property Accessors — binary-operation analysis (v10)
+    # =========================================================================
+
+    def _get_alg_property(self, indices: torch.Tensor, prop_idx: int) -> torch.Tensor:
+        """Internal helper to get a single algebraic property column."""
+        device = indices.device
+        lut = self._get_cached_lut("algebraic", self._algebraic_lut, device)
+        indices = torch.clamp(indices.long(), 0, self.N_OPERATIONS - 1)
+        return lut[indices, prop_idx]
+
+    def is_commutative(self, indices: torch.Tensor) -> torch.Tensor:
+        """Return bool tensor: True where f(a,b) = f(b,a) for all a,b.
+
+        Args:
+            indices: Operation indices, any shape
+
+        Returns:
+            Bool tensor, same shape as indices
+        """
+        return self._get_alg_property(indices, self.PROP_ALG_COMMUTATIVE)
+
+    def is_idempotent(self, indices: torch.Tensor) -> torch.Tensor:
+        """Return bool tensor: True where f(a,a) = a for all a ∈ {-1,0,1}.
+
+        Args:
+            indices: Operation indices, any shape
+
+        Returns:
+            Bool tensor, same shape as indices
+        """
+        return self._get_alg_property(indices, self.PROP_ALG_IDEMPOTENT)
+
+    def has_identity_element(self, indices: torch.Tensor) -> torch.Tensor:
+        """Return bool tensor: True where ∃ e s.t. f(e,a) = f(a,e) = a.
+
+        Args:
+            indices: Operation indices, any shape
+
+        Returns:
+            Bool tensor, same shape as indices
+        """
+        return self._get_alg_property(indices, self.PROP_ALG_HAS_IDENTITY)
+
+    def has_absorbing_element(self, indices: torch.Tensor) -> torch.Tensor:
+        """Return bool tensor: True where ∃ z s.t. f(z,a) = f(a,z) = z.
+
+        Args:
+            indices: Operation indices, any shape
+
+        Returns:
+            Bool tensor, same shape as indices
+        """
+        return self._get_alg_property(indices, self.PROP_ALG_HAS_ABSORBING)
+
+    def algebraic_signature(self, indices: torch.Tensor) -> torch.Tensor:
+        """3-bit algebraic signature packed as integer in [0, 7].
+
+        Bit layout (MSB → LSB):
+            bit 2: is_commutative
+            bit 1: has_identity_element
+            bit 0: has_absorbing_element
+
+        Class 0 (000) is the bulk (~95% of ops, none of the special properties).
+        Classes 1–7 are algebraically significant sub-populations.
+
+        Args:
+            indices: Operation indices, any shape
+
+        Returns:
+            Integer tensor in [0, 7], same shape as indices
+        """
+        device = indices.device
+        lut = self._get_cached_lut("algebraic", self._algebraic_lut, device)
+        indices = torch.clamp(indices.long(), 0, self.N_OPERATIONS - 1)
+        props = lut[indices]  # (..., 4) bool
+        return (
+            props[..., self.PROP_ALG_COMMUTATIVE].long()  * 4 +
+            props[..., self.PROP_ALG_HAS_IDENTITY].long() * 2 +
+            props[..., self.PROP_ALG_HAS_ABSORBING].long()
+        )
+
 
 # =============================================================================
 # Singleton Instance
@@ -843,6 +1047,36 @@ def valuation_prefix_class(indices: torch.Tensor) -> torch.Tensor:
     return TERNARY.valuation_prefix_class(indices)
 
 
+def ternary_add(idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
+    """Perform 3-adic modular addition. See TernarySpace.ternary_add."""
+    return TERNARY.ternary_add(idx_a, idx_b)
+
+
+def is_commutative(indices: torch.Tensor) -> torch.Tensor:
+    """Check commutativity. See TernarySpace.is_commutative."""
+    return TERNARY.is_commutative(indices)
+
+
+def is_idempotent(indices: torch.Tensor) -> torch.Tensor:
+    """Check idempotency. See TernarySpace.is_idempotent."""
+    return TERNARY.is_idempotent(indices)
+
+
+def has_identity_element(indices: torch.Tensor) -> torch.Tensor:
+    """Check identity element existence. See TernarySpace.has_identity_element."""
+    return TERNARY.has_identity_element(indices)
+
+
+def has_absorbing_element(indices: torch.Tensor) -> torch.Tensor:
+    """Check absorbing element existence. See TernarySpace.has_absorbing_element."""
+    return TERNARY.has_absorbing_element(indices)
+
+
+def algebraic_signature(indices: torch.Tensor) -> torch.Tensor:
+    """3-bit algebraic signature in [0,7]. See TernarySpace.algebraic_signature."""
+    return TERNARY.algebraic_signature(indices)
+
+
 def get_valuation_fn(valuation_type: str):
     """Return the valuation callable for the given type.
 
@@ -875,6 +1109,7 @@ __all__ = [
     "distance_matrix",
     "to_ternary",
     "from_ternary",
+    "ternary_add",
     "target_radius",
     # Property accessors (Option B)
     "digit_count",
@@ -887,6 +1122,12 @@ __all__ = [
     "digit_prefix_class",
     "nonzero_pattern",
     "valuation_prefix_class",
+    # Algebraic property accessors (v10)
+    "is_commutative",
+    "is_idempotent",
+    "has_identity_element",
+    "has_absorbing_element",
+    "algebraic_signature",
     # Valuation dispatch
     "get_valuation_fn",
 ]

@@ -1461,6 +1461,207 @@ class AngularCoherenceLoss(nn.Module):
         return loss, metrics
 
 
+class AlgebraicCoherenceLoss(nn.Module):
+    """Attract same-algebraic-class operations in embedding direction space.
+
+    Motivated by semantic validity analysis (scripts/validation/check_zero_count_semantics.py):
+    each ternary operation is a binary function f: {-1,0,1}² → {-1,0,1}. The algebraic
+    properties — commutativity (729 ops), identity-element carriers (243 ops), and
+    absorbing-element carriers (243 ops) — are verified real sub-populations that
+    the loss system has no direct signal about.
+
+    Groups the batch by a 3-bit algebraic signature (is_commutative, has_identity,
+    has_absorbing) and applies a soft-margin cosine similarity loss within each
+    non-trivial class. The bulk class (signature=0, ~95% of ops) is always skipped —
+    it contains no common algebraic structure worth enforcing.
+
+    Operates on direction vectors (z_hyp / r), exactly as AngularCoherenceLoss,
+    so it cannot corrupt the radial hierarchy (Jacobian orthogonality).
+    Requires a factored latent (model.factored=True) so that r is available.
+
+    Args:
+        weight: Loss weight
+        n_pairs: Max pairs per active class per forward call
+        target_sim: Soft-margin cosine similarity target
+        phase_start_epoch: Epoch before which loss returns 0
+        min_class_size: Minimum batch members per class to activate loss
+        valuation_fn: Unused; kept for API consistency with other loss classes
+    """
+
+    def __init__(
+        self,
+        weight: float = 1.0,
+        n_pairs: int = 2000,
+        target_sim: float = 0.70,
+        phase_start_epoch: int = 20,
+        min_class_size: int = 3,
+        valuation_fn=None,
+    ):
+        super().__init__()
+        self.weight = weight
+        self.n_pairs = n_pairs
+        self.target_sim = target_sim
+        self.phase_start_epoch = phase_start_epoch
+        self.min_class_size = min_class_size
+
+    def forward(
+        self,
+        z_hyp: torch.Tensor,
+        r: torch.Tensor,
+        indices: torch.Tensor,
+        epoch: int = 0,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
+        metrics: MetricsDict = {}
+        zero = torch.tensor(0.0, device=z_hyp.device, dtype=z_hyp.dtype)
+
+        if epoch < self.phase_start_epoch:
+            metrics["alg_coherence_loss"] = 0.0
+            metrics["alg_coherence_pairs"] = 0
+            return zero, metrics
+
+        B = z_hyp.shape[0]
+        if B < 4:
+            metrics["alg_coherence_loss"] = 0.0
+            metrics["alg_coherence_pairs"] = 0
+            return zero, metrics
+
+        # Direction vectors — orthogonal to the radial component
+        eps = torch.tensor(1e-10, device=z_hyp.device, dtype=z_hyp.dtype)
+        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=eps)  # (B, D)
+
+        # 3-bit algebraic signature per batch element
+        sigs = TERNARY.algebraic_signature(indices)  # (B,) long in [0, 7]
+
+        t = torch.tensor(self.target_sim, device=z_hyp.device, dtype=z_hyp.dtype)
+        total_loss = zero
+        total_pairs = 0
+        n_active = 0
+
+        for sig_val in range(1, 8):  # skip 0 = bulk, no common structure
+            mask = (sigs == sig_val)
+            n_in_class = int(mask.sum().item())
+            if n_in_class < self.min_class_size:
+                continue
+
+            class_idx = mask.nonzero(as_tuple=True)[0]
+            nc = len(class_idx)
+
+            half = min(nc // 2, self.n_pairs)
+            if half < 2:
+                continue
+
+            perm = torch.randperm(nc, device=z_hyp.device)
+            i_local = perm[:half]
+            j_local = perm[half:half * 2]
+            di = dir_vecs[class_idx[i_local]]
+            dj = dir_vecs[class_idx[j_local]]
+
+            cos_sim = (di * dj).sum(dim=-1)  # (half,)
+            cls_loss = F.relu(t - cos_sim).mean()
+
+            total_loss = total_loss + cls_loss
+            total_pairs += half
+            n_active += 1
+            metrics[f"alg_loss_sig{sig_val}"] = cls_loss.item()
+
+        if n_active == 0:
+            metrics["alg_coherence_loss"] = 0.0
+            metrics["alg_coherence_pairs"] = 0
+            return zero, metrics
+
+        loss = self.weight * (total_loss / n_active)
+        metrics["alg_coherence_loss"] = loss.item()
+        metrics["alg_coherence_pairs"] = total_pairs
+        return loss, metrics
+
+
+class AlgebraicAdditionLoss(nn.Module):
+    r"""Enforce additive consistency in tangent space (Mu space).
+    
+    Motivated by the "Algebraic Consistency" goal: z(a) + z(b) \approx z(a \oplus b).
+    This loss encourages the encoder to map the discrete 3-adic modular addition
+    to vector addition in the latent tangent space.
+    
+    Args:
+        weight: Loss weight
+        n_pairs: Number of sum-triplets to evaluate per batch
+        phase_start_epoch: Epoch before which loss is 0
+    """
+
+    def __init__(
+        self,
+        weight: float = 1.0,
+        n_pairs: int = 512,
+        phase_start_epoch: int = 0,
+        valuation_fn=None,
+    ):
+        super().__init__()
+        self.weight = weight
+        self.n_pairs = n_pairs
+        self.phase_start_epoch = phase_start_epoch
+        # generator for reproducible triplet sampling
+        self.generator = torch.Generator()
+        self.generator.manual_seed(42)
+
+    def forward(
+        self,
+        mu_A: torch.Tensor,
+        indices: torch.Tensor,
+        model: nn.Module,
+        epoch: int = 0,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
+        metrics: MetricsDict = {}
+        zero = torch.tensor(0.0, device=mu_A.device, dtype=mu_A.dtype)
+
+        if epoch < self.phase_start_epoch or self.weight <= 0:
+            metrics["alg_addition_loss"] = 0.0
+            return zero, metrics
+
+        B = mu_A.shape[0]
+        if B < 2:
+            metrics["alg_addition_loss"] = 0.0
+            return zero, metrics
+
+        # Sample pairs (a, b) from the batch to form triplets (a, b, a+b)
+        n_triplets = min(self.n_pairs, B // 2)
+        if n_triplets < 1:
+            metrics["alg_addition_loss"] = 0.0
+            return zero, metrics
+
+        # Shuffle indices to get random pairs
+        perm = torch.randperm(B, generator=self.generator).to(mu_A.device)
+        idx_a_local = perm[:n_triplets]
+        idx_b_local = perm[n_triplets : 2 * n_triplets]
+
+        idx_a = indices[idx_a_local]
+        idx_b = indices[idx_b_local]
+
+        # Compute ternary sum a \oplus b
+        idx_sum = TERNARY.ternary_add(idx_a, idx_b)
+
+        # Get mu for the sums (requires re-encoding or lookup)
+        # We re-encode to ensure gradient flow back to the encoder
+        mu_sum = model.get_mu_representations(idx_sum, mu_A.device)
+
+        # Target: mu_a + mu_b
+        mu_a = mu_A[idx_a_local]
+        mu_b = mu_A[idx_b_local]
+        mu_target = mu_a + mu_b
+
+        # Loss: mean squared error or smooth L1 in tangent space
+        loss_val = F.smooth_l1_loss(mu_sum, mu_target)
+        
+        loss = self.weight * loss_val
+        metrics["alg_addition_loss"] = loss.item()
+        
+        # Additive similarity metric
+        with torch.no_grad():
+            cos_sim = F.cosine_similarity(mu_sum, mu_target).mean()
+            metrics["alg_addition_sim"] = cos_sim.item()
+
+        return loss, metrics
+
+
 __all__ = [
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",
@@ -1470,4 +1671,6 @@ __all__ = [
     "ValuationPriorLoss",
     "WithinLevelContrastiveLoss",
     "AngularCoherenceLoss",
+    "AlgebraicCoherenceLoss",
+    "AlgebraicAdditionLoss",
 ]

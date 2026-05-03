@@ -426,6 +426,24 @@ class TernaryVAEV6(nn.Module):
         """Return parameter groups for optimizer."""
         return [{"params": self.parameters(), "lr": base_lr}]
 
+    def get_mu_representations(self, indices: torch.Tensor, device: torch.device) -> torch.Tensor:
+        """Get raw mu representations for given indices.
+        
+        Used by AlgebraicAdditionLoss to compute representations of sums
+        within the forward pass while preserving gradients.
+        """
+        # Convert indices to ternary
+        from src.core import TERNARY
+        x = TERNARY.to_ternary(indices).to(device).to(torch.float64)
+        
+        # Apply positional encoding if enabled
+        if self.positional_encoding:
+            x = torch.cat([x, x * self.pos_weights], dim=-1)
+            
+        # Get mu from head_A (primary coverage pathway)
+        mu_A, _ = self.head_A(x)
+        return mu_A
+
 
 # =============================================================================
 # TernaryVAEV6Controllable

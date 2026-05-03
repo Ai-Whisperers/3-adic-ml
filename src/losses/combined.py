@@ -41,6 +41,8 @@ import torch.nn.functional as F
 from src.core.ternary import get_valuation_fn
 from .hyperbolic_kl import HyperbolicKLDivergence
 from .padic_geodesic import (
+    AlgebraicAdditionLoss,
+    AlgebraicCoherenceLoss,
     AngularCoherenceLoss,
     GlobalRankLoss,
     MonotonicRadialLoss,
@@ -98,6 +100,7 @@ class CombinedLoss(nn.Module):
     valuation_prior: Optional[ValuationPriorLoss]
     wlc_loss: Optional[WithinLevelContrastiveLoss]
     angular_coherence: Optional[AngularCoherenceLoss]
+    algebraic_coherence_loss: Optional[AlgebraicCoherenceLoss]
 
     def __init__(
         self,
@@ -322,11 +325,42 @@ class CombinedLoss(nn.Module):
             self._ac_warned_no_r = True
             self._ac_skip_count = 0
 
+        # AlgebraicCoherenceLoss (group by algebraic signature, attract same-class directions)
+        alg_cfg = self.config.get('algebraic_coherence', {})
+        if alg_cfg.get('enabled', False):
+            self.algebraic_coherence_loss = AlgebraicCoherenceLoss(
+                weight=alg_cfg.get('weight', 1.0),
+                n_pairs=alg_cfg.get('n_pairs', 2000),
+                target_sim=alg_cfg.get('target_sim', 0.70),
+                phase_start_epoch=alg_cfg.get('phase_start_epoch', 20),
+                min_class_size=alg_cfg.get('min_class_size', 3),
+            )
+            self.alg_coherence_weight = alg_cfg.get('weight', 1.0)
+            self._alg_warned_no_r = False
+            self._alg_skip_count = 0
+        else:
+            self.algebraic_coherence_loss = None
+            self.alg_coherence_weight = 0.0
+            self._alg_warned_no_r = True
+            self._alg_skip_count = 0
+
+        # Algebraic Addition Loss (z(a) + z(b) \approx z(a+b))
+        aa_cfg = self.config.get('algebraic_addition', {})
+        if aa_cfg.get('enabled', False):
+            self.algebraic_addition_loss = AlgebraicAdditionLoss(
+                weight=aa_cfg.get('weight', 1.0),
+                n_pairs=aa_cfg.get('n_pairs', 512),
+                phase_start_epoch=aa_cfg.get('phase_start_epoch', 0),
+            )
+        else:
+            self.algebraic_addition_loss = None
+
         # Guard: at least one loss must be enabled, or training will be gradient-free
         active = [
             self.rich_hierarchy, self.radial_loss, self.geodesic_loss,
             self.rank_loss, self.monotonic_loss, self.kl_loss, self.valuation_prior,
-            self.wlc_loss, self.angular_coherence,
+            self.wlc_loss, self.angular_coherence, self.algebraic_coherence_loss,
+            self.algebraic_addition_loss,
         ]
         if not any(x is not None for x in active):
             raise ValueError(
@@ -354,6 +388,10 @@ class CombinedLoss(nn.Module):
                     raise ValueError(
                         f"CombinedLoss: rich_hierarchy.{k}_weight is negative ({w})."
                     )
+        if self.alg_coherence_weight < 0.0:
+            raise ValueError(
+                f"CombinedLoss: algebraic_coherence.weight is negative ({self.alg_coherence_weight})."
+            )
 
     def _init_learnable_weights(self) -> None:
         """Initialize learnable log-sigma parameters for uncertainty weighting.
@@ -459,6 +497,7 @@ class CombinedLoss(nn.Module):
         curvature: Optional[float] = None,
         dual_weights: Optional[Dict[str, List[float]]] = None,
         r: Optional[torch.Tensor] = None,
+        model: Optional[nn.Module] = None,
     ) -> CombinedLossOutput:
         """Compute combined loss.
 
@@ -655,7 +694,32 @@ class CombinedLoss(nn.Module):
                 )
                 self._ac_warned_no_r = True
 
-        # 11. Fallback: Basic coverage loss if no rich_hierarchy
+        # 11. AlgebraicCoherenceLoss (requires factored latent, same as AC)
+        if self.algebraic_coherence_loss is not None and r is not None:
+            alg_out, alg_metrics = self.algebraic_coherence_loss(z_hyp, r, indices, epoch)
+            losses['algebraic_coherence'] = alg_out
+            losses['alg_coherence_metrics'] = alg_metrics
+            total = total + alg_out
+        elif self.algebraic_coherence_loss is not None and r is None:
+            self._alg_skip_count += 1
+            losses['alg_skipped_no_r'] = self._alg_skip_count
+            if not self._alg_warned_no_r:
+                warnings.warn(
+                    "AlgebraicCoherenceLoss requires factored latent (r=None). "
+                    "Set model.factored=True or disable algebraic_coherence in config.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                self._alg_warned_no_r = True
+
+        # 12. AlgebraicAdditionLoss (requires mu and model)
+        if self.algebraic_addition_loss is not None and mu is not None and model is not None:
+            aa_out, aa_metrics = self.algebraic_addition_loss(mu, indices, model, epoch)
+            losses['algebraic_addition'] = aa_out
+            losses['alg_addition_metrics'] = aa_metrics
+            total = total + aa_out
+
+        # 13. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:
             coverage_loss = self._compute_coverage_loss(logits, targets)
             losses['coverage'] = coverage_loss
@@ -721,6 +785,10 @@ class CombinedLoss(nn.Module):
             enabled.append('within_level_contrastive')
         if self.angular_coherence is not None:
             enabled.append('angular_coherence')
+        if self.algebraic_coherence_loss is not None:
+            enabled.append('algebraic_coherence')
+        if self.algebraic_addition_loss is not None:
+            enabled.append('algebraic_addition')
         return enabled
 
     def get_learned_weights(self) -> Dict[str, float]:
@@ -745,6 +813,10 @@ class CombinedLoss(nn.Module):
                 weights['monotonic'] = self.monotonic_weight
             if self.kl_loss is not None:
                 weights['kl'] = self.kl_weight
+            if self.algebraic_coherence_loss is not None:
+                weights['algebraic_coherence'] = self.alg_coherence_weight
+            if self.algebraic_addition_loss is not None:
+                weights['algebraic_addition'] = self.algebraic_addition_loss.weight
             return weights
 
         # Compute effective weights from learnable log_sigma

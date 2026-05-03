@@ -1330,6 +1330,7 @@ def train(
                         curvature=current_curvature,
                         dual_weights=current_dual_weights,
                         r=out.get("r_A"),
+                        model=model,
                     )
                     # VAE-B: hierarchy-only (no coverage/reconstruction).
                     # coverage_weight=0.0 in loss_fn_b prevents gradient conflict
@@ -1340,6 +1341,7 @@ def train(
                         curvature=current_curvature,
                         dual_weights=current_dual_weights,
                         r=out.get("r_B"),
+                        model=model,
                     )
                     # Combine: both VAEs contribute to total loss
                     loss = losses["total"] + losses_B["total"]

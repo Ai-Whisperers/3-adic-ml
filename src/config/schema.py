@@ -388,6 +388,34 @@ class ZeroStructureConfig(StrictConfigModel):
     sparsity_weight: float = Field(default=0.0, ge=0)
 
 
+class AlgebraicCoherenceLossConfig(StrictConfigModel):
+    """AlgebraicCoherenceLoss configuration.
+
+    Groups batch operations by 3-bit algebraic signature (commutative,
+    has_identity, has_absorbing) and attracts same-class direction embeddings.
+    Requires factored latent (model.factored=True).
+    """
+
+    enabled: bool = False
+    weight: float = Field(default=1.0, ge=0)
+    n_pairs: int = Field(default=2000, ge=10)
+    target_sim: float = Field(default=0.70, ge=0.0, le=1.0)
+    phase_start_epoch: int = Field(default=20, ge=0)
+    min_class_size: int = Field(default=3, ge=2)
+
+
+class AlgebraicAdditionLossConfig(StrictConfigModel):
+    r"""AlgebraicAdditionLoss configuration.
+
+    Encourages z(a) + z(b) \approx z(a \oplus b) in latent tangent space.
+    """
+
+    enabled: bool = False
+    weight: float = Field(default=1.0, ge=0)
+    n_pairs: int = Field(default=512, ge=1)
+    phase_start_epoch: int = Field(default=0, ge=0)
+
+
 class LossConfig(StrictConfigModel):
     """Complete loss configuration."""
 
@@ -399,6 +427,12 @@ class LossConfig(StrictConfigModel):
     monotonic: MonotonicLossConfig = Field(default_factory=MonotonicLossConfig)
     angular_coherence: AngularCoherenceLossConfig = Field(
         default_factory=AngularCoherenceLossConfig
+    )
+    algebraic_coherence: AlgebraicCoherenceLossConfig = Field(
+        default_factory=AlgebraicCoherenceLossConfig
+    )
+    algebraic_addition: AlgebraicAdditionLossConfig = Field(
+        default_factory=AlgebraicAdditionLossConfig
     )
     hyperbolic_kl: HyperbolicKLConfig = Field(default_factory=HyperbolicKLConfig)
     within_level_contrastive: WithinLevelContrastiveConfig = Field(

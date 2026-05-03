@@ -1,0 +1,274 @@
+# v10_algebraic.yaml - Algebraic Consistency Implementation
+#
+# Incorporates AlgebraicAdditionLoss to enforce z(a) + z(b) ≈ z(a ⊕ b)
+# and AlgebraicCoherenceLoss to cluster operations by algebraic signature.
+#
+# Level semantics: zero_count (content-based hierarchy)
+
+# =============================================================================
+# Device Configuration
+# =============================================================================
+device:
+  name: "v10_algebraic"
+  cuda_device: 0
+  use_amp: false
+  pin_memory: true
+  num_workers: 4
+  empty_cache_freq: 25
+
+# =============================================================================
+# Model Architecture
+# =============================================================================
+model:
+  name: TernaryVAEV6Controllable
+  latent_dim: 64
+  hidden_dim: 128
+  max_radius: 0.99
+  curvature: 1.0
+  learnable_curvature: true
+
+  factored: true
+  radial_dims: 4
+
+  positional_encoding: true    # Enabled to assist algebraic pattern learning
+
+  projection_layers: 2
+  projection_dropout: 0.1
+  init_identity: true
+  tangent_scale: 0.1
+
+  encoder_type: improved
+  decoder_type: improved
+
+# =============================================================================
+# Riemannian Optimization
+# =============================================================================
+riemannian:
+  enabled: true
+  optimizer: adam
+  stabilize: 10
+
+# =============================================================================
+# Precision Settings
+# =============================================================================
+precision:
+  dtype: float64
+
+# =============================================================================
+# Differential Learning Rates
+# =============================================================================
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.2
+  encoder_b_lr_scale: 0.1
+  projections_lr_scale: 1.0
+
+# =============================================================================
+# StateNet Controller
+# =============================================================================
+statenet:
+  enabled: true
+
+  initial:
+    encoder_a_trainable: true
+    encoder_b_trainable: true
+    projections_trainable: true
+
+  coverage:
+    fix_threshold: 0.35
+    train_threshold: 0.45
+    floor: 0.3
+  hierarchy:
+    plateau_threshold: 0.0005
+    plateau_patience: 10
+    patience_ceiling: 25
+
+  controller:
+    grad_threshold: 0.001
+    grad_patience: 20
+    patience_ceiling: 40
+
+  timing:
+    warmup_epochs: 10
+    hysteresis_epochs: 5
+
+# =============================================================================
+# Loss Configuration
+# =============================================================================
+loss:
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0
+    coverage_weight: 1.0
+    separation_weight: 5.0
+    variance_weight: 2.0
+    inner_radius: 0.08
+    outer_radius: 0.85
+
+  radial:
+    enabled: true
+    weight: 1.5
+    margin_weight: 0.5
+
+  geodesic:
+    enabled: true
+    phase_start_epoch: 10
+    curvature: 1.0
+    max_target_distance: 3.0
+    n_pairs: 2000
+    use_smooth_l1: true
+    weight: 2.0
+    use_individual_valuation: true
+
+  rank:
+    enabled: true
+    weight: 0.5
+    temperature: 0.1
+    n_pairs: 2000
+    scatter_weight: 0.3
+
+  monotonic:
+    enabled: true
+    weight: 1.0
+    target_loss_weight: 0.5
+    min_margin: 0.02
+
+  hyperbolic_kl:
+    enabled: true
+    beta: 0.1
+    weight: 0.01
+    free_bits: 0.5
+    variance_only: false
+
+  within_level_contrastive:
+    enabled: false
+    weight: 0.5
+    max_pairs_per_level: 500
+
+  angular_coherence:
+    enabled: true
+    weight: 1.0
+    n_pairs: 5000
+    prefix_k: 3
+    phase_start_epoch: 10
+    level_prefix_k: [3, 4, 3, 4, 5, 6, 0, 0, 0, 0]
+    target_sim: [1.0, 0.93, 0.70, 0.70, 0.70, 0.70, 0.0, 0.0, 0.0, 0.0]
+
+  algebraic_coherence:
+    enabled: true
+    weight: 0.5
+    n_pairs: 2000
+    target_sim: 0.70
+    phase_start_epoch: 20
+    min_class_size: 3
+
+  algebraic_addition:
+    enabled: true
+    weight: 2.0
+    n_pairs: 512
+    phase_start_epoch: 0
+
+  lagrangian:
+    enabled: true
+    lr: 0.1
+    max_lambda: 5.0
+    warmup_epochs: 10
+
+  valuation_prior:
+    enabled: false
+    weight: 1.0
+    scale: 3.0
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+training:
+  epochs: 1500
+  batch_size: 4096
+  lr: 8.0e-4
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+
+  scheduler:
+    type: cosine_warmup_restart
+    T_0: 50
+    T_mult: 2
+
+  eval_every: 5
+  save_every: 100
+  print_every: 5
+
+# =============================================================================
+# Data Configuration
+# =============================================================================
+data:
+  use_full_dataset: true
+  n_operations: 19683
+  valuation_type: digit_count
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  tensorboard: true
+  log_dir: runs/v10_algebraic
+  print_every: 5
+
+  enhanced_metrics:
+    enabled: true
+    log_gradients: true
+    log_weights: true
+    log_activations: false
+    gradient_flow_analysis: true
+    effective_rank: true
+
+# =============================================================================
+# Checkpoints
+# =============================================================================
+checkpoints:
+  save_dir: runs/checkpoints/v10_algebraic
+  save_best: true
+  best_metric: composite_score
+  checkpoint_name: v10_algebraic
+
+# =============================================================================
+# Success Criteria
+# =============================================================================
+targets:
+  coverage: 1.0
+  hierarchy_B: -0.95
+  richness: 0.008
+  r_v9: 0.12
+  distance_correlation: 0.94
+  Q_target: 2.60
+
+# =============================================================================
+# Memory Optimization
+# =============================================================================
+memory:
+  empty_cache_freq: 25
+  cudnn_benchmark: true
+
+# =============================================================================
+# Phase 2 Visualization Pipeline
+# =============================================================================
+visualization:
+  max_per_level: 500
+  persist_every: 50
+  html_dir: runs/visualizations/v10_algebraic
+  save_html: true
+  umap_neighbors: 15
+  curvature: 1.0
+
+# =============================================================================
+# Version Tracking
+# =============================================================================
+version:
+  model: "10.0"
+  config: "v10_algebraic"
+  date: "2026-05-03"
+  changes:
+    - "V10.0: Algebraic Consistency release"
+    - "Implemented AlgebraicAdditionLoss (z(a)+z(b) ≈ z(a+b))"
+    - "Enabled AlgebraicCoherenceLoss (clustering by algebraic signature)"
+    - "Enabled positional_encoding to assist digit-logic mapping"
