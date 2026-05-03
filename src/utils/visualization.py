@@ -75,6 +75,7 @@ except ImportError:
     _HAS_MPL = False
 
 from src.geometry import log_map_zero, poincare_distance_matrix
+from src.utils.poincare_renderer import save_poincare_disk
 
 # Colourmap: 10 valuation levels → distinct colours
 _LEVEL_CMAP = "plasma"
@@ -136,7 +137,16 @@ def _level_colors(n_levels: int = 10) -> list[str]:
             )
             for r, g, b, _ in [cmap(i) for i in range(n_levels)]
         ]
-    return _LEVEL_COLORS_MPL or [f"#{i*20:02x}{i*15:02x}ff" for i in range(n_levels)]
+    
+    if _LEVEL_COLORS_MPL:
+        return _LEVEL_COLORS_MPL
+
+    # Fallback: High-quality hardcoded plasma-like hex colors for 10 levels
+    # Generated from matplotlib.cm.plasma for 10 steps
+    return [
+        "#0d0887", "#46039f", "#7201a8", "#9c179e", "#bd3786",
+        "#d8576b", "#ed7953", "#fb9f3a", "#fdca26", "#f0f921"
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -714,7 +724,10 @@ class VisualizationPipeline:
         # 6. Poincaré ball 3D (logmap0 → PCA in tangent space)
         self._run_poincare3d_step(epoch, z_np, val_np, html_epoch_dir)
 
-        # 7. Persistent homology (every persist_every epochs)
+        # 7. Native Poincaré Disk (r-theta projection)
+        self._run_native_poincare_step(epoch, z_np, val_np, html_epoch_dir)
+
+        # 8. Persistent homology (every persist_every epochs)
         if epoch % self.persist_every == 0 or epoch == 1:
             self._run_persistence_step(epoch, D, html_epoch_dir)
 
@@ -908,6 +921,51 @@ class VisualizationPipeline:
             plotly_fig = _plotly_persistence(dgms)
             if plotly_fig is not None:
                 plotly_fig.write_html(str(html_dir / "persistence.html"))
+
+    def _run_native_poincare_step(
+        self,
+        epoch: int,
+        z_np: np.ndarray,
+        val_np: np.ndarray,
+        html_dir: Path,
+    ) -> None:
+        """Render native 2D Poincaré disk (r-theta projection)."""
+        colors = _level_colors(10)
+        
+        # 1. Always try to save image via Matplotlib
+        if _HAS_MPL:
+            img_path = html_dir / "poincare_disk_native.png"
+            save_poincare_disk(
+                z_np, val_np,
+                output_path=str(img_path),
+                title=f"Native Poincaré Disk (epoch {epoch})",
+                c=self.curvature,
+                colors=colors
+            )
+            # Add to TensorBoard if writer is present
+            if self.writer is not None:
+                # Re-load or re-render for TB is inefficient, but for now 
+                # we just use the fig from render_poincare_disk_mpl
+                from src.utils.poincare_renderer import render_poincare_disk_mpl
+                fig = render_poincare_disk_mpl(
+                    z_np, val_np, 
+                    title=f"Native Poincaré Disk (epoch {epoch})",
+                    c=self.curvature,
+                    colors=colors
+                )
+                self.writer.add_figure("Topology/PoincareDiskNative", fig, global_step=epoch)
+                plt.close(fig)
+
+        # 2. Try to save interactive HTML if Plotly available
+        if self.save_html and _HAS_PLOTLY:
+            html_path = html_dir / "poincare_disk_native.html"
+            save_poincare_disk(
+                z_np, val_np,
+                output_path=str(html_path),
+                title=f"Native Poincaré Disk (epoch {epoch})",
+                c=self.curvature,
+                colors=colors
+            )
 
 
 __all__ = [
