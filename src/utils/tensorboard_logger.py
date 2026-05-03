@@ -127,10 +127,11 @@ class TensorBoardLogger:
             self.writer.flush()
 
     def close(self) -> None:
-        """Close TensorBoard writer."""
+        """Close TensorBoard writer (idempotent)."""
         if self.writer is not None:
             self.writer.close()
             self.log_callback("TensorBoard writer closed")
+            self.writer = None
 
 
 __all__ = ["TensorBoardLogger", "TENSORBOARD_AVAILABLE"]

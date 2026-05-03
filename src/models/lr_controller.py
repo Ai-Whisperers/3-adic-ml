@@ -445,10 +445,23 @@ def update_optimizer_lr_scales(
         base_lr: Base learning rate
         lr_scales: Dict mapping group name to LR scale
     """
+    matched = set()
     for group in optimizer.param_groups:
         name = group.get('name', '')
         if name in lr_scales:
             group['lr'] = base_lr * lr_scales[name]
+            matched.add(name)
+
+    unmatched_scales = set(lr_scales) - matched
+    if unmatched_scales:
+        import warnings
+        warnings.warn(
+            f"update_optimizer_lr_scales: lr_scales keys {unmatched_scales} matched no "
+            f"optimizer param group. LR control is silently inactive for these components. "
+            f"Group names present: {[g.get('name','<unnamed>') for g in optimizer.param_groups]}",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 def get_optimizer_grad_stats(

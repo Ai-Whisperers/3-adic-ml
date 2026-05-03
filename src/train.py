@@ -309,13 +309,17 @@ class ModelAuditor:
                 except Exception as e:
                     print(f"  [WARN] Checkpoint load failed: {e}")
                     self.audit_log["checkpoint_loaded"] = False
+                    self.audit_log["checkpoint_error"] = str(e)
                     if not force:
                         raise
+                    print("  [WARN] --force active: proceeding with RANDOM INIT (checkpoint ignored)")
             else:
                 print(f"  [WARN] Checkpoint not found: {ckpt_path}")
                 self.audit_log["checkpoint_loaded"] = False
+                self.audit_log["checkpoint_error"] = f"not found: {ckpt_path}"
                 if not force:
                     raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+                print("  [WARN] --force active: proceeding with RANDOM INIT (checkpoint not found)")
         else:
             print("  [INFO] No anchor checkpoint specified (training from scratch)")
             self.audit_log["checkpoint_loaded"] = False
@@ -363,13 +367,12 @@ class ModelAuditor:
             else:
                 print(f"  [OK] Gradient flow active (norm={total_norm:.4f})")
 
-            # Clear gradients
-            model.zero_grad()
-
         except Exception as e:
             print(f"  [ERROR] Model health check failed: {e}")
             if not force:
                 raise
+        finally:
+            model.zero_grad()
 
         return model
 
@@ -563,14 +566,15 @@ def compute_hierarchy_metrics(
         # Hierarchy: negated Spearman correlation between valuation and radius.
         # High valuation → low radius (near origin), so raw correlation is negative.
         # We negate so positive values indicate good hierarchy (range -1..1, 1 = perfect).
-        hierarchy = -spearmanr(valuations, radii).correlation
-        if np.isnan(hierarchy):
-            hierarchy = 0.0
+        hierarchy_raw = -spearmanr(valuations, radii).correlation
+        hierarchy_collapsed = bool(np.isnan(hierarchy_raw))
+        hierarchy = 0.0 if hierarchy_collapsed else float(hierarchy_raw)
 
         # Distance correlation (sample-based for efficiency)
         n = min(1000, len(z_hyp))
         if n < 2:
-            return {"hierarchy": hierarchy, "dist_corr": 0.0, "Q": 0.0}
+            return {"hierarchy": hierarchy, "dist_corr": 0.0, "Q": 0.0,
+                    "hierarchy_collapsed": hierarchy_collapsed, "dist_corr_collapsed": True}
 
         # Use explicit RNG for reproducibility
         rng = np.random.default_rng(seed)
@@ -583,9 +587,9 @@ def compute_hierarchy_metrics(
         v_dists = np.abs(v_sample[:, None] - v_sample[None, :])
 
         triu_idx = np.triu_indices(n, k=1)
-        dist_corr = spearmanr(r_dists[triu_idx], v_dists[triu_idx]).correlation
-        if np.isnan(dist_corr):
-            dist_corr = 0.0
+        dist_corr_raw = spearmanr(r_dists[triu_idx], v_dists[triu_idx]).correlation
+        dist_corr_collapsed = bool(np.isnan(dist_corr_raw))
+        dist_corr = 0.0 if dist_corr_collapsed else float(dist_corr_raw)
 
         Q = compute_Q(dist_corr, hierarchy)
 
@@ -612,6 +616,8 @@ def compute_hierarchy_metrics(
             "level_hierarchy": level_hier,
             "worst_level": worst_level,
             "mean_level_hierarchy": mean_level_hier,
+            "hierarchy_collapsed": hierarchy_collapsed,
+            "dist_corr_collapsed": dist_corr_collapsed,
         }
 
 
@@ -1426,6 +1432,7 @@ def train(
         if tb_logger.is_available:
             tb_logger.writer.add_scalar("LR/scheduled", current_lr, epoch)
 
+        assert n_batches > 0, f"No training batches at epoch {epoch} — DataLoader may be empty"
         avg_train_loss = train_loss_sum / n_batches
         avg_train_acc = train_acc_sum / n_batches
 
@@ -1670,6 +1677,10 @@ def train(
                 tb_logger.writer.add_scalar("Hierarchy/Q_VAE_B", hier_metrics_B["Q"], epoch)
                 tb_logger.writer.add_scalar("Hierarchy/dist_corr", hier_metrics_A["dist_corr"], epoch)
                 tb_logger.writer.add_scalar("Radius/mean_VAE_A", hier_metrics_A["mean_radius"], epoch)
+                if hier_metrics_A.get("hierarchy_collapsed"):
+                    tb_logger.writer.add_scalar("Diagnostics/hierarchy_collapsed", 1.0, epoch)
+                if hier_metrics_A.get("dist_corr_collapsed"):
+                    tb_logger.writer.add_scalar("Diagnostics/dist_corr_collapsed", 1.0, epoch)
                 tb_logger.writer.add_scalar("Radius/mean_VAE_B", hier_metrics_B["mean_radius"], epoch)
 
                 # Per-level mean radii — full dataset (from full-dataset pass done for ARI)

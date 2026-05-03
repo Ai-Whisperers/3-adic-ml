@@ -24,19 +24,19 @@ None-dereference time bombs, metric corruption, and training loop correctness is
 
 | ID | File | Line(s) | Category | Severity | Status |
 |----|------|---------|----------|----------|--------|
-| F-01 | train.py | 1238 | Falsy-zero resume | CRITICAL | Open |
-| F-02 | train.py | 566–568 | NaN→0 metric masking | HIGH | Open |
-| F-03 | train.py | 314–318 | Silent anchor fallback | HIGH | Open |
-| F-04 | losses/combined.py | 628–638 | One-time AC warning | MEDIUM | Open |
-| F-05 | train.py | 369–372 | Broad except in model audit | MEDIUM | Open |
-| F-06 | models/lr_controller.py | 448–451 | Name-mismatch silent skip | MEDIUM | Open |
-| F-07 | train.py | 309–313 | Broad except checkpoint load | MEDIUM | Open |
-| F-08 | losses/padic_geodesic.py | 227–229 | corrcoef on n=1 | MEDIUM | Open |
-| F-09 | train.py | 1429 | Division by n_batches=0 | MEDIUM | Open |
-| F-10 | config/statenet_config.py | 158–175 | Deep-key typo silent default | MEDIUM | Open |
-| F-11 | train.py | 586–588 | dist_corr NaN→0 masking | MEDIUM | Open |
-| F-12 | losses/combined.py | 302–308 | AC warn flag not reset | LOW | Open |
-| F-13 | train.py | 1054 | TensorBoard not closed on exception | LOW | Open |
+| F-01 | train.py | 1238 | Falsy-zero resume | CRITICAL | **Fixed 2026-05-02** |
+| F-02 | train.py | 566–568 | NaN→0 metric masking | HIGH | **Fixed 2026-05-03** |
+| F-03 | train.py | 314–318 | Silent anchor fallback | HIGH | **Fixed 2026-05-03** |
+| F-04 | losses/combined.py | 628–638 | One-time AC warning | MEDIUM | **Fixed 2026-05-03** |
+| F-05 | train.py | 369–372 | Broad except in model audit | MEDIUM | **Fixed 2026-05-03** |
+| F-06 | models/lr_controller.py | 448–451 | Name-mismatch silent skip | MEDIUM | **Fixed 2026-05-03** |
+| F-07 | train.py | 309–313 | Broad except checkpoint load | MEDIUM | **Fixed 2026-05-03** |
+| F-08 | losses/padic_geodesic.py | 227–229 | corrcoef on n=1 | MEDIUM | **Fixed 2026-05-03** |
+| F-09 | train.py | 1429 | Division by n_batches=0 | MEDIUM | **Fixed 2026-05-03** |
+| F-10 | config/statenet_config.py | 158–175 | Deep-key typo silent default | MEDIUM | **Fixed 2026-05-03** |
+| F-11 | train.py | 586–588 | dist_corr NaN→0 masking | MEDIUM | **Fixed 2026-05-03** |
+| F-12 | losses/combined.py | 302–308 | AC warn flag not reset | LOW | **Fixed 2026-05-03** |
+| F-13 | train.py | 1054 | TensorBoard not closed on exception | LOW | **Fixed 2026-05-03** |
 
 ---
 

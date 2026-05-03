@@ -303,9 +303,11 @@ class CombinedLoss(nn.Module):
                 target_sim=ac_cfg.get('target_sim', 1.0),
             )
             self._ac_warned_no_r = False  # emit the missing-r warning at most once
+            self._ac_skip_count = 0      # counts forward passes with r=None (visible in losses dict)
         else:
             self.angular_coherence = None
-            self._ac_warned_no_r = True  # nothing to warn about
+            self._ac_warned_no_r = True
+            self._ac_skip_count = 0
 
         # Guard: at least one loss must be enabled, or training will be gradient-free
         active = [
@@ -625,17 +627,20 @@ class CombinedLoss(nn.Module):
             losses['angular_coherence'] = ac_out
             losses['angular_coherence_metrics'] = ac_metrics
             total = total + ac_out
-        elif self.angular_coherence is not None and r is None and not self._ac_warned_no_r:
-            warnings.warn(
-                "AngularCoherenceLoss is enabled (angular_coherence.enabled=true) but "
-                "r=None was passed to CombinedLoss.forward(). AC loss is producing ZERO "
-                "gradient. This happens when model.factored=False — the model does not "
-                "produce a separate radial component. Either set model.factored=True or "
-                "disable angular_coherence in your config.",
-                UserWarning,
-                stacklevel=2,
-            )
-            self._ac_warned_no_r = True
+        elif self.angular_coherence is not None and r is None:
+            self._ac_skip_count += 1
+            losses['ac_skipped_no_r'] = self._ac_skip_count
+            if not self._ac_warned_no_r:
+                warnings.warn(
+                    "AngularCoherenceLoss is enabled (angular_coherence.enabled=true) but "
+                    "r=None was passed to CombinedLoss.forward(). AC loss is producing ZERO "
+                    "gradient. This happens when model.factored=False — the model does not "
+                    "produce a separate radial component. Either set model.factored=True or "
+                    "disable angular_coherence in your config.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                self._ac_warned_no_r = True
 
         # 11. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:

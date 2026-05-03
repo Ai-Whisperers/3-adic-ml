@@ -224,9 +224,13 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         # Compute metrics
         with torch.no_grad():
             # Correlation between actual and target distances
-            corr = torch.corrcoef(torch.stack([d_actual, d_target]))[0, 1]
-            if torch.isnan(corr):
-                corr = torch.tensor(0.0, device=device, dtype=torch.float64)
+            # corrcoef requires >= 2 observations; guard to avoid silent NaN metric
+            if d_actual.numel() >= 2:
+                corr = torch.corrcoef(torch.stack([d_actual, d_target]))[0, 1]
+                if torch.isnan(corr):
+                    corr = torch.tensor(0.0, device=device, dtype=torch.float64)
+            else:
+                corr = torch.tensor(float("nan"), device=device, dtype=torch.float64)
 
             # Mean distances by valuation level
             mean_d_low_v = (

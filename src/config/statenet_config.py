@@ -149,6 +149,23 @@ class StateNetConfig:
                 f"Valid keys: {_known_keys}. Check for typos in your YAML."
             )
 
+        _sub_keys: Dict[str, set] = {
+            'coverage':  {'fix_threshold', 'train_threshold', 'floor'},
+            'hierarchy': {'plateau_threshold', 'plateau_patience', 'patience_ceiling', 'stall_patience'},
+            'controller':{'grad_threshold', 'grad_patience', 'patience_ceiling', 'spike_multiplier'},
+            'timing':    {'warmup_epochs', 'hysteresis_epochs', 'window_size'},
+            'lr_scales': {'encoder_a', 'encoder_b', 'projections', 'decoders'},
+            'initial':   {'encoder_a_trainable', 'encoder_b_trainable', 'projections_trainable', 'decoders_trainable'},
+        }
+        for section, known in _sub_keys.items():
+            if section in d and isinstance(d[section], dict):
+                unknown_sub = set(d[section].keys()) - known
+                if unknown_sub:
+                    raise ValueError(
+                        f"StateNetConfig.from_dict: unknown keys in '{section}': {unknown_sub}. "
+                        f"Valid keys: {known}. Check for typos in your YAML."
+                    )
+
         config = cls()
 
         # Enable flag
