@@ -64,14 +64,15 @@ class EncoderHead(nn.Module):
     Provides unified trainability control for StateNet integration.
 
     Architecture:
-        x (B, 9) → backbone → h (B, hidden_dim)
-                           ├─► fc_mu → mu (B, latent_dim)
-                           └─► fc_logvar → logvar (B, latent_dim)
+        x (B, input_dim) → backbone → h (B, hidden_dim)
+                                   ├─► fc_mu → mu (B, latent_dim)
+                                   └─► fc_logvar → logvar (B, latent_dim)
 
     Args:
         hidden_dim: Hidden dimension for backbone (64 recommended)
         latent_dim: Output latent dimension (16 recommended)
         encoder_type: "improved" (SiLU+LayerNorm) or "standard" (ReLU)
+        input_dim: Input feature dimension (9 default, 18 with positional encoding)
     """
 
     def __init__(
@@ -79,17 +80,19 @@ class EncoderHead(nn.Module):
         hidden_dim: int = 64,
         latent_dim: int = 16,
         encoder_type: str = "improved",
+        input_dim: int = 9,
     ):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.latent_dim = latent_dim
         self.encoder_type = encoder_type
+        self.input_dim = input_dim
 
         # Backbone output dim depends on type
         enc_out_dim = hidden_dim if encoder_type == "improved" else 64
 
         # Build components
-        self.backbone = _build_encoder_backbone(hidden_dim, encoder_type)
+        self.backbone = _build_encoder_backbone(hidden_dim, encoder_type, input_dim)
         self.fc_mu = nn.Linear(enc_out_dim, latent_dim)
         self.fc_logvar = nn.Linear(enc_out_dim, latent_dim)
 
@@ -100,7 +103,7 @@ class EncoderHead(nn.Module):
         """Encode input to latent distribution parameters.
 
         Args:
-            x: Input tensor (B, 9)
+            x: Input tensor (B, input_dim)
 
         Returns:
             Tuple of (mu, logvar), each (B, latent_dim)
@@ -142,31 +145,31 @@ class EncoderHead(nn.Module):
 
 
 def _build_encoder_backbone(
-    hidden_dim: int, encoder_type: str = "improved"
+    hidden_dim: int, encoder_type: str = "improved", input_dim: int = 9
 ) -> nn.Sequential:
     """Build encoder backbone network (internal helper).
 
-    Maps 9-dim ternary input to hidden representation. Does NOT include
-    the mu/logvar heads - those are in EncoderHead.
+    Maps input to hidden representation. Does NOT include the mu/logvar heads.
 
     Architecture (improved):
-        9 → hidden_dim*2 → LayerNorm → SiLU
-          → hidden_dim*2 → LayerNorm → SiLU
-          → hidden_dim → SiLU
+        input_dim → hidden_dim*2 → LayerNorm → SiLU
+                  → hidden_dim*2 → LayerNorm → SiLU
+                  → hidden_dim → SiLU
 
     Architecture (standard):
-        9 → 256 → ReLU → 128 → ReLU → 64 → ReLU
+        input_dim → 256 → ReLU → 128 → ReLU → 64 → ReLU
 
     Args:
         hidden_dim: Hidden dimension (64 recommended for improved type)
         encoder_type: "improved" (SiLU+LayerNorm) or "standard" (ReLU)
+        input_dim: Input feature dimension (9 default, 18 with positional encoding)
 
     Returns:
         Sequential module outputting (B, hidden_dim) or (B, 64) for standard
     """
     if encoder_type == "improved":
         return nn.Sequential(
-            nn.Linear(9, hidden_dim * 2),
+            nn.Linear(input_dim, hidden_dim * 2),
             nn.LayerNorm(hidden_dim * 2),
             nn.SiLU(),
             nn.Linear(hidden_dim * 2, hidden_dim * 2),
@@ -177,7 +180,7 @@ def _build_encoder_backbone(
         )
     else:  # "standard" - matches v5.5 architecture
         return nn.Sequential(
-            nn.Linear(9, 256),
+            nn.Linear(input_dim, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -274,6 +277,7 @@ class TernaryVAEV6(nn.Module):
         tangent_scale_init: float = 0.1,
         factored: bool = False,
         radial_dims: int = 4,
+        positional_encoding: bool = False,
     ):
         super().__init__()
         self.latent_dim = latent_dim
@@ -283,10 +287,22 @@ class TernaryVAEV6(nn.Module):
         self.encoder_type = encoder_type
         self.decoder_type = decoder_type
         self.factored = factored
+        self.positional_encoding = positional_encoding
+
+        # Positional significance weights: pos_weights[k] = 1/3^k.
+        # Position 0 is most predictive of v_3(n) (determines v_3=0 vs >0 for
+        # 66% of the dataset), so it receives weight 1.0.
+        if positional_encoding:
+            self.register_buffer(
+                "pos_weights",
+                torch.tensor([1.0 / (3 ** k) for k in range(9)], dtype=torch.float64),
+                persistent=False,
+            )
 
         # Encoder heads (backbone + mu/logvar projections)
-        self.head_A = EncoderHead(hidden_dim, latent_dim, encoder_type)
-        self.head_B = EncoderHead(hidden_dim, latent_dim, encoder_type)
+        input_dim = 18 if positional_encoding else 9
+        self.head_A = EncoderHead(hidden_dim, latent_dim, encoder_type, input_dim)
+        self.head_B = EncoderHead(hidden_dim, latent_dim, encoder_type, input_dim)
 
         # Hyperbolic projections (tangent → manifold via expmap0, or factored r*dir)
         self.projections = DualHyperbolicProjection(
@@ -361,6 +377,13 @@ class TernaryVAEV6(nn.Module):
         """
         # Enforce float64 precision
         x = x.to(torch.float64)
+
+        # Positional significance encoding: concatenate position-scaled features.
+        # x_aug = [x, x * pos_weights] where pos_weights[k] = 1/3^k.
+        # Gives the encoder explicit signal about which digit positions matter
+        # most for 3-adic valuation without changing any other component.
+        if self.positional_encoding:
+            x = torch.cat([x, x * self.pos_weights], dim=-1)
 
         mu_A, logvar_A, mu_B, logvar_B = self.encode(x)
 

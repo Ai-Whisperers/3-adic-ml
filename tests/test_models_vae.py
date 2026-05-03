@@ -1,3 +1,4 @@
+# MIT License — see repository root for full text
 import torch
 import torch.nn as nn
 
@@ -410,3 +411,101 @@ class TestTernaryVAEV6Controllable:
         # from hierarchy losses (z_A_hyp, z_B_hyp) during actual training.
         for param in model.projections.proj_A.parameters():
             assert param.grad is None or torch.all(param.grad == 0)
+
+
+# ---------------------------------------------------------------------------
+# Step 4A — Positional Significance Encoding
+# ---------------------------------------------------------------------------
+
+
+class TestPositionalEncoding:
+    """Tests for positional_encoding=True mode (18-dim augmented input)."""
+
+    def test_encoder_head_input_dim_18(self) -> None:
+        """EncoderHead with input_dim=18 accepts 18-dim input."""
+        head = EncoderHead(hidden_dim=64, latent_dim=16, input_dim=18).to(torch.float64)
+        x = torch.randn(8, 18, dtype=torch.float64)
+        mu, logvar = head(x)
+        assert mu.shape == (8, 16)
+        assert logvar.shape == (8, 16)
+
+    def test_model_positional_encoding_accepts_9dim_input(self) -> None:
+        """With positional_encoding=True the forward pass still takes 9-dim input."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64, positional_encoding=True).to(
+            torch.float64
+        )
+        x = torch.randn(8, 9, dtype=torch.float64)
+        out = model(x)
+        assert out["logits"].shape == (8, 27)
+
+    def test_pos_weights_values(self) -> None:
+        """pos_weights buffer has values 1/3^k for k=0..8."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64, positional_encoding=True).to(
+            torch.float64
+        )
+        expected = torch.tensor([1.0 / (3 ** k) for k in range(9)], dtype=torch.float64)
+        assert hasattr(model, "pos_weights")
+        assert torch.allclose(model.pos_weights, expected)
+
+    def test_pos_weights_not_present_when_disabled(self) -> None:
+        """pos_weights buffer is absent when positional_encoding=False."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64, positional_encoding=False)
+        assert not hasattr(model, "pos_weights")
+
+    def test_positional_encoding_changes_output(self) -> None:
+        """With positional_encoding, output differs from a model without it (different params)."""
+        torch.manual_seed(0)
+        model_pos = TernaryVAEV6(latent_dim=16, hidden_dim=64, positional_encoding=True).to(
+            torch.float64
+        )
+        torch.manual_seed(0)
+        model_std = TernaryVAEV6(latent_dim=16, hidden_dim=64, positional_encoding=False).to(
+            torch.float64
+        )
+        x = torch.randn(8, 9, dtype=torch.float64)
+        torch.manual_seed(1)
+        out_pos = model_pos(x)
+        torch.manual_seed(1)
+        out_std = model_std(x)
+        # Different first-layer size → different outputs even with same seed
+        assert not torch.allclose(out_pos["logits"], out_std["logits"])
+
+    def test_gradient_flows_through_pos_weights(self) -> None:
+        """Gradient flows through the positional encoding augmentation to encoder params."""
+        model = TernaryVAEV6(latent_dim=16, hidden_dim=64, positional_encoding=True).to(
+            torch.float64
+        )
+        x = torch.randn(8, 9, dtype=torch.float64)
+        out = model(x)
+        out["logits"].sum().backward()
+        # Encoder backbone first layer must receive gradients via the augmented input
+        first_layer = model.head_A.backbone[0]
+        assert first_layer.weight.grad is not None
+        assert torch.any(first_layer.weight.grad != 0)
+
+    def test_controllable_positional_encoding(self) -> None:
+        """TernaryVAEV6Controllable supports positional_encoding kwarg."""
+        model = TernaryVAEV6Controllable(
+            latent_dim=16,
+            hidden_dim=64,
+            positional_encoding=True,
+        ).to(torch.float64)
+        x = torch.randn(8, 9, dtype=torch.float64)
+        out = model(x)
+        assert out["logits"].shape == (8, 27)
+
+    def test_schema_accepts_positional_encoding_key(self) -> None:
+        """ModelConfig schema accepts positional_encoding: true without error."""
+        import sys
+        sys.path.insert(0, ".")
+        from src.config.schema import ModelConfig
+        cfg = ModelConfig(positional_encoding=True)
+        assert cfg.positional_encoding is True
+
+    def test_schema_positional_encoding_default_false(self) -> None:
+        """ModelConfig.positional_encoding defaults to False."""
+        import sys
+        sys.path.insert(0, ".")
+        from src.config.schema import ModelConfig
+        cfg = ModelConfig()
+        assert cfg.positional_encoding is False

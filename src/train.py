@@ -72,6 +72,7 @@ from src.config import StateNetConfig
 from src.config.paths import RUNS_DIR
 from src.config.schema import normalize_config
 from src.core import TERNARY
+from src.core.ternary import get_valuation_fn
 from src.geometry import get_riemannian_optimizer, hyperbolic_radius, poincare_distance
 from src.losses import CombinedLoss
 from src.losses.lagrangian import LagrangianDualState
@@ -506,6 +507,7 @@ def compute_level_stratified_hierarchy(
     z_hyp: torch.Tensor,
     indices: torch.Tensor,
     curvature: float = 1.0,
+    valuation_fn=None,
 ) -> Dict[int, float]:
     """Compute radial consistency per valuation level.
 
@@ -520,9 +522,10 @@ def compute_level_stratified_hierarchy(
     Returns:
         Dict mapping level (0-9) to consistency metric (more negative = better)
     """
+    _val_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
     with torch.no_grad():
         radii = hyperbolic_radius(z_hyp, c=curvature)
-        valuations = TERNARY.valuation(indices)
+        valuations = _val_fn(indices)
         dim_size = TERNARY.MAX_VALUATION + 1
         vals_long = valuations.long()
 
@@ -546,6 +549,7 @@ def compute_hierarchy_metrics(
     indices: torch.Tensor,
     curvature: float = 1.0,
     seed: int = 42,
+    valuation_fn=None,
 ) -> Dict[str, float]:
     """Compute hierarchy and Q metrics.
 
@@ -554,14 +558,16 @@ def compute_hierarchy_metrics(
         indices: Operation indices (B,)
         curvature: Poincaré ball curvature
         seed: Random seed for reproducible sampling
+        valuation_fn: Callable(indices) -> valuations. Defaults to TERNARY.valuation.
 
     Returns:
         Dict with hierarchy, dist_corr, Q, tree_coherence, level metrics
     """
+    _val_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
     with torch.no_grad():
         # Compute radii using canonical hyperbolic_radius
         radii = hyperbolic_radius(z_hyp, c=curvature).cpu().numpy()
-        valuations = TERNARY.valuation(indices).cpu().numpy()
+        valuations = _val_fn(indices).cpu().numpy()
 
         # Hierarchy: negated Spearman correlation between valuation and radius.
         # High valuation → low radius (near origin), so raw correlation is negative.
@@ -595,7 +601,8 @@ def compute_hierarchy_metrics(
 
         # Additional metrics: tree coherence and per-level hierarchy
         tree_coh = compute_tree_coherence(z_hyp, indices, curvature)
-        level_hier = compute_level_stratified_hierarchy(z_hyp, indices, curvature)
+        level_hier = compute_level_stratified_hierarchy(z_hyp, indices, curvature,
+                                                        valuation_fn=_val_fn)
 
         # Compute worst level (least negative = worst performing)
         valid_levels = {k: v for k, v in level_hier.items() if not np.isnan(v)}
@@ -843,6 +850,10 @@ def train(
     option_c_cfg = config.get("option_c", {})
     memory_cfg = config.get("memory", {})
 
+    # Resolve valuation function early — used by sampler, losses, and metrics
+    valuation_type = config.get("data", {}).get("valuation_type", "index")
+    valuation_fn = get_valuation_fn(valuation_type)
+
     # Hyperparameters
     epochs = train_cfg.get("epochs", 100)
     batch_size = train_cfg.get("batch_size", 512)
@@ -876,7 +887,7 @@ def train(
     # sqrt(1/count) = 3^(v/2) preserves geometric structure at half the exponent:
     # ratio ~114x, ~50 samples/level/batch, v=0 each seen ~0.64x/epoch (not 0.15x).
     train_indices = train_ds.tensors[1]  # second element is the index tensor
-    train_valuations = TERNARY.valuation(train_indices)
+    train_valuations = valuation_fn(train_indices)
     level_counts = torch.bincount(train_valuations, minlength=TERNARY.MAX_VALUATION + 1)
     # Vectorized: compute per-level weight then index into it (no Python loop)
     level_weights = torch.zeros(TERNARY.MAX_VALUATION + 1, dtype=torch.float64)
@@ -913,7 +924,10 @@ def train(
 
     # Loss function
     curvature = config.get("model", {}).get("curvature", 1.0)
-    loss_fn = CombinedLoss(loss_cfg, curvature=curvature, device=device)
+    if valuation_type != "index":
+        print(f"  [Hierarchy] valuation_type={valuation_type!r} (content-based Option B)")
+    loss_fn = CombinedLoss(loss_cfg, curvature=curvature, device=device,
+                           valuation_type=valuation_type)
     print(f"  Loss functions: {loss_fn.get_enabled_losses()}")
 
     # VAE-B loss: hierarchy-only (no coverage/reconstruction).
@@ -924,7 +938,8 @@ def train(
     if "rich_hierarchy" in loss_cfg_b and isinstance(loss_cfg_b["rich_hierarchy"], dict):
         loss_cfg_b["rich_hierarchy"] = dict(loss_cfg_b["rich_hierarchy"])
         loss_cfg_b["rich_hierarchy"]["coverage_weight"] = 0.0
-    loss_fn_b = CombinedLoss(loss_cfg_b, curvature=curvature, device=device)
+    loss_fn_b = CombinedLoss(loss_cfg_b, curvature=curvature, device=device,
+                             valuation_type=valuation_type)
     print(f"  Loss functions (VAE-B, no coverage): {loss_fn_b.get_enabled_losses()}")
 
     # Training controller (LR=0 for frozen components)
@@ -1479,10 +1494,12 @@ def train(
             z_B_cat = torch.cat(z_B_all)
             idx_cat = torch.cat(idx_all)
             hier_metrics_A = compute_hierarchy_metrics(
-                z_A_cat, idx_cat, curvature, seed=seed + epoch
+                z_A_cat, idx_cat, curvature, seed=seed + epoch,
+                valuation_fn=valuation_fn,
             )
             hier_metrics_B = compute_hierarchy_metrics(
-                z_B_cat, idx_cat, curvature, seed=seed + epoch + 1000
+                z_B_cat, idx_cat, curvature, seed=seed + epoch + 1000,
+                valuation_fn=valuation_fn,
             )
 
             # Angular Q metric (direction geometry quality)
@@ -1495,7 +1512,7 @@ def train(
                 dir_A = z_A_cat / r_A_cat.unsqueeze(-1).clamp(min=eps)
                 dir_A = dir_A / dir_A.norm(dim=-1, keepdim=True).clamp(min=eps)
                 # Get valuations for all indices
-                vals = TERNARY.valuation(idx_cat)
+                vals = valuation_fn(idx_cat)
                 unique_vals = vals.unique()
                 intra_sims, inter_sims = [], []
                 # Sample pairs for efficiency
@@ -1540,7 +1557,7 @@ def train(
                 _eps = 1e-10
                 _dir_full = _z_full_cat / _r_full_cat.unsqueeze(-1).clamp(min=_eps)
                 _dir_full = _dir_full / _dir_full.norm(dim=-1, keepdim=True).clamp(min=_eps)
-                _vals_full = TERNARY.valuation(_idx_full_cat)
+                _vals_full = valuation_fn(_idx_full_cat)
 
                 # prefix depth per level: matches AC loss level_prefix_k
                 # v=0:k=3→18cls, v=1:k=4→18cls, v=2:k=3→2cls, v=3:k=4→2cls, v=4:k=5→2cls, v=5:k=6→2cls
@@ -1696,7 +1713,7 @@ def train(
                 else:
                     with torch.no_grad():
                         r_norms = z_A_cat.norm(dim=-1)
-                        vals_all = TERNARY.valuation(idx_cat)
+                        vals_all = valuation_fn(idx_cat)
                         for _v in range(10):
                             _mask = (vals_all == _v)
                             if _mask.sum() >= 2:
@@ -1830,7 +1847,7 @@ def train(
                 # Phase 2: Visualization pipeline (UMAP, PaCMAP, TriMAP, topology)
                 # Uses z_A_cat (Poincaré ball) + idx_cat (for valuations).
                 # All computation is CPU/numpy; runs under no_grad inside pipeline.
-                _vis_vals = TERNARY.valuation(idx_cat.cpu())
+                _vis_vals = valuation_fn(idx_cat.cpu())
                 if epoch > 0:
                     vis_pipeline.run(epoch, z_A_cat.cpu(), _vis_vals)
 

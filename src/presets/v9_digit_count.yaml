@@ -1,0 +1,272 @@
+# v9_digit_count.yaml - Option B: Content-Based Hierarchy (zero_count_valuation)
+#
+# Replaces index-derived v_3(n) with zero_count_valuation = number of zero digits
+# in the 9-position ternary representation.
+#
+# Why this breaks the Q=2.163 ceiling:
+#   - v_3(n): 66% of ops at level 0 → tied Spearman ranks → ceiling ≤ 0.839
+#   - zero_count: near-binomial distribution (peak ~27% at 3 zeros) →
+#     no dominant level → Spearman ceiling much higher (~0.95+)
+#
+# Level semantics (zero_count = number of zero digits in {-1,0,1} representation):
+#   level 0 (0 zeros): 512 ops (2.6%)  → outer boundary, "densest" operations
+#   level 3 (3 zeros): 5376 ops (27.3%) → middle (peak of distribution)
+#   level 9 (9 zeros): 1 op (0.005%)  → origin, index=0 (all-zero operation)
+#
+# Architecture: identical to v7_large (no positional_encoding — clean comparison)
+# Code change: data.valuation_type: digit_count
+
+# =============================================================================
+# Device Configuration
+# =============================================================================
+device:
+  name: "v9_digit_count"
+  cuda_device: 0
+  use_amp: false
+  pin_memory: true
+  num_workers: 4
+  empty_cache_freq: 25
+
+# =============================================================================
+# Model Architecture (identical to v7_large)
+# =============================================================================
+model:
+  name: TernaryVAEV6Controllable
+  latent_dim: 64
+  hidden_dim: 128
+  max_radius: 0.99
+  curvature: 1.0
+  learnable_curvature: true
+
+  factored: true
+  radial_dims: 4
+
+  positional_encoding: false   # Clean comparison with v7_large
+
+  projection_layers: 2
+  projection_dropout: 0.1
+  init_identity: true
+  tangent_scale: 0.1
+
+  encoder_type: improved
+  decoder_type: improved
+
+# =============================================================================
+# Riemannian Optimization
+# =============================================================================
+riemannian:
+  enabled: true
+  optimizer: adam
+  stabilize: 10
+
+# =============================================================================
+# Precision Settings
+# =============================================================================
+precision:
+  dtype: float64
+
+# =============================================================================
+# Differential Learning Rates
+# =============================================================================
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.2
+  encoder_b_lr_scale: 0.1
+  projections_lr_scale: 1.0
+
+# =============================================================================
+# StateNet Controller
+# =============================================================================
+statenet:
+  enabled: true
+
+  initial:
+    encoder_a_trainable: true
+    encoder_b_trainable: true
+    projections_trainable: true
+
+  coverage:
+    fix_threshold: 0.35
+    train_threshold: 0.45
+    floor: 0.3
+  hierarchy:
+    plateau_threshold: 0.0005
+    plateau_patience: 10
+    patience_ceiling: 25
+
+  controller:
+    grad_threshold: 0.001
+    grad_patience: 20
+    patience_ceiling: 40
+
+  timing:
+    warmup_epochs: 10
+    hysteresis_epochs: 5
+
+# =============================================================================
+# Loss Configuration (identical to v7_large)
+# =============================================================================
+loss:
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0
+    coverage_weight: 1.0
+    separation_weight: 5.0
+    variance_weight: 2.0
+    inner_radius: 0.08
+    outer_radius: 0.85
+
+  radial:
+    enabled: true
+    weight: 1.5
+    margin_weight: 0.5
+
+  geodesic:
+    enabled: true
+    phase_start_epoch: 10
+    curvature: 1.0
+    max_target_distance: 3.0
+    n_pairs: 2000
+    use_smooth_l1: true
+    weight: 2.0
+    use_individual_valuation: true   # Required for digit_count mode
+
+  rank:
+    enabled: true
+    weight: 0.5
+    temperature: 0.1
+    n_pairs: 2000
+    scatter_weight: 0.3
+
+  monotonic:
+    enabled: true
+    weight: 1.0
+    target_loss_weight: 0.5
+    min_margin: 0.02
+
+  hyperbolic_kl:
+    enabled: true
+    beta: 0.1
+    weight: 0.01
+    free_bits: 0.5
+    variance_only: false
+
+  within_level_contrastive:
+    enabled: false
+    weight: 0.5
+    max_pairs_per_level: 500
+
+  angular_coherence:
+    enabled: true
+    weight: 1.0
+    n_pairs: 5000
+    prefix_k: 3
+    phase_start_epoch: 10
+    level_prefix_k: [3, 4, 3, 4, 5, 6, 0, 0, 0, 0]
+    target_sim: [1.0, 0.93, 0.70, 0.70, 0.70, 0.70, 0.0, 0.0, 0.0, 0.0]
+
+  lagrangian:
+    enabled: true
+    lr: 0.1
+    max_lambda: 5.0
+    warmup_epochs: 10
+
+  valuation_prior:
+    enabled: false
+    weight: 1.0
+    scale: 3.0
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+training:
+  epochs: 1500
+  batch_size: 4096
+  lr: 8.0e-4
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+
+  scheduler:
+    type: cosine_warmup_restart
+    T_0: 50
+    T_mult: 2
+
+  eval_every: 5
+  save_every: 100
+  print_every: 5
+
+# =============================================================================
+# Data Configuration — KEY CHANGE
+# =============================================================================
+data:
+  use_full_dataset: true
+  n_operations: 19683
+  valuation_type: digit_count   # Option B: content-based hierarchy
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  tensorboard: true
+  log_dir: runs/v9_digit_count
+  print_every: 5
+
+  enhanced_metrics:
+    enabled: true
+    log_gradients: true
+    log_weights: true
+    log_activations: false
+    gradient_flow_analysis: true
+    effective_rank: true
+
+# =============================================================================
+# Checkpoints
+# =============================================================================
+checkpoints:
+  save_dir: runs/checkpoints/v9_digit_count
+  save_best: true
+  best_metric: composite_score
+  checkpoint_name: v9_digit_count
+
+# =============================================================================
+# Success Criteria (Q ceiling unknown — baseline to beat is 2.163)
+# =============================================================================
+targets:
+  coverage: 1.0
+  hierarchy_B: -0.95
+  richness: 0.008
+  r_v9: 0.12
+  distance_correlation: 0.94
+  Q_target: 2.50   # Aspirational — no structural ceiling for digit_count
+
+# =============================================================================
+# Memory Optimization
+# =============================================================================
+memory:
+  empty_cache_freq: 25
+  cudnn_benchmark: true
+
+# =============================================================================
+# Phase 2 Visualization Pipeline
+# =============================================================================
+visualization:
+  max_per_level: 500
+  persist_every: 50
+  html_dir: runs/visualizations/v9_digit_count
+  save_html: true
+  umap_neighbors: 15
+  curvature: 1.0
+
+# =============================================================================
+# Version Tracking
+# =============================================================================
+version:
+  model: "9.0"
+  config: "v9_digit_count"
+  date: "2026-05-03"
+  changes:
+    - "Option B: content-based hierarchy via zero_count_valuation"
+    - "data.valuation_type: digit_count replaces index-derived v_3(n)"
+    - "All losses now use zero_count (number of zero digits) as hierarchy target"
+    - "Near-binomial distribution eliminates Spearman tied-rank ceiling"
+    - "Architecture identical to v7_large for clean comparison"

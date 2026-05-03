@@ -541,6 +541,24 @@ class TernarySpace:
         """
         return self._get_property(indices, self.PROP_DIGIT_COUNT)
 
+    def zero_count_valuation(self, indices: torch.Tensor) -> torch.Tensor:
+        """Content-based hierarchy: number of zero digits in ternary representation.
+
+        Maps sparse operations (many zeros) to high "valuation" levels, which
+        the loss functions place near the Poincaré origin — the same convention
+        as index-derived v_3(n).
+
+        Distribution is near-binomial (peak ~27% at 3 zeros vs. 66% at v=0 for
+        index-derived valuation), eliminating the Spearman tied-rank ceiling.
+
+        Args:
+            indices: Operation indices, any shape
+
+        Returns:
+            Zero counts in [0, 9] (= N_DIGITS − digit_count), same shape as indices
+        """
+        return self.N_DIGITS - self._get_property(indices, self.PROP_DIGIT_COUNT)
+
     def digit_sum(self, indices: torch.Tensor) -> torch.Tensor:
         """Get sum of digits for each index.
 
@@ -825,6 +843,28 @@ def valuation_prefix_class(indices: torch.Tensor) -> torch.Tensor:
     return TERNARY.valuation_prefix_class(indices)
 
 
+def get_valuation_fn(valuation_type: str):
+    """Return the valuation callable for the given type.
+
+    Args:
+        valuation_type: "index" for 3-adic v_3(n), or "digit_count" for
+            zero_count_valuation (number of zero digits — content-based hierarchy).
+
+    Returns:
+        Callable(indices: Tensor) -> Tensor of long valuations in [0, MAX_VALUATION]
+
+    Raises:
+        ValueError: If valuation_type is not recognized.
+    """
+    if valuation_type == "index":
+        return TERNARY.valuation
+    if valuation_type == "digit_count":
+        return TERNARY.zero_count_valuation
+    raise ValueError(
+        f"Unknown valuation_type={valuation_type!r}. Valid options: 'index', 'digit_count'."
+    )
+
+
 __all__ = [
     # Core types
     "TernarySpace",
@@ -847,4 +887,6 @@ __all__ = [
     "digit_prefix_class",
     "nonzero_pattern",
     "valuation_prefix_class",
+    # Valuation dispatch
+    "get_valuation_fn",
 ]

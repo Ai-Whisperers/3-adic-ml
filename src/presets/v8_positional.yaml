@@ -1,0 +1,268 @@
+# v8_positional.yaml - Step 4A: Positional Significance Encoding
+#
+# Adds pos_weights = [1, 1/3, 1/9, ..., 1/3^8] as a second channel alongside
+# the raw 9-dim input → 18-dim augmented input. The encoder receives explicit
+# signal about which digit positions are most predictive of v_3(n):
+#   position 0: v_3(n)=0 for 66% of data (d_0≠0) → weight 1.0
+#   position 1: v_3(n)=1 for ~22% of data → weight 0.333
+#   ...
+#   position 8: v_3(n)=8/9 for <1% of data → weight ~1/6561
+#
+# No other architecture changes from v7_large (same dims, same losses).
+# Only the encoder first layer changes: Linear(9,256) → Linear(18,256).
+#
+# Hypothesis: faster convergence and a marginal Q ceiling improvement because
+# the encoder no longer needs to discover positional structure from scratch.
+
+# =============================================================================
+# Device Configuration
+# =============================================================================
+device:
+  name: "v8_positional"
+  cuda_device: 0
+  use_amp: false
+  pin_memory: true
+  num_workers: 4
+  empty_cache_freq: 25
+
+# =============================================================================
+# Model Architecture
+# =============================================================================
+model:
+  name: TernaryVAEV6Controllable
+  latent_dim: 64
+  hidden_dim: 128
+  max_radius: 0.99
+  curvature: 1.0
+  learnable_curvature: true
+
+  factored: true
+  radial_dims: 4
+
+  positional_encoding: true   # Step 4A: concatenate x * pos_weights to input
+
+  projection_layers: 2
+  projection_dropout: 0.1
+  init_identity: true
+  tangent_scale: 0.1
+
+  encoder_type: improved
+  decoder_type: improved
+
+# =============================================================================
+# Riemannian Optimization
+# =============================================================================
+riemannian:
+  enabled: true
+  optimizer: adam
+  stabilize: 10
+
+# =============================================================================
+# Precision Settings
+# =============================================================================
+precision:
+  dtype: float64
+
+# =============================================================================
+# Differential Learning Rates
+# =============================================================================
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.2
+  encoder_b_lr_scale: 0.1
+  projections_lr_scale: 1.0
+
+# =============================================================================
+# StateNet Controller
+# =============================================================================
+statenet:
+  enabled: true
+
+  initial:
+    encoder_a_trainable: true
+    encoder_b_trainable: true
+    projections_trainable: true
+
+  coverage:
+    fix_threshold: 0.35
+    train_threshold: 0.45
+    floor: 0.3
+  hierarchy:
+    plateau_threshold: 0.0005
+    plateau_patience: 10
+    patience_ceiling: 25
+
+  controller:
+    grad_threshold: 0.001
+    grad_patience: 20
+    patience_ceiling: 40
+
+  timing:
+    warmup_epochs: 10
+    hysteresis_epochs: 5
+
+# =============================================================================
+# Loss Configuration (identical to v7_large)
+# =============================================================================
+loss:
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 5.0
+    coverage_weight: 1.0
+    separation_weight: 5.0
+    variance_weight: 2.0
+    inner_radius: 0.08
+    outer_radius: 0.85
+
+  radial:
+    enabled: true
+    weight: 1.5
+    margin_weight: 0.5
+
+  geodesic:
+    enabled: true
+    phase_start_epoch: 10
+    curvature: 1.0
+    max_target_distance: 3.0
+    n_pairs: 2000
+    use_smooth_l1: true
+    weight: 2.0
+    use_individual_valuation: true
+
+  rank:
+    enabled: true
+    weight: 0.5
+    temperature: 0.1
+    n_pairs: 2000
+    scatter_weight: 0.3
+
+  monotonic:
+    enabled: true
+    weight: 1.0
+    target_loss_weight: 0.5
+    min_margin: 0.02
+
+  hyperbolic_kl:
+    enabled: true
+    beta: 0.1
+    weight: 0.01
+    free_bits: 0.5
+    variance_only: false
+
+  within_level_contrastive:
+    enabled: false
+    weight: 0.5
+    max_pairs_per_level: 500
+
+  angular_coherence:
+    enabled: true
+    weight: 1.0
+    n_pairs: 5000
+    prefix_k: 3
+    phase_start_epoch: 10
+    level_prefix_k: [3, 4, 3, 4, 5, 6, 0, 0, 0, 0]
+    target_sim: [1.0, 0.93, 0.70, 0.70, 0.70, 0.70, 0.0, 0.0, 0.0, 0.0]
+
+  lagrangian:
+    enabled: true
+    lr: 0.1
+    max_lambda: 5.0
+    warmup_epochs: 10
+
+  valuation_prior:
+    enabled: false
+    weight: 1.0
+    scale: 3.0
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+training:
+  epochs: 1500
+  batch_size: 4096
+  lr: 8.0e-4
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+
+  scheduler:
+    type: cosine_warmup_restart
+    T_0: 50
+    T_mult: 2
+
+  eval_every: 5
+  save_every: 100
+  print_every: 5
+
+# =============================================================================
+# Data Configuration
+# =============================================================================
+data:
+  use_full_dataset: true
+  n_operations: 19683
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  tensorboard: true
+  log_dir: runs/v8_positional
+  print_every: 5
+
+  enhanced_metrics:
+    enabled: true
+    log_gradients: true
+    log_weights: true
+    log_activations: false
+    gradient_flow_analysis: true
+    effective_rank: true
+
+# =============================================================================
+# Checkpoints
+# =============================================================================
+checkpoints:
+  save_dir: runs/checkpoints/v8_positional
+  save_best: true
+  best_metric: composite_score
+  checkpoint_name: v8_positional
+
+# =============================================================================
+# Success Criteria
+# =============================================================================
+targets:
+  coverage: 1.0
+  hierarchy_B: -0.95
+  richness: 0.008
+  r_v9: 0.12
+  distance_correlation: 0.94
+  Q_target: 2.37
+
+# =============================================================================
+# Memory Optimization
+# =============================================================================
+memory:
+  empty_cache_freq: 25
+  cudnn_benchmark: true
+
+# =============================================================================
+# Phase 2 Visualization Pipeline
+# =============================================================================
+visualization:
+  max_per_level: 500
+  persist_every: 50
+  html_dir: runs/visualizations/v8_positional
+  save_html: true
+  umap_neighbors: 15
+  curvature: 1.0
+
+# =============================================================================
+# Version Tracking
+# =============================================================================
+version:
+  model: "8.0"
+  config: "v8_positional"
+  date: "2026-05-02"
+  changes:
+    - "Step 4A: positional significance encoding (18-dim input)"
+    - "pos_weights[k] = 1/3^k concatenated to raw 9-dim input"
+    - "Only encoder first layer changes: Linear(9,256) → Linear(18,256)"
+    - "All other architecture settings identical to v7_large"

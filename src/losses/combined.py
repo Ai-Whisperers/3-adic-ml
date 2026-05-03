@@ -38,6 +38,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.core.ternary import get_valuation_fn
 from .hyperbolic_kl import HyperbolicKLDivergence
 from .padic_geodesic import (
     AngularCoherenceLoss,
@@ -103,6 +104,7 @@ class CombinedLoss(nn.Module):
         loss_config: Dict[str, Any],
         curvature: float = 1.0,
         device: Optional[torch.device] = None,
+        valuation_type: str = "index",
     ) -> None:
         """Initialize CombinedLoss from config.
 
@@ -110,11 +112,14 @@ class CombinedLoss(nn.Module):
             loss_config: Dictionary with loss configuration
             curvature: Hyperbolic curvature parameter
             device: Device to place loss modules on
+            valuation_type: "index" for 3-adic v_3(n), "digit_count" for
+                zero_count_valuation (content-based hierarchy — Option B).
         """
         super().__init__()
         self.config = loss_config
         self.curvature = curvature
         self.device = device
+        self._valuation_fn = get_valuation_fn(valuation_type)
 
         # Learnable weights configuration
         self.use_learnable_weights = loss_config.get('learnable_weights', False)
@@ -167,6 +172,7 @@ class CombinedLoss(nn.Module):
                 curvature=self.curvature,
                 separation_margin=rich_cfg.get('separation_margin', 0.1),
                 variance_weight=rich_cfg.get('variance_weight', 0.1),
+                valuation_fn=self._valuation_fn,
             )
             self.rich_hierarchy_weights = {
                 'hierarchy': rich_cfg.get('hierarchy_weight', 5.0),
@@ -186,7 +192,8 @@ class CombinedLoss(nn.Module):
                 curvature=self.curvature,
                 valuation_weight_exponent=radial_cfg.get('valuation_weight_exponent', 0.3),
                 margin_step_factor=radial_cfg.get('margin_step_factor', 0.01),
-                seed=43,  # Distinct seed: avoids identical pairs with geodesic_loss (seed=42)
+                seed=43,
+                valuation_fn=self._valuation_fn,
             )
             self.radial_weight = radial_cfg.get('weight', 1.0)
         else:
@@ -203,6 +210,7 @@ class CombinedLoss(nn.Module):
                 n_pairs=geodesic_cfg.get('n_pairs', 2000),
                 use_smooth_l1=geodesic_cfg.get('use_smooth_l1', True),
                 use_individual_valuation=geodesic_cfg.get('use_individual_valuation', False),
+                valuation_fn=self._valuation_fn,
             )
             self.geodesic_weight = geodesic_cfg.get('weight', 0.4)
             self.geodesic_phase_start = geodesic_cfg.get('phase_start_epoch', 0)
@@ -219,8 +227,9 @@ class CombinedLoss(nn.Module):
                 n_pairs=rank_cfg.get('n_pairs', 2000),
                 use_all_pairs=rank_cfg.get('use_all_pairs', False),
                 curvature=self.curvature,
-                seed=44,  # Distinct seed: avoids identical pairs with geodesic_loss (42) and radial_loss (43)
+                seed=44,
                 scatter_weight=rank_cfg.get('scatter_weight', 0.0),
+                valuation_fn=self._valuation_fn,
             )
             self.rank_weight = rank_cfg.get('weight', 0.5)
         else:
@@ -239,6 +248,7 @@ class CombinedLoss(nn.Module):
                 temperature=monotonic_cfg.get('temperature', 0.05),
                 curvature=self.curvature,
                 target_loss_weight=monotonic_cfg.get('target_loss_weight', 0.5),
+                valuation_fn=self._valuation_fn,
             )
             self.monotonic_weight = monotonic_cfg.get('weight', 1.0)
         else:
@@ -271,6 +281,7 @@ class CombinedLoss(nn.Module):
                 inner_radius=inner_r,
                 outer_radius=outer_r,
                 scale=vp_cfg.get('scale', 3.0),
+                valuation_fn=self._valuation_fn,
             )
             self.valuation_prior_weight = vp_cfg.get('weight', 1.0)
         else:
@@ -284,6 +295,7 @@ class CombinedLoss(nn.Module):
                 curvature=self.curvature,
                 max_pairs_per_level=wlc_cfg.get('max_pairs_per_level', 500),
                 weight=wlc_cfg.get('weight', 1.0),
+                valuation_fn=self._valuation_fn,
             )
         else:
             self.wlc_loss = None
@@ -301,6 +313,7 @@ class CombinedLoss(nn.Module):
                 phase_start_epoch=ac_cfg.get('phase_start_epoch', 50),
                 level_prefix_k=ac_cfg.get('level_prefix_k', None),
                 target_sim=ac_cfg.get('target_sim', 1.0),
+                valuation_fn=self._valuation_fn,
             )
             self._ac_warned_no_r = False  # emit the missing-r warning at most once
             self._ac_skip_count = 0      # counts forward passes with r=None (visible in losses dict)

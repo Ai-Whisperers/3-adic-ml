@@ -113,6 +113,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         n_pairs: int = 2000,
         use_smooth_l1: bool = True,
         use_individual_valuation: bool = False,
+        valuation_fn=None,
         seed: int = 42,
     ):
         """Initialize PAdicGeodesicLoss.
@@ -140,6 +141,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         self.n_pairs = n_pairs
         self.use_smooth_l1 = use_smooth_l1
         self.use_individual_valuation = use_individual_valuation
+        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
         self.max_valuation = float(TERNARY.MAX_VALUATION)
         self.generator = torch.Generator()
         self.generator.manual_seed(seed)
@@ -199,8 +201,8 @@ class PAdicGeodesicLoss(HierarchyLossBase):
             # Same-level pairs skipped — they add noise to dist_corr and fight reconstruction.
             # Large individual valuation difference → large target distance (correct direction
             # for dist_corr, which measures Spearman(|radius_i - radius_j|, |val_i - val_j|)).
-            v_i = TERNARY.valuation(batch_indices[i_idx]).double()
-            v_j = TERNARY.valuation(batch_indices[j_idx]).double()
+            v_i = self._valuation_fn(batch_indices[i_idx]).double()
+            v_j = self._valuation_fn(batch_indices[j_idx]).double()
             val_diff = torch.abs(v_i - v_j)
             cross_mask = val_diff > 0
             if not cross_mask.any():
@@ -277,6 +279,7 @@ class RadialHierarchyLoss(HierarchyLossBase):
         margin_weight: float = 1.0,
         use_margin_loss: bool = True,
         curvature: float = 1.0,
+        valuation_fn=None,
         seed: int = 42,
         valuation_weight_exponent: float = 0.25,
         margin_step_factor: float = 0.5,
@@ -312,6 +315,7 @@ class RadialHierarchyLoss(HierarchyLossBase):
         self.margin_weight = margin_weight
         self.use_margin_loss = use_margin_loss
         self.curvature = curvature
+        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
         self.valuation_weight_exponent = valuation_weight_exponent
         self.margin_step_factor = margin_step_factor
         self.generator = torch.Generator()
@@ -343,7 +347,7 @@ class RadialHierarchyLoss(HierarchyLossBase):
         batch_size = z_hyp.size(0)
 
         # Compute 3-adic valuation for each index
-        valuations = TERNARY.valuation(batch_indices).double()
+        valuations = self._valuation_fn(batch_indices).double()
 
         # V5.12.2: Compute actual radius using hyperbolic distance, not Euclidean norm
         # This ensures consistent geometry throughout the system
@@ -462,6 +466,7 @@ class GlobalRankLoss(HierarchyLossBase):
         n_pairs: int = 2000,
         use_all_pairs: bool = False,
         curvature: float = 1.0,
+        valuation_fn=None,
         seed: int = 42,
         scatter_weight: float = 0.0,
     ):
@@ -487,6 +492,7 @@ class GlobalRankLoss(HierarchyLossBase):
         self.n_pairs = n_pairs
         self.use_all_pairs = use_all_pairs
         self.curvature = curvature
+        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
         self.scatter_weight = scatter_weight
         self.generator = torch.Generator()
         self.generator.manual_seed(seed)
@@ -515,7 +521,7 @@ class GlobalRankLoss(HierarchyLossBase):
             }
 
         # Get valuations and radii
-        valuations = TERNARY.valuation(batch_indices).double()
+        valuations = self._valuation_fn(batch_indices).double()
         # V5.12.2: Use hyperbolic distance instead of Euclidean norm
         radii = hyperbolic_radius(z_hyp, c=self.curvature)
 
@@ -670,6 +676,7 @@ class MonotonicRadialLoss(HierarchyLossBase):
         temperature: float = 0.05,
         curvature: float = 1.0,
         target_loss_weight: float = 0.5,
+        valuation_fn=None,
     ):
         """Initialize MonotonicRadialLoss.
 
@@ -700,6 +707,7 @@ class MonotonicRadialLoss(HierarchyLossBase):
         self.use_soft_margin = use_soft_margin
         self.temperature = temperature
         self.target_loss_weight = target_loss_weight
+        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
 
         # Precompute target radii in hyperbolic distance units
         target_radii = _euclidean_to_hyperbolic_radius(
@@ -732,7 +740,7 @@ class MonotonicRadialLoss(HierarchyLossBase):
             }
 
         # Get valuations and radii
-        valuations = TERNARY.valuation(batch_indices)
+        valuations = self._valuation_fn(batch_indices)
         # V5.12.2: Use hyperbolic distance instead of Euclidean norm
         radii = hyperbolic_radius(z_hyp, c=self.curvature)
 
@@ -857,6 +865,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         curvature: float = 1.0,
         separation_margin: float = 0.01,
         variance_weight: float = 0.1,
+        valuation_fn=None,
     ) -> None:
         """Initialize RichHierarchyLoss.
 
@@ -879,6 +888,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         self.curvature = curvature
         self.separation_margin = separation_margin
         self.variance_weight = variance_weight
+        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
         # Precompute target radii in hyperbolic distance units
         target_radii = _euclidean_to_hyperbolic_radius(
             _exponential_target_radii(
@@ -914,7 +924,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         # Use precomputed hyperbolic target radii from __init__
         target_radii = self.target_radii.to(device)
 
-        valuations = TERNARY.valuation(indices_batch).long().to(device)
+        valuations = self._valuation_fn(indices_batch).long().to(device)
 
         # 1. Hierarchy loss (MSE on mean radius + within-level variance)
         # Mean-only MSE leaves per-level scatter unpunished (CV up to 34% at v=3),
@@ -1085,6 +1095,7 @@ class ValuationPriorLoss(nn.Module):
         outer_radius: float = 0.85,
         scale: float = 3.0,
         max_valuation: int = 9,
+        valuation_fn=None,
     ):
         super().__init__()
         self.curvature_init = curvature
@@ -1092,6 +1103,7 @@ class ValuationPriorLoss(nn.Module):
         self.outer_radius = outer_radius
         self.scale = scale
         self.max_valuation = max_valuation
+        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
         # Precompute Euclidean target radii (fixed by geometry, not by curvature)
         target_r_euclid = _exponential_target_radii(
             max_valuation, inner_radius, outer_radius, scale
@@ -1131,7 +1143,7 @@ class ValuationPriorLoss(nn.Module):
         target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c  # (max_v+1,)
 
         # Get valuation per sample using precomputed LUT
-        valuations = TERNARY.valuation(batch_indices).long().clamp(0, self.max_valuation)
+        valuations = self._valuation_fn(batch_indices).long().clamp(0, self.max_valuation)
         target_norms = target_tangent_norms[valuations.cpu()].to(device)  # (B,)
 
         # ||μ|| per sample
@@ -1197,6 +1209,7 @@ class WithinLevelContrastiveLoss(nn.Module):
         curvature: float = 1.0,
         max_pairs_per_level: int = 500,
         weight: float = 1.0,
+        valuation_fn=None,
     ):
         """Initialise WithinLevelContrastiveLoss.
 
@@ -1211,6 +1224,7 @@ class WithinLevelContrastiveLoss(nn.Module):
         self.curvature = curvature
         self.max_pairs_per_level = max_pairs_per_level
         self.weight = weight
+        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
 
     def forward(
         self,
@@ -1228,7 +1242,7 @@ class WithinLevelContrastiveLoss(nn.Module):
             per-level mean squared distances and pair counts.
         """
         device = z_hyp.device
-        valuations = TERNARY.valuation(indices)  # (B,)
+        valuations = self._valuation_fn(indices)  # (B,)
 
         total_loss = torch.zeros(1, device=device, dtype=z_hyp.dtype).squeeze()
         n_levels_active = 0
@@ -1320,6 +1334,7 @@ class AngularCoherenceLoss(nn.Module):
         phase_start_epoch: int = 50,
         level_prefix_k: Optional[List[int]] = None,
         target_sim: Union[float, List[float]] = 1.0,
+        valuation_fn=None,
     ):
         super().__init__()
         self.weight = weight
@@ -1327,6 +1342,7 @@ class AngularCoherenceLoss(nn.Module):
         self.prefix_k = prefix_k
         self.phase_start_epoch = phase_start_epoch
         self.level_prefix_k = level_prefix_k
+        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
         # Normalise target_sim to a list of 10 floats
         if isinstance(target_sim, (int, float)):
             self.target_sim: List[float] = [float(target_sim)] * 10
@@ -1352,7 +1368,7 @@ class AngularCoherenceLoss(nn.Module):
         eps = torch.tensor(1e-10, device=z_hyp.device, dtype=z_hyp.dtype)
         dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=eps)   # (B, D)
 
-        vals = TERNARY.valuation(indices)                    # (B,) int tensor
+        vals = self._valuation_fn(indices)                    # (B,) int tensor
 
         B = len(dir_vecs)
         if B < 4:

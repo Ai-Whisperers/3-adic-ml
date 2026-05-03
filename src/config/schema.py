@@ -71,6 +71,7 @@ class ModelConfig(StrictConfigModel):
     encoder_type: Literal["standard", "improved"] = "improved"
     decoder_type: Literal["standard", "improved"] = "improved"
     learnable_curvature: bool = True
+    positional_encoding: bool = False
 
     @model_validator(mode="after")
     def validate_radial_dims(self) -> "ModelConfig":
@@ -493,6 +494,13 @@ class DataConfig(StrictConfigModel):
     shuffle: bool = True
     use_full_dataset: bool = True
     n_operations: int = Field(default=19683, ge=1)
+    valuation_type: Literal["index", "digit_count"] = Field(
+        default="index",
+        description=(
+            "'index': 3-adic v_3(n) (index-derived, Q ceiling 2.163). "
+            "'digit_count': zero_count_valuation (content-based, no tied-rank ceiling)."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_splits(self) -> "DataConfig":
