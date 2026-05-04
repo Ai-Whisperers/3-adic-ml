@@ -41,6 +41,7 @@ def render_poincare_disk_mpl(
     c: float = 1.0,
     colors: Optional[list] = None,
     show_tree: bool = False,
+    walks: Optional[List[np.ndarray]] = None,
 ) -> Any:
     """Render embeddings in a 2D Poincaré disk using Matplotlib."""
     if not _HAS_MPL:
@@ -73,21 +74,54 @@ def render_poincare_disk_mpl(
     # 1. Draw Tree Edges (Cayley Graph)
     if show_tree and indices is not None:
         from src.core import TERNARY
+        from src.utils.geodesic_utils import get_geodesic_arc
         idx_map = {idx: i for i, idx in enumerate(indices)}
         
         parents = TERNARY.parent(torch.from_numpy(indices)).numpy()
         for i, p_idx in enumerate(parents):
             if p_idx in idx_map:
                 p_i = idx_map[p_idx]
-                # Draw a simple line for now (geodesics are circular arcs, but
-                # in PCA-tangent space, straight lines are a decent first approx)
+                # Use true hyperbolic geodesic arc
+                arc = get_geodesic_arc(z_2d[i], z_2d[p_i], n_points=10)
                 ax.plot(
-                    [z_2d[i, 0], z_2d[p_i, 0]],
-                    [z_2d[i, 1], z_2d[p_i, 1]],
+                    arc[:, 0], arc[:, 1],
                     color='gray', alpha=0.1, linewidth=0.5, zorder=1
                 )
 
-    # 2. Draw Scatter Points
+    # 2. Draw Algebraic Walks (Flow lines)
+    if walks is not None:
+        for walk_indices in walks:
+            idx_map = {idx: i for i, idx in enumerate(indices)} if indices is not None else None
+            if idx_map:
+                pts = []
+                for idx in walk_indices:
+                    if idx in idx_map:
+                        pts.append(z_2d[idx_map[idx]])
+                
+                if len(pts) > 1:
+                    pts = np.array(pts)
+                    ax.plot(pts[:, 0], pts[:, 1], color='cyan', alpha=0.6, linewidth=1.5, zorder=3, marker='>')
+
+    # 3. Draw Prefix Territory Shading
+    if indices is not None:
+        from src.core import TERNARY
+        # Partition points into 27 level-1 prefix classes
+        prefix_classes = TERNARY.digit_prefix_class(torch.from_numpy(indices), k=3).numpy()
+        unique_prefixes = np.unique(prefix_classes)
+        for p in unique_prefixes:
+            mask = prefix_classes == p
+            if mask.sum() >= 3:
+                # Calculate convex hull of points in this prefix class
+                from scipy.spatial import ConvexHull
+                try:
+                    hull = ConvexHull(z_2d[mask])
+                    polygon = z_2d[mask][hull.vertices]
+                    poly_patch = plt.Polygon(polygon, facecolor=plt.cm.tab20(p % 20), alpha=0.05, edgecolor='none', zorder=0)
+                    ax.add_patch(poly_patch)
+                except Exception:
+                    pass
+
+    # 4. Draw Scatter Points
     for v in range(10):
         mask = valuations == v
         if not mask.any():
@@ -115,12 +149,13 @@ def render_poincare_disk(
     c: float = 1.0,
     colors: Optional[list] = None,
     show_tree: bool = False,
+    walks: Optional[List[np.ndarray]] = None,
 ) -> Any:
     """Render embeddings in a 2D Poincaré disk."""
     if not _HAS_PLOTLY:
         return None
     
-    # This Plotly implementation currently ignores show_tree for simplicity
+    # This Plotly implementation currently ignores show_tree and walks for simplicity
     N, D = z_hyp.shape
     
     # 1. Calculate Poincaré Radius (r)
@@ -208,16 +243,17 @@ def save_poincare_disk(
     c: float = 1.0,
     colors: Optional[list] = None,
     show_tree: bool = False,
+    walks: Optional[List[np.ndarray]] = None,
 ):
     """Convenience helper to render and save. Supports .html and .png/.pdf."""
     if output_path.endswith('.html'):
         if not _HAS_PLOTLY:
             return
-        fig = render_poincare_disk(z_hyp, valuations, indices, title, c, colors, show_tree)
+        fig = render_poincare_disk(z_hyp, valuations, indices, title, c, colors, show_tree, walks)
         fig.write_html(output_path)
     else:
         if not _HAS_MPL:
             return
-        fig = render_poincare_disk_mpl(z_hyp, valuations, indices, title, c, colors, show_tree)
+        fig = render_poincare_disk_mpl(z_hyp, valuations, indices, title, c, colors, show_tree, walks)
         fig.savefig(output_path, bbox_inches='tight')
         plt.close(fig)
