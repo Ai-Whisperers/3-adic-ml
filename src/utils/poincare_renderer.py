@@ -15,7 +15,7 @@ Features:
 - Algebraic transformation overlays (Phase 2.2)
 """
 
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 import numpy as np
 import torch
 

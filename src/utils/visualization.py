@@ -943,6 +943,16 @@ class VisualizationPipeline:
         """Render native 2D Poincaré disk (r-theta projection)."""
         colors = _level_colors(10)
         
+        # 0. Define landmark algebraic walks for visualization
+        # We pick indices that are likely to be in the sample
+        walks = []
+        # Walk 1: Powers of 3 (radial path)
+        p3 = [1, 3, 9, 27, 81, 243, 729, 2187, 6561]
+        walks.append(np.array(p3))
+        # Walk 2: Successive addition around a landmark
+        s1 = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        walks.append(np.array(s1))
+
         # 1. Always try to save image via Matplotlib
         if _HAS_MPL:
             img_path = html_dir / "poincare_disk_native.png"
@@ -953,7 +963,8 @@ class VisualizationPipeline:
                 title=f"Native Poincaré Disk (epoch {epoch})",
                 c=self.curvature,
                 colors=colors,
-                show_tree=True
+                show_tree=True,
+                walks=walks
             )
             # Add to TensorBoard if writer is present
             if self.writer is not None:
@@ -964,7 +975,8 @@ class VisualizationPipeline:
                     title=f"Native Poincaré Disk (epoch {epoch})",
                     c=self.curvature,
                     colors=colors,
-                    show_tree=True
+                    show_tree=True,
+                    walks=walks
                 )
                 self.writer.add_figure("Topology/PoincareDiskNative", fig, global_step=epoch)
                 plt.close(fig)
@@ -979,7 +991,8 @@ class VisualizationPipeline:
                 title=f"Native Poincaré Disk (epoch {epoch})",
                 c=self.curvature,
                 colors=colors,
-                show_tree=True
+                show_tree=True,
+                walks=walks
             )
 
     def _run_svg_step(
@@ -991,9 +1004,15 @@ class VisualizationPipeline:
         html_dir: Path,
     ) -> None:
         """Render native SVG Poincaré disk (zero-dependency)."""
-        # Always generate SVG as it has no dependencies
+        # Always generate SVG as it has no dependencies — ensure dir exists
+        os.makedirs(html_dir, exist_ok=True)
         svg_path = html_dir / "poincare_disk_native.svg"
         
+        # 0. Define landmark algebraic walks
+        walks = []
+        walks.append(np.array([1, 3, 9, 27, 81, 243, 729, 2187, 6561]))
+        walks.append(np.array([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]))
+
         # 1. Project to 2D disk (r-theta) exactly like the renderer
         r_euclidean = np.linalg.norm(z_np, axis=1)
         z_torch = torch.from_numpy(z_np).double()
@@ -1014,7 +1033,8 @@ class VisualizationPipeline:
             indices=indices_np,
             title=f"3-Adic Latent Tree (Epoch {epoch})",
             colors=colors,
-            show_tree=True
+            show_tree=True,
+            walks=walks
         )
 
 

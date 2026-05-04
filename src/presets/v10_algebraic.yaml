@@ -98,8 +98,8 @@ statenet:
 loss:
   rich_hierarchy:
     enabled: true
-    hierarchy_weight: 5.0
-    coverage_weight: 1.0
+    hierarchy_weight: 4.0        # ← reduced from 5.0: hierarchy already saturates at 0.977
+    coverage_weight: 2.5         # ← increased from 1.0: fix Cov=0 lag
     separation_weight: 5.0
     variance_weight: 2.0
     inner_radius: 0.08
@@ -151,22 +151,22 @@ loss:
     n_pairs: 5000
     prefix_k: 3
     phase_start_epoch: 10
-    level_prefix_k: [3, 4, 3, 4, 5, 6, 0, 0, 0, 0]
-    target_sim: [1.0, 0.93, 0.70, 0.70, 0.70, 0.70, 0.0, 0.0, 0.0, 0.0]
+    level_prefix_k: [3, 4, 3, 2, 3, 4, 0, 0, 0, 0]  # tuned for digit_count pop sizes
+    target_sim: [1.0, 0.90, 0.72, 0.60, 0.65, 0.70, 0.0, 0.0, 0.0, 0.0]  # relaxed at weak-homogeneity middle levels
 
   algebraic_coherence:
     enabled: true
-    weight: 0.5
+    weight: 1.5              # ← increased from 0.5: stronger signal from algebraic class clustering
     n_pairs: 2000
-    target_sim: 0.70
-    phase_start_epoch: 20
+    target_sim: 0.72
+    phase_start_epoch: 20    # wait for early coverage/hierarchy to stabilise
     min_class_size: 3
 
   algebraic_addition:
     enabled: true
-    weight: 2.0
+    weight: 1.0              # ← reduced from 2.0: avoid competing with reconstruction early
     n_pairs: 512
-    phase_start_epoch: 0
+    phase_start_epoch: 25    # ← phase in after coverage is rising (was 0)
 
   lagrangian:
     enabled: true
