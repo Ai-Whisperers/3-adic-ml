@@ -1851,7 +1851,7 @@ def train(
                 # All computation is CPU/numpy; runs under no_grad inside pipeline.
                 _vis_vals = valuation_fn(idx_cat.cpu())
                 if epoch > 0:
-                    vis_pipeline.run(epoch, z_A_cat.cpu(), _vis_vals)
+                    vis_pipeline.run(epoch, z_A_cat.cpu(), _vis_vals, idx_cat.cpu())
 
                 # Flush for real-time updates
                 tb_logger.flush()

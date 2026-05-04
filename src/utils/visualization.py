@@ -156,10 +156,11 @@ def _level_colors(n_levels: int = 10) -> list[str]:
 def _stratified_subsample(
     z_hyp: torch.Tensor,
     valuations: torch.Tensor,
+    indices: torch.Tensor,
     max_per_level: int = 500,
     seed: int = 42,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return (z_np, val_np) arrays, subsampled stratified by valuation level.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return (z_np, val_np, idx_np) arrays, subsampled stratified by valuation level.
 
     For N=19,683 full dataset: keeps ≤500 per level → ≤4,501 points total.
     The v=9 singleton (just index 0) is always included.
@@ -167,16 +168,19 @@ def _stratified_subsample(
     Args:
         z_hyp: (N, D) Poincaré ball embeddings, any dtype
         valuations: (N,) integer valuation labels 0..9
+        indices: (N,) original operation indices
         max_per_level: Maximum points per valuation level
         seed: RNG seed for reproducibility
 
     Returns:
         z_np: (M, D) float32 numpy array
         val_np: (M,) int32 numpy array
+        idx_np: (M,) int32 numpy array
     """
     rng = np.random.default_rng(seed)
     z_np = z_hyp.detach().cpu().float().numpy()
     val_np = valuations.detach().cpu().numpy().astype(np.int32)
+    idx_all_np = indices.detach().cpu().numpy().astype(np.int32)
 
     selected = []
     for v in range(10):
@@ -189,7 +193,7 @@ def _stratified_subsample(
 
     all_idx = np.concatenate(selected)
     all_idx.sort()
-    return z_np[all_idx], val_np[all_idx]
+    return z_np[all_idx], val_np[all_idx], idx_all_np[all_idx]
 
 
 # ---------------------------------------------------------------------------
@@ -684,6 +688,7 @@ class VisualizationPipeline:
         epoch: int,
         z_hyp: torch.Tensor,
         valuations: torch.Tensor,
+        indices: torch.Tensor,
     ) -> None:
         """Run the full visualization pipeline for one eval point.
 
@@ -691,6 +696,7 @@ class VisualizationPipeline:
             epoch: Current training epoch (used for TB step and HTML dir names)
             z_hyp: (N, D) Poincaré ball embeddings — can be on any device
             valuations: (N,) integer valuation labels 0..9
+            indices: (N,) original operation indices
         """
         if self.writer is None and not self.save_html:
             return
@@ -698,8 +704,8 @@ class VisualizationPipeline:
         self._validate_inputs(epoch, z_hyp, valuations)
 
         # 1. Stratified subsample — runs entirely on CPU numpy
-        z_np, val_np = _stratified_subsample(
-            z_hyp, valuations,
+        z_np, val_np, idx_np = _stratified_subsample(
+            z_hyp, valuations, indices,
             max_per_level=self.max_per_level,
         )
         N = len(z_np)
@@ -725,7 +731,7 @@ class VisualizationPipeline:
         self._run_poincare3d_step(epoch, z_np, val_np, html_epoch_dir)
 
         # 7. Native Poincaré Disk (r-theta projection)
-        self._run_native_poincare_step(epoch, z_np, val_np, html_epoch_dir)
+        self._run_native_poincare_step(epoch, z_np, val_np, idx_np, html_epoch_dir)
 
         # 8. Persistent homology (every persist_every epochs)
         if epoch % self.persist_every == 0 or epoch == 1:
@@ -927,6 +933,7 @@ class VisualizationPipeline:
         epoch: int,
         z_np: np.ndarray,
         val_np: np.ndarray,
+        indices_np: np.ndarray,
         html_dir: Path,
     ) -> None:
         """Render native 2D Poincaré disk (r-theta projection)."""
@@ -938,20 +945,22 @@ class VisualizationPipeline:
             save_poincare_disk(
                 z_np, val_np,
                 output_path=str(img_path),
+                indices=indices_np,
                 title=f"Native Poincaré Disk (epoch {epoch})",
                 c=self.curvature,
-                colors=colors
+                colors=colors,
+                show_tree=True
             )
             # Add to TensorBoard if writer is present
             if self.writer is not None:
-                # Re-load or re-render for TB is inefficient, but for now 
-                # we just use the fig from render_poincare_disk_mpl
                 from src.utils.poincare_renderer import render_poincare_disk_mpl
                 fig = render_poincare_disk_mpl(
                     z_np, val_np, 
+                    indices=indices_np,
                     title=f"Native Poincaré Disk (epoch {epoch})",
                     c=self.curvature,
-                    colors=colors
+                    colors=colors,
+                    show_tree=True
                 )
                 self.writer.add_figure("Topology/PoincareDiskNative", fig, global_step=epoch)
                 plt.close(fig)
@@ -962,9 +971,11 @@ class VisualizationPipeline:
             save_poincare_disk(
                 z_np, val_np,
                 output_path=str(html_path),
+                indices=indices_np,
                 title=f"Native Poincaré Disk (epoch {epoch})",
                 c=self.curvature,
-                colors=colors
+                colors=colors,
+                show_tree=True
             )
 
 

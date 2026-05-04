@@ -36,9 +36,11 @@ from src.geometry import log_map_zero
 def render_poincare_disk_mpl(
     z_hyp: np.ndarray,
     valuations: np.ndarray,
+    indices: Optional[np.ndarray] = None,
     title: str = "Native Poincaré Disk",
     c: float = 1.0,
     colors: Optional[list] = None,
+    show_tree: bool = False,
 ) -> Any:
     """Render embeddings in a 2D Poincaré disk using Matplotlib."""
     if not _HAS_MPL:
@@ -68,13 +70,32 @@ def render_poincare_disk_mpl(
     if colors is None:
         colors = [plt.cm.plasma(i/10) for i in range(10)]
 
+    # 1. Draw Tree Edges (Cayley Graph)
+    if show_tree and indices is not None:
+        from src.core import TERNARY
+        idx_map = {idx: i for i, idx in enumerate(indices)}
+        
+        parents = TERNARY.parent(torch.from_numpy(indices)).numpy()
+        for i, p_idx in enumerate(parents):
+            if p_idx in idx_map:
+                p_i = idx_map[p_idx]
+                # Draw a simple line for now (geodesics are circular arcs, but
+                # in PCA-tangent space, straight lines are a decent first approx)
+                ax.plot(
+                    [z_2d[i, 0], z_2d[p_i, 0]],
+                    [z_2d[i, 1], z_2d[p_i, 1]],
+                    color='gray', alpha=0.1, linewidth=0.5, zorder=1
+                )
+
+    # 2. Draw Scatter Points
     for v in range(10):
         mask = valuations == v
         if not mask.any():
             continue
         ax.scatter(
             z_2d[mask, 0], z_2d[mask, 1],
-            c=[colors[v]], s=10, alpha=0.7, label=f"v={v}", edgecolors='none'
+            c=[colors[v]], s=10, alpha=0.7, label=f"v={v}", 
+            edgecolors='none', zorder=2
         )
         
     ax.set_xlim(-1.1, 1.1)
@@ -89,19 +110,17 @@ def render_poincare_disk_mpl(
 def render_poincare_disk(
     z_hyp: np.ndarray,
     valuations: np.ndarray,
+    indices: Optional[np.ndarray] = None,
     title: str = "Native Poincaré Disk",
     c: float = 1.0,
     colors: Optional[list] = None,
+    show_tree: bool = False,
 ) -> Any:
-    """Render embeddings in a 2D Poincaré disk.
+    """Render embeddings in a 2D Poincaré disk."""
+    if not _HAS_PLOTLY:
+        return None
     
-    Args:
-        z_hyp: (N, D) embeddings in Poincaré ball
-        valuations: (N,) integer valuations
-        title: Figure title
-        c: Curvature
-        colors: Optional list of hex colors for levels 0-9
-    """
+    # This Plotly implementation currently ignores show_tree for simplicity
     N, D = z_hyp.shape
     
     # 1. Calculate Poincaré Radius (r)
@@ -184,21 +203,21 @@ def save_poincare_disk(
     z_hyp: np.ndarray,
     valuations: np.ndarray,
     output_path: str,
+    indices: Optional[np.ndarray] = None,
     title: str = "Native Poincaré Disk",
     c: float = 1.0,
     colors: Optional[list] = None,
+    show_tree: bool = False,
 ):
     """Convenience helper to render and save. Supports .html and .png/.pdf."""
     if output_path.endswith('.html'):
         if not _HAS_PLOTLY:
-            print("[WARN] Plotly not available, skipping HTML output.")
             return
-        fig = render_poincare_disk(z_hyp, valuations, title, c, colors)
+        fig = render_poincare_disk(z_hyp, valuations, indices, title, c, colors, show_tree)
         fig.write_html(output_path)
     else:
         if not _HAS_MPL:
-            print("[WARN] Matplotlib not available, skipping image output.")
             return
-        fig = render_poincare_disk_mpl(z_hyp, valuations, title, c, colors)
+        fig = render_poincare_disk_mpl(z_hyp, valuations, indices, title, c, colors, show_tree)
         fig.savefig(output_path, bbox_inches='tight')
         plt.close(fig)
