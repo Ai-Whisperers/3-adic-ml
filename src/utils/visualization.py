@@ -76,6 +76,7 @@ except ImportError:
 
 from src.geometry import log_map_zero, poincare_distance_matrix
 from src.utils.poincare_renderer import save_poincare_disk
+from src.utils.svg_renderer import save_poincare_disk_svg
 
 # Colourmap: 10 valuation levels → distinct colours
 _LEVEL_CMAP = "plasma"
@@ -733,7 +734,10 @@ class VisualizationPipeline:
         # 7. Native Poincaré Disk (r-theta projection)
         self._run_native_poincare_step(epoch, z_np, val_np, idx_np, html_epoch_dir)
 
-        # 8. Persistent homology (every persist_every epochs)
+        # 8. SVG Native Tree (Zero-dependency vector graphics)
+        self._run_svg_step(epoch, z_np, val_np, idx_np, html_epoch_dir)
+
+        # 9. Persistent homology (every persist_every epochs)
         if epoch % self.persist_every == 0 or epoch == 1:
             self._run_persistence_step(epoch, D, html_epoch_dir)
 
@@ -977,6 +981,41 @@ class VisualizationPipeline:
                 colors=colors,
                 show_tree=True
             )
+
+    def _run_svg_step(
+        self,
+        epoch: int,
+        z_np: np.ndarray,
+        val_np: np.ndarray,
+        indices_np: np.ndarray,
+        html_dir: Path,
+    ) -> None:
+        """Render native SVG Poincaré disk (zero-dependency)."""
+        # Always generate SVG as it has no dependencies
+        svg_path = html_dir / "poincare_disk_native.svg"
+        
+        # 1. Project to 2D disk (r-theta) exactly like the renderer
+        r_euclidean = np.linalg.norm(z_np, axis=1)
+        z_torch = torch.from_numpy(z_np).double()
+        with torch.no_grad():
+            v_tangent = log_map_zero(z_torch, c=self.curvature).float().numpy()
+        
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=2)
+        v_2d = pca.fit_transform(v_tangent)
+        v_norms = np.clip(np.linalg.norm(v_2d, axis=1, keepdims=True), 1e-10, None)
+        v_dir = v_2d / v_norms
+        z_2d = r_euclidean[:, np.newaxis] * v_dir
+        
+        colors = _level_colors(10)
+        save_poincare_disk_svg(
+            z_2d, val_np,
+            output_path=str(svg_path),
+            indices=indices_np,
+            title=f"3-Adic Latent Tree (Epoch {epoch})",
+            colors=colors,
+            show_tree=True
+        )
 
 
 __all__ = [
