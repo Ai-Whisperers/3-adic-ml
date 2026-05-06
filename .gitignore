@@ -90,6 +90,9 @@ Thumbs.db
 # Project specific (Ignore data/ at root level only (not src/data/)
 /data/          
 local/
+src/c/*.o
+src/c/*.so
+src/c/*.pyd
 
 # Generated metrics (can be regenerated, but keep curated analysis results)
 **/metrics/

@@ -176,12 +176,13 @@ class MetricBasedLR(LRController):
 
         # Best Q tracking
         self._best_q = 0.0
+        self._last_epoch = -1
 
     def _can_change(self, component: str, epoch: int) -> bool:
         """Check hysteresis constraint."""
         return epoch - self._last_change[component] >= self.config.timing.hysteresis_epochs
 
-    def _update_histories(self, metrics: TrainingMetrics) -> None:
+    def _update_histories(self, metrics: TrainingMetrics, delta: int) -> None:
         """Update rolling histories and advance plateau counters once per epoch."""
         self._coverage_history.append(metrics.coverage)
         self._hierarchy_a_history.append(metrics.hierarchy_a)
@@ -197,7 +198,7 @@ class MetricBasedLR(LRController):
             recent_a = list(self._hierarchy_a_history)
             improvement_a = abs(recent_a[-1]) - abs(recent_a[0])
             if improvement_a < self.config.hierarchy.plateau_threshold:
-                self._hierarchy_a_stall_count += 1
+                self._hierarchy_a_stall_count += delta
             else:
                 self._hierarchy_a_stall_count = 0
 
@@ -244,7 +245,7 @@ class MetricBasedLR(LRController):
             return False
         return self._hierarchy_a_stall_count >= self.config.hierarchy.stall_patience
 
-    def _compute_hierarchy_gate(self, metrics: TrainingMetrics) -> Tuple[float, Optional[str]]:
+    def _compute_hierarchy_gate(self, metrics: TrainingMetrics, delta: int) -> Tuple[float, Optional[str]]:
         """Compute soft hierarchy gate for encoder_b."""
         event = None
         cfg = self.config.hierarchy
@@ -263,7 +264,7 @@ class MetricBasedLR(LRController):
                 improvement = abs(recent[-1]) - abs(recent[0])
 
                 if improvement < cfg.plateau_threshold:
-                    self._hierarchy_b_plateau_count += 1
+                    self._hierarchy_b_plateau_count += delta
                 else:
                     self._hierarchy_b_plateau_count = 0
 
@@ -290,7 +291,7 @@ class MetricBasedLR(LRController):
 
         return (self.config.lr_scales.encoder_b if self._active['encoder_b'] else 0.0, event)
 
-    def _compute_projections_gate(self, metrics: TrainingMetrics) -> Tuple[float, Optional[str]]:
+    def _compute_projections_gate(self, metrics: TrainingMetrics, delta: int) -> Tuple[float, Optional[str]]:
         """Compute soft gradient gate for projections."""
         event = None
         cfg = self.config.controller
@@ -305,7 +306,7 @@ class MetricBasedLR(LRController):
 
         if self._active['projections']:
             if current_grad < cfg.grad_threshold:
-                self._grad_low_count += 1
+                self._grad_low_count += delta
             else:
                 self._grad_low_count = 0
 
@@ -350,7 +351,14 @@ class MetricBasedLR(LRController):
 
     def update(self, metrics: TrainingMetrics) -> Dict[str, Any]:
         """Update state and return status with events."""
-        self._update_histories(metrics)
+        # Calculate delta (epochs since last update)
+        if self._last_epoch == -1:
+            delta = 1
+        else:
+            delta = metrics.epoch - self._last_epoch
+        self._last_epoch = metrics.epoch
+
+        self._update_histories(metrics, delta)
 
         # Track best Q
         if metrics.q_value > self._best_q:
@@ -370,8 +378,8 @@ class MetricBasedLR(LRController):
 
         # Compute gates (which may update state and generate events)
         cov_scale, cov_event = self._compute_coverage_gate(metrics)
-        hier_scale, hier_event = self._compute_hierarchy_gate(metrics)
-        proj_scale, proj_event = self._compute_projections_gate(metrics)
+        hier_scale, hier_event = self._compute_hierarchy_gate(metrics, delta)
+        proj_scale, proj_event = self._compute_projections_gate(metrics, delta)
 
         if cov_event:
             events.append(cov_event)
@@ -422,6 +430,7 @@ class MetricBasedLR(LRController):
         }
 
         self._best_q = 0.0
+        self._last_epoch = -1
 
 
 

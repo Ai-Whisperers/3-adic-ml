@@ -452,3 +452,28 @@ class TestOptimizerGradStats:
         assert stats["n_params"] > 0
         assert stats["grad_norm_estimate"] > 0.0
         assert stats["exp_avg_norm"] > 0.0
+
+    def test_eval_every_timing_consistency(self):
+        """Verify that patience counters track true epochs even with eval_every > 1."""
+        config = _make_config(
+            {
+                "hierarchy": {"plateau_patience": 10, "plateau_threshold": 0.01},
+                "timing": {"window_size": 2, "warmup_epochs": 0, "hysteresis_epochs": 0},
+            }
+        )
+        controller = MetricBasedLR(config)
+
+        # Update at epoch 0, 5, 10
+        # Plateau starts at epoch 0
+        controller.update(_metrics(epoch=0, hierarchy_b=-0.8))
+        # Epoch 5: improvement=0, delta=5, counter becomes 5
+        controller.update(_metrics(epoch=5, hierarchy_b=-0.8))
+        assert controller._hierarchy_b_plateau_count == 5
+        assert controller._active["encoder_b"] is True
+
+        # Epoch 10: improvement=0, delta=5, counter becomes 10
+        # plateau_patience is 10, so it should freeze now
+        state = controller.update(_metrics(epoch=10, hierarchy_b=-0.8))
+        assert controller._hierarchy_b_plateau_count == 10
+        assert state["active_states"]["encoder_b"] is False
+        assert "frozen" in state["events"][0]
