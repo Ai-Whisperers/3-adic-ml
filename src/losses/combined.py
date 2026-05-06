@@ -30,7 +30,7 @@ Usage:
     # loss_fn.get_learned_weights()  # returns current effective weights
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from .base import CombinedLossOutput
 import warnings
 
@@ -152,7 +152,7 @@ class CombinedLoss(nn.Module):
 
         # Collect enabled loss configs for radius sharing
         loss_configs = {}
-        for name in ['rich_hierarchy', 'radial', 'monotonic']:
+        for name in ['rich_hierarchy', 'radial', 'monotonic', 'valuation_prior']:
             cfg = self.config.get(name, {})
             if cfg.get('enabled', False):
                 loss_configs[name] = cfg
@@ -188,9 +188,10 @@ class CombinedLoss(nn.Module):
         # RadialHierarchyLoss
         radial_cfg = self.config.get('radial', {})
         if radial_cfg.get('enabled', False):
+            radius_cfg = radius_configs['radial']
             self.radial_loss = RadialHierarchyLoss(
-                inner_radius=radius_configs['radial'].inner_radius,
-                outer_radius=radius_configs['radial'].outer_radius,
+                inner_radius=radius_cfg.inner_radius,
+                outer_radius=radius_cfg.outer_radius,
                 margin_weight=radial_cfg.get('margin_weight', 1.0),
                 curvature=self.curvature,
                 valuation_weight_exponent=radial_cfg.get('valuation_weight_exponent', 0.3),
@@ -494,7 +495,7 @@ class CombinedLoss(nn.Module):
         epoch: int = 0,
         mu: Optional[torch.Tensor] = None,
         logvar: Optional[torch.Tensor] = None,
-        curvature: Optional[float] = None,
+        curvature: Optional[Union[float, torch.Tensor]] = None,
         dual_weights: Optional[Dict[str, List[float]]] = None,
         r: Optional[torch.Tensor] = None,
         model: Optional[nn.Module] = None,
@@ -530,13 +531,15 @@ class CombinedLoss(nn.Module):
         # Pass logits=None when coverage_weight=0.0: skips the F.cross_entropy
         # forward inside RichHierarchyLoss, eliminating wasted compute when
         # coverage is deliberately disabled (e.g. loss_fn_b for VAE-B).
+        cur_c = curvature if curvature is not None else self.curvature
         if self.rich_hierarchy is not None:
             _call_logits = (
                 logits if self.rich_hierarchy_weights.get('coverage', 0.0) > 0.0
                 else None
             )
             rich_raw, rich_metrics = self.rich_hierarchy(
-                z_hyp, indices, logits=_call_logits, targets=targets
+                z_hyp, indices, logits=_call_logits, targets=targets,
+                curvature=cur_c
             )
 
             if self.use_learnable_weights:
@@ -558,7 +561,7 @@ class CombinedLoss(nn.Module):
 
         # 2. RadialHierarchyLoss (if enabled)
         if self.radial_loss is not None:
-            radial_out, radial_metrics = self.radial_loss(z_hyp, indices)
+            radial_out, radial_metrics = self.radial_loss(z_hyp, indices, curvature=cur_c)
             losses['radial'] = radial_out
             losses['radial_metrics'] = radial_metrics
             if self.use_learnable_weights:
@@ -568,7 +571,7 @@ class CombinedLoss(nn.Module):
 
         # 3. PAdicGeodesicLoss (phase-gated)
         if self.geodesic_loss is not None and epoch >= self.geodesic_phase_start:
-            geodesic_out, geodesic_metrics = self.geodesic_loss(z_hyp, indices)
+            geodesic_out, geodesic_metrics = self.geodesic_loss(z_hyp, indices, curvature=cur_c)
             losses['geodesic'] = geodesic_out
             losses['geodesic_metrics'] = geodesic_metrics
             if self.use_learnable_weights:
@@ -578,7 +581,7 @@ class CombinedLoss(nn.Module):
 
         # 4. GlobalRankLoss (if enabled)
         if self.rank_loss is not None:
-            rank_out, rank_metrics = self.rank_loss(z_hyp, indices)
+            rank_out, rank_metrics = self.rank_loss(z_hyp, indices, curvature=cur_c)
             losses['rank'] = rank_out
             losses['rank_metrics'] = rank_metrics
             if self.use_learnable_weights:
@@ -588,7 +591,7 @@ class CombinedLoss(nn.Module):
 
         # 5. MonotonicRadialLoss (if enabled)
         if self.monotonic_loss is not None:
-            monotonic_out, monotonic_metrics = self.monotonic_loss(z_hyp, indices)
+            monotonic_out, monotonic_metrics = self.monotonic_loss(z_hyp, indices, curvature=cur_c)
             losses['monotonic'] = monotonic_out
             losses['monotonic_metrics'] = monotonic_metrics
             if self.use_learnable_weights:
@@ -598,7 +601,7 @@ class CombinedLoss(nn.Module):
 
         # 6. KL Divergence (makes this a true VAE)
         if self.kl_loss is not None and mu is not None and logvar is not None:
-            kl_out = self.kl_loss(mu, logvar, z_hyp)
+            kl_out = self.kl_loss(mu, logvar, z_hyp, curvature=cur_c)
             if self.use_learnable_weights and hasattr(self, 'log_sigma_kl'):
                 kl_contribution = self._weighted_loss(kl_out, self.log_sigma_kl)
                 losses['kl'] = kl_contribution

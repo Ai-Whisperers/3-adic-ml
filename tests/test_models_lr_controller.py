@@ -324,11 +324,12 @@ class TestMetricBasedLR:
 
         controller.reset()
 
-        assert controller._coverage_history == []
-        assert controller._hierarchy_a_history == []
-        assert controller._hierarchy_b_history == []
-        assert controller._grad_norm_history == []
-        assert controller._q_history == []
+        assert len(controller._coverage_history) == 0
+        assert len(controller._hierarchy_a_history) == 0
+        assert len(controller._hierarchy_b_history) == 0
+        assert len(controller._grad_norm_history) == 0
+        assert len(controller._q_history) == 0
+
         assert controller._best_q == 0.0
         assert controller._active["encoder_a"] is False
         assert controller._active["encoder_b"] is True

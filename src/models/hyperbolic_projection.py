@@ -246,10 +246,14 @@ class HyperbolicProjection(nn.Module):
 
         return z_hyp, r
 
-    def get_curvature(self) -> float:
-        """Get current curvature value."""
-        c = self.manifold.c
-        return c.item() if hasattr(c, "item") else float(c)
+    def get_curvature(self) -> torch.Tensor:
+        """Get current curvature parameter/tensor.
+
+        Returns the actual parameter to ensure that when this is passed
+        to loss functions, gradients can flow back to the learnable
+        curvature during backpropagation.
+        """
+        return self.manifold.c
 
     def forward_with_components(
         self, z_tangent: torch.Tensor

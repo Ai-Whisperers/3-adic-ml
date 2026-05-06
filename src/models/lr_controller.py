@@ -35,6 +35,7 @@ Usage:
 """
 
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -147,11 +148,12 @@ class MetricBasedLR(LRController):
         self.config = config
 
         # Rolling statistics (GPU-compatible)
-        self._coverage_history: List[float] = []
-        self._hierarchy_a_history: List[float] = []
-        self._hierarchy_b_history: List[float] = []
-        self._grad_norm_history: List[float] = []
-        self._q_history: List[float] = []
+        window = config.timing.window_size
+        self._coverage_history: deque[float] = deque(maxlen=window)
+        self._hierarchy_a_history: deque[float] = deque(maxlen=window)
+        self._hierarchy_b_history: deque[float] = deque(maxlen=window)
+        self._grad_norm_history: deque[float] = deque(maxlen=window)
+        self._q_history: deque[float] = deque(maxlen=window * 2)  # Longer for Q
 
         # Plateau counters
         self._hierarchy_b_plateau_count = 0
@@ -181,8 +183,6 @@ class MetricBasedLR(LRController):
 
     def _update_histories(self, metrics: TrainingMetrics) -> None:
         """Update rolling histories and advance plateau counters once per epoch."""
-        window = self.config.timing.window_size
-
         self._coverage_history.append(metrics.coverage)
         self._hierarchy_a_history.append(metrics.hierarchy_a)
         self._hierarchy_b_history.append(metrics.hierarchy_b)
@@ -191,16 +191,10 @@ class MetricBasedLR(LRController):
         if metrics.grad_norm_projections > 0:
             self._grad_norm_history.append(metrics.grad_norm_projections)
 
-        # Trim to window
-        self._coverage_history = self._coverage_history[-window:]
-        self._hierarchy_a_history = self._hierarchy_a_history[-window:]
-        self._hierarchy_b_history = self._hierarchy_b_history[-window:]
-        self._grad_norm_history = self._grad_norm_history[-window:]
-        self._q_history = self._q_history[-(window * 2):]  # Longer for Q
-
         # Advance stall counter here (single write path per epoch, not in gate methods)
+        window = self.config.timing.window_size
         if len(self._hierarchy_a_history) >= window:
-            recent_a = self._hierarchy_a_history[-window:]
+            recent_a = list(self._hierarchy_a_history)
             improvement_a = abs(recent_a[-1]) - abs(recent_a[0])
             if improvement_a < self.config.hierarchy.plateau_threshold:
                 self._hierarchy_a_stall_count += 1
@@ -265,7 +259,7 @@ class MetricBasedLR(LRController):
             # Check for plateau
             window = self.config.timing.window_size
             if len(self._hierarchy_b_history) >= window:
-                recent = self._hierarchy_b_history[-window:]
+                recent = list(self._hierarchy_b_history)
                 improvement = abs(recent[-1]) - abs(recent[0])
 
                 if improvement < cfg.plateau_threshold:
@@ -285,7 +279,7 @@ class MetricBasedLR(LRController):
             _DEGRADATION_THRESHOLD = 0.02
             half_win = max(2, self.config.timing.window_size // 2)
             if len(self._hierarchy_b_history) >= half_win:
-                recent = self._hierarchy_b_history[-half_win:]
+                recent = list(self._hierarchy_b_history)[-half_win:]
                 net_change = abs(recent[-1]) - abs(recent[0])
                 if net_change < -_DEGRADATION_THRESHOLD:
                     self._active['encoder_b'] = True

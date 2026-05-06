@@ -20,7 +20,7 @@ Usage:
     loss = kl_loss(mu, logvar, z_hyp)
 """
 
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -67,6 +67,7 @@ class HyperbolicKLDivergence(nn.Module):
         mu: torch.Tensor,
         logvar: torch.Tensor,
         z_hyp: Optional[torch.Tensor] = None,
+        curvature: Optional[Union[float, torch.Tensor]] = None,
     ) -> torch.Tensor:
         """Compute curvature-corrected KL divergence.
 
@@ -75,17 +76,21 @@ class HyperbolicKLDivergence(nn.Module):
             logvar: Log-variance of the approximate posterior, shape (B, d)
             z_hyp: Optional hyperbolic embedding for conformal factor.
                    If None, uses mu directly.
+            curvature: Optional current curvature value. Falls back to self.curvature.
 
         Returns:
             KL divergence loss (scalar if reduction='mean' or 'sum')
         """
+        # Use provided curvature or fallback to initial
+        cur_c = curvature if curvature is not None else self.curvature
+
         # Use z_hyp for conformal factor if provided, else use mu
         # (mu is in tangent space, z_hyp is on manifold)
         point_for_lambda = z_hyp if z_hyp is not None else mu
 
         # Compute conformal factor: λ(x) = 2 / (1 - c||x||²)
         # lambda_x returns shape (B, 1) with keepdim=True
-        conf_factor = lambda_x(point_for_lambda, c=self.curvature, keepdim=True)
+        conf_factor = lambda_x(point_for_lambda, c=cur_c, keepdim=True)
 
         # Variance from log-variance
         var = torch.exp(logvar)

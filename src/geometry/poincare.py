@@ -32,7 +32,7 @@ Reference:
     Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincare VAEs"
 """
 
-from typing import Any
+from typing import Any, Union
 
 # geoopt is a required dependency
 import geoopt
@@ -42,11 +42,11 @@ from geoopt.optim import RiemannianAdam, RiemannianSGD
 import torch
 
 # Global manifold cache for efficiency - keyed by (curvature, device)
-_manifold_cache = {}
-RiemannianOptimizer = RiemannianAdam | RiemannianSGD
+_manifold_cache: dict[tuple[float, str], GeooptPoincareBall] = {}
+RiemannianOptimizer = Union[RiemannianAdam, RiemannianSGD]
 
 
-def get_manifold(c: float = 1.0, device: torch.device | str | None = None) -> GeooptPoincareBall:
+def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str | None = None) -> GeooptPoincareBall:
     """Get a PoincareBall manifold with specified curvature and device.
 
     IMPORTANT: Always pass device explicitly via `device=x.device` to ensure
@@ -64,8 +64,9 @@ def get_manifold(c: float = 1.0, device: torch.device | str | None = None) -> Ge
     Raises:
         ValueError: If curvature c <= 0
     """
-    if c <= 0:
-        raise ValueError(f"Curvature must be positive for hyperbolic space, got c={c}")
+    c_val = float(c.item()) if hasattr(c, "item") else float(c)
+    if c_val <= 0:
+        raise ValueError(f"Curvature must be positive for hyperbolic space, got c={c_val}")
 
     # Normalize device to string for cache key
     if device is None:
@@ -75,8 +76,10 @@ def get_manifold(c: float = 1.0, device: torch.device | str | None = None) -> Ge
     else:
         device_str = device
 
-    cache_key = (c, device_str)
+    cache_key = (c_val, device_str)
     if cache_key not in _manifold_cache:
+        # Use the actual curvature (float or tensor) for the manifold instance.
+        # This allows gradients to flow if c is a learnable parameter.
         manifold = geoopt.PoincareBall(c=c)
         # Move entire manifold (including k buffer) to the target device
         # PoincareBall is an nn.Module, so .to() works
@@ -87,7 +90,7 @@ def get_manifold(c: float = 1.0, device: torch.device | str | None = None) -> Ge
     return _manifold_cache[cache_key]
 
 
-def poincare_distance(x: torch.Tensor, y: torch.Tensor, c: float = 1.0, keepdim: bool = False) -> torch.Tensor:
+def poincare_distance(x: torch.Tensor, y: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, keepdim: bool = False) -> torch.Tensor:
     """Compute Poincare distance between points.
 
     Uses geoopt for numerical stability.
@@ -105,7 +108,7 @@ def poincare_distance(x: torch.Tensor, y: torch.Tensor, c: float = 1.0, keepdim:
     return manifold.dist(x, y, keepdim=keepdim)
 
 
-def hyperbolic_radius(z: torch.Tensor, c: float = 1.0, keepdim: bool = False) -> torch.Tensor:
+def hyperbolic_radius(z: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, keepdim: bool = False) -> torch.Tensor:
     """Compute hyperbolic distance from origin (radius in Poincaré ball).
 
     This is the canonical way to compute radii for hierarchy losses.
@@ -130,7 +133,7 @@ def hyperbolic_radius(z: torch.Tensor, c: float = 1.0, keepdim: bool = False) ->
     return poincare_distance(z, origin, c=c, keepdim=keepdim)
 
 
-def project_to_poincare(z: torch.Tensor, max_norm: float = 0.95, c: float = 1.0) -> torch.Tensor:
+def project_to_poincare(z: torch.Tensor, max_norm: float = 0.95, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
     """Project points onto the Poincare ball.
 
     Uses geoopt.projx for stability at boundary.
@@ -153,7 +156,7 @@ def project_to_poincare(z: torch.Tensor, max_norm: float = 0.95, c: float = 1.0)
     return z_proj * scale
 
 
-def exp_map_zero(v: torch.Tensor, c: float = 1.0) -> torch.Tensor:
+def exp_map_zero(v: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
     """Exponential map from tangent space at origin to Poincare ball.
 
     exp_0(v) = tanh(sqrt(c) * ||v||) * v / (sqrt(c) * ||v||)
@@ -170,7 +173,7 @@ def exp_map_zero(v: torch.Tensor, c: float = 1.0) -> torch.Tensor:
     return manifold.expmap(origin, v)
 
 
-def log_map_zero(z: torch.Tensor, c: float = 1.0, max_norm: float | None = None) -> torch.Tensor:
+def log_map_zero(z: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, max_norm: float | None = None) -> torch.Tensor:
     """Logarithmic map from Poincare ball to tangent space at origin.
 
     log_0(z) = arctanh(sqrt(c) * ||z||) * z / (sqrt(c) * ||z||)
@@ -201,7 +204,7 @@ def log_map_zero(z: torch.Tensor, c: float = 1.0, max_norm: float | None = None)
     return manifold.logmap(origin, z_clamped)
 
 
-def mobius_add(x: torch.Tensor, y: torch.Tensor, c: float = 1.0) -> torch.Tensor:
+def mobius_add(x: torch.Tensor, y: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
     """Mobius addition on Poincare ball.
 
     x (+) y = ((1 + 2c<x,y> + c||y||^2)x + (1 - c||x||^2)y) /
@@ -219,7 +222,7 @@ def mobius_add(x: torch.Tensor, y: torch.Tensor, c: float = 1.0) -> torch.Tensor
     return manifold.mobius_add(x, y)
 
 
-def lambda_x(x: torch.Tensor, c: float = 1.0, keepdim: bool = True) -> torch.Tensor:
+def lambda_x(x: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, keepdim: bool = True) -> torch.Tensor:
     """Compute conformal factor lambda_x = 2 / (1 - c * ||x||^2).
 
     This factor relates Euclidean and Riemannian metrics at point x.
@@ -236,7 +239,7 @@ def lambda_x(x: torch.Tensor, c: float = 1.0, keepdim: bool = True) -> torch.Ten
     return manifold.lambda_x(x, keepdim=keepdim)
 
 
-def parallel_transport(x: torch.Tensor, y: torch.Tensor, v: torch.Tensor, c: float = 1.0) -> torch.Tensor:
+def parallel_transport(x: torch.Tensor, y: torch.Tensor, v: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
     """Parallel transport tangent vector v from x to y.
 
     Args:
@@ -252,7 +255,7 @@ def parallel_transport(x: torch.Tensor, y: torch.Tensor, v: torch.Tensor, c: flo
     return manifold.transp(x, y, v)
 
 
-def geodesic(x: torch.Tensor, y: torch.Tensor, t: float, c: float = 1.0) -> torch.Tensor:
+def geodesic(x: torch.Tensor, y: torch.Tensor, t: float, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
     """Interpolate along geodesic from x to y at parameter t.
 
     The geodesic is the shortest path between two points on the Poincaré ball.
@@ -271,7 +274,7 @@ def geodesic(x: torch.Tensor, y: torch.Tensor, t: float, c: float = 1.0) -> torc
     return manifold.geodesic(t, x, y)
 
 
-def geodesic_interpolation(x: torch.Tensor, y: torch.Tensor, steps: int = 10, c: float = 1.0) -> torch.Tensor:
+def geodesic_interpolation(x: torch.Tensor, y: torch.Tensor, steps: int = 10, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
     """Generate points along geodesic from x to y.
 
     Useful for visualization and analysis of paths between embeddings.
@@ -290,7 +293,7 @@ def geodesic_interpolation(x: torch.Tensor, y: torch.Tensor, steps: int = 10, c:
     return torch.stack([manifold.geodesic(t.item(), x, y) for t in t_values])
 
 
-def create_manifold_parameter(data: torch.Tensor, c: float = 1.0, requires_grad: bool = True) -> ManifoldParameter:
+def create_manifold_parameter(data: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, requires_grad: bool = True) -> ManifoldParameter:
     """Create a learnable parameter that lives on the Poincare ball.
 
     This wraps a tensor as a ManifoldParameter, which:
@@ -312,7 +315,7 @@ def create_manifold_parameter(data: torch.Tensor, c: float = 1.0, requires_grad:
     return ManifoldParameter(data_proj, manifold=manifold, requires_grad=requires_grad)
 
 
-def create_manifold_tensor(data: torch.Tensor, c: float = 1.0) -> ManifoldTensor:
+def create_manifold_tensor(data: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> ManifoldTensor:
     """Create a non-learnable tensor on the Poincare ball.
 
     Like ManifoldParameter but without gradients. Useful for
@@ -355,7 +358,7 @@ def get_riemannian_optimizer(
     raise ValueError(f"Unknown optimizer type: {optimizer_type}")
 
 
-def poincare_distance_matrix(z: torch.Tensor, c: float = 1.0) -> torch.Tensor:
+def poincare_distance_matrix(z: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
     """Compute all pairwise Poincare distances (vectorized).
 
     Uses geoopt for numerical stability at the ball boundary.

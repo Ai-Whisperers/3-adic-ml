@@ -66,22 +66,31 @@ def _exponential_target_radii(
     return inner_radius + (outer_radius - inner_radius) * (exp_levels - exp_max) / denom
 
 
-def _euclidean_to_hyperbolic_radius(r_euclid: torch.Tensor) -> torch.Tensor:
+def _euclidean_to_hyperbolic_radius(r_euclid: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
     """Convert Poincaré ball Euclidean radius to hyperbolic geodesic distance.
 
-    The Poincaré ball model uses: r_hyp = 2 * arctanh(||x||)
-    where ||x|| is the Euclidean norm of the point.
-
-    This converts config targets (in Euclidean [0,1) coords) to hyperbolic
-    distance units (what hyperbolic_radius() returns).
+    The Poincaré ball model with curvature c uses:
+    r_hyp = (2 / sqrt(c)) * arctanh(sqrt(c) * ||x||)
 
     Args:
-        r_euclid: Euclidean radius in [0, 1) Poincaré coordinates
+        r_euclid: Euclidean radius in [0, 1/sqrt(c)) Poincaré coordinates
+        c: Curvature parameter (default 1.0)
     Returns:
         Hyperbolic distance from origin
     """
-    r_euclid = r_euclid.clamp(min=0.0, max=0.999)
-    return 2.0 * torch.atanh(r_euclid)
+    # Clamp to ensure it stays within the ball radius 1/sqrt(c)
+    # Using a safe margin to avoid infinity at the boundary
+    c_val = c if isinstance(c, float) else c.item()
+    limit = 0.999 / (c_val ** 0.5 if c_val > 1e-6 else 1000.0)
+    r_safe = r_euclid.clamp(min=0.0, max=limit)
+
+    if isinstance(c, torch.Tensor):
+        sqrt_c = torch.sqrt(c.clamp(min=1e-6))
+        return (2.0 / sqrt_c) * torch.atanh(sqrt_c * r_safe)
+    else:
+        import math
+        sqrt_c = math.sqrt(max(c, 1e-6))
+        return (2.0 / sqrt_c) * torch.atanh(sqrt_c * r_safe)
 
 
 class PAdicGeodesicLoss(HierarchyLossBase):
@@ -169,12 +178,14 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         Args:
             z_hyp: Points in Poincaré ball (batch, latent_dim)
             batch_indices: Operation indices for each sample (batch,)
+            **kwargs: Optional 'curvature' (float) for learnable curvature support.
 
         Returns:
             Tuple of (loss, metrics_dict)
         """
         batch_size = z_hyp.size(0)
         device = z_hyp.device
+        cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
             return torch.tensor(0.0, device=device, dtype=torch.float64), {"n_pairs": 0}
@@ -194,7 +205,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         j_idx[same_mask] = (j_idx[same_mask] + 1) % batch_size
 
         # Compute actual Poincaré distance
-        d_actual = poincare_distance(z_hyp[i_idx], z_hyp[j_idx], self.curvature)
+        d_actual = poincare_distance(z_hyp[i_idx], z_hyp[j_idx], cur_c)
 
         if self.use_individual_valuation:
             # Individual valuation mode: target = max_dist * |val_i - val_j| / max_val
@@ -339,23 +350,30 @@ class RadialHierarchyLoss(HierarchyLossBase):
         Args:
             z_hyp: Points in Poincaré ball (batch, latent_dim)
             batch_indices: Operation indices (batch,)
+            **kwargs: Optional 'curvature' (float) for learnable curvature support.
 
         Returns:
             Tuple of (loss, metrics_dict)
         """
         device = z_hyp.device
         batch_size = z_hyp.size(0)
+        cur_c = kwargs.get("curvature", self.curvature)
 
         # Compute 3-adic valuation for each index
         valuations = self._valuation_fn(batch_indices).double()
 
         # V5.12.2: Compute actual radius using hyperbolic distance, not Euclidean norm
         # This ensures consistent geometry throughout the system
-        actual_radius = hyperbolic_radius(z_hyp, c=self.curvature)
+        actual_radius = hyperbolic_radius(z_hyp, c=cur_c)
 
-        # Compute target radius using exponential p-adic mapping (via precomputed LUT)
-        v_clamped = valuations.long().clamp(0, self.max_valuation).cpu()
-        target_radius = self._target_radii[v_clamped].to(device)
+        # Compute target radius using exponential p-adic mapping
+        # Adjusted for current curvature
+        target_radii_all = _euclidean_to_hyperbolic_radius(
+            _exponential_target_radii(self.max_valuation, self.inner_radius, self.outer_radius, scale=3.0).to(device),
+            c=cur_c
+        )
+        v_clamped = valuations.long().clamp(0, self.max_valuation)
+        target_radius = target_radii_all[v_clamped]
 
         # Weighted loss (high-valuation points are rarer, more important)
         if self.valuation_weighting:
@@ -508,12 +526,14 @@ class GlobalRankLoss(HierarchyLossBase):
         Args:
             z_hyp: Points in Poincaré ball (batch, latent_dim)
             batch_indices: Operation indices (batch,)
+            **kwargs: Optional 'curvature' (float) for learnable curvature support.
 
         Returns:
             Tuple of (loss, metrics_dict)
         """
         device = z_hyp.device
         batch_size = z_hyp.size(0)
+        cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
             return torch.tensor(0.0, device=device, dtype=torch.float64), {
@@ -523,7 +543,7 @@ class GlobalRankLoss(HierarchyLossBase):
         # Get valuations and radii
         valuations = self._valuation_fn(batch_indices).double()
         # V5.12.2: Use hyperbolic distance instead of Euclidean norm
-        radii = hyperbolic_radius(z_hyp, c=self.curvature)
+        radii = hyperbolic_radius(z_hyp, c=cur_c)
 
         if self.use_all_pairs:
             # All pairs (expensive: O(n²))
@@ -733,6 +753,7 @@ class MonotonicRadialLoss(HierarchyLossBase):
         """
         device = z_hyp.device
         batch_size = z_hyp.size(0)
+        cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
             return torch.tensor(0.0, device=device, dtype=torch.float64), {
@@ -742,7 +763,13 @@ class MonotonicRadialLoss(HierarchyLossBase):
         # Get valuations and radii
         valuations = self._valuation_fn(batch_indices)
         # V5.12.2: Use hyperbolic distance instead of Euclidean norm
-        radii = hyperbolic_radius(z_hyp, c=self.curvature)
+        radii = hyperbolic_radius(z_hyp, c=cur_c)
+
+        # Recompute target radii adjusted for current curvature
+        target_radii_all = _euclidean_to_hyperbolic_radius(
+            _exponential_target_radii(self.max_valuation, self.inner_radius, self.outer_radius, scale=3.0).to(device),
+            c=cur_c
+        )
 
         # Compute mean radius per valuation level (scatter — differentiable)
         dim_size = self.max_valuation + 1
@@ -763,7 +790,7 @@ class MonotonicRadialLoss(HierarchyLossBase):
 
         # Compute target margins between adjacent present levels
         # Using exponential target radii for p-adic structure
-        target_lut = self._target_radii
+        target_lut = target_radii_all
         margins = []
         for i in range(n_levels - 1):
             v_curr = levels_present[i]
@@ -909,6 +936,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
             z_hyp: Points on Poincaré ball (B, latent_dim), float64
             batch_indices: Ternary operation indices (B,)
             **kwargs: Must contain 'logits' (B, 9, 3) or (B, 27) and 'targets' (B, 9)
+                      Optional 'curvature' (float) for learnable curvature support.
 
         Returns:
             loss: Weighted scalar loss (hierarchy + coverage + separation)
@@ -918,11 +946,18 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         targets = kwargs["targets"]
         indices_batch = batch_indices
         device = z_hyp.device
+        cur_c = kwargs.get("curvature", self.curvature)
 
         # Use hyperbolic radius (distance from origin), not Euclidean norm
-        radii = hyperbolic_radius(z_hyp, c=self.curvature)
-        # Use precomputed hyperbolic target radii from __init__
-        target_radii = self.target_radii.to(device)
+        radii = hyperbolic_radius(z_hyp, c=cur_c)
+
+        # Use target radii adjusted for current curvature.
+        # This ensures that Euclidean radius targets in config map to the correct
+        # hyperbolic distances as curvature evolves.
+        target_radii = _euclidean_to_hyperbolic_radius(
+            _exponential_target_radii(9, self.inner_radius, self.outer_radius, scale=3.0).to(device),
+            c=cur_c
+        )
 
         valuations = self._valuation_fn(indices_batch).long().to(device)
 
@@ -1114,7 +1149,7 @@ class ValuationPriorLoss(nn.Module):
         self,
         mu: torch.Tensor,
         batch_indices: torch.Tensor,
-        curvature: Optional[float] = None,
+        curvature: Optional[Union[float, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         """Compute valuation-conditioned mean prior loss.
 
@@ -1128,8 +1163,6 @@ class ValuationPriorLoss(nn.Module):
             loss: Scalar MSE((||μ||, target_tangent[v]))
             metrics: Logging dict with mean norms per valuation level
         """
-        import math
-
         if curvature is None:
             curvature = self.curvature_init
 
@@ -1138,9 +1171,15 @@ class ValuationPriorLoss(nn.Module):
 
         # Compute target tangent norms from current curvature
         # target_tangent[v] = arctanh(r_euclid[v]) / sqrt(c)
-        sqrt_c = math.sqrt(max(curvature, 1e-6))
         target_r = self.target_r_euclid.to(device)  # (max_v+1,)
-        target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c  # (max_v+1,)
+
+        if isinstance(curvature, torch.Tensor):
+            sqrt_c = torch.sqrt(curvature.clamp(min=1e-6))
+            target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c
+        else:
+            import math
+            sqrt_c = math.sqrt(max(curvature, 1e-6))
+            target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c
 
         # Get valuation per sample using precomputed LUT
         valuations = self._valuation_fn(batch_indices).long().clamp(0, self.max_valuation)
@@ -1230,18 +1269,21 @@ class WithinLevelContrastiveLoss(nn.Module):
         self,
         z_hyp: torch.Tensor,
         indices: torch.Tensor,
+        **kwargs: Any,
     ) -> Tuple[torch.Tensor, MetricsDict]:
         """Compute within-level contrastive loss.
 
         Args:
             z_hyp: Poincaré ball embeddings (B, latent_dim), float64.
             indices: Operation indices (B,), used to compute valuations.
+            **kwargs: Optional 'curvature' (float) for learnable curvature support.
 
         Returns:
             (loss, metrics) where loss is a scalar tensor and metrics contains
             per-level mean squared distances and pair counts.
         """
         device = z_hyp.device
+        cur_c = kwargs.get("curvature", self.curvature)
         valuations = self._valuation_fn(indices)  # (B,)
 
         total_loss = torch.zeros(1, device=device, dtype=z_hyp.dtype).squeeze()
@@ -1277,7 +1319,7 @@ class WithinLevelContrastiveLoss(nn.Module):
             z_j = z_v[idx_j]  # (P, D)
 
             # Poincaré distance between each pair
-            d_sq = poincare_distance(z_i, z_j, c=self.curvature) ** 2  # (P,)
+            d_sq = poincare_distance(z_i, z_j, c=cur_c) ** 2  # (P,)
             level_loss = d_sq.mean()
 
             total_loss = total_loss + level_loss
