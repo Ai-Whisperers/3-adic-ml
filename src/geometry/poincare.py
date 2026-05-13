@@ -60,13 +60,14 @@ def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str
 
     Returns:
         geoopt.PoincareBall manifold with internal tensors on the specified device
-
-    Raises:
-        ValueError: If curvature c <= 0
     """
-    c_val = float(c.item()) if hasattr(c, "item") else float(c)
-    if c_val <= 0:
-        raise ValueError(f"Curvature must be positive for hyperbolic space, got c={c_val}")
+    # Defensive clamping for learnable curvature that might drift <= 0
+    if isinstance(c, torch.Tensor):
+        c_clamped = c.clamp(min=1e-6)
+        c_val = float(c_clamped.item())
+    else:
+        c_val = max(float(c), 1e-6)
+        c_clamped = c_val
 
     # Normalize device to string for cache key
     if device is None:
@@ -78,9 +79,9 @@ def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str
 
     cache_key = (c_val, device_str)
     if cache_key not in _manifold_cache:
-        # Use the actual curvature (float or tensor) for the manifold instance.
+        # Use the clamped curvature for the manifold instance.
         # This allows gradients to flow if c is a learnable parameter.
-        manifold = geoopt.PoincareBall(c=c)
+        manifold = geoopt.PoincareBall(c=c_clamped)
         # Move entire manifold (including k buffer) to the target device
         # PoincareBall is an nn.Module, so .to() works
         if device_str != "cpu":
