@@ -23,7 +23,8 @@ MetricsDict
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Tuple
+
 try:
     from typing import TypedDict
 except ImportError:  # Python <3.8 fallback (not expected, but safe)

@@ -171,7 +171,7 @@ class TestTernaryVAEV6:
         model2 = TernaryVAEV6(latent_dim=16, hidden_dim=64).to(torch.float64)
 
         model2.load_state_dict(model1.state_dict())
-        model2.curvature = 2.0  # Different curvature – no longer affects decoder
+        model2.curvature = 2.0  # Different curvature - no longer affects decoder
 
         x = torch.randn(10, 9, dtype=torch.float64)
 

@@ -9,9 +9,8 @@ Tests:
 """
 
 import torch
-import torch.nn as nn
+
 from src.models.hyperbolic_projection import HyperbolicProjection
-from src.geometry import exp_map_zero
 
 
 def test_tangent_net_output():
@@ -92,7 +91,7 @@ def test_expmap0_saturation():
             assert boundary_ratio < 0.8, (
                 f"Too many points at boundary: {boundary_ratio}"
             )
-            print(f"  ✓ Good distribution for typical encoder scale")
+            print("  ✓ Good distribution for typical encoder scale")
 
     return True
 
@@ -143,7 +142,7 @@ def test_identity_vs_non_identity():
         f"Fixed residual too small: {residual_fixed_norm}"
     )
 
-    print(f"✓ Fix verified: identity residual ~0, fixed residual > 0")
+    print("✓ Fix verified: identity residual ~0, fixed residual > 0")
 
     # Also test that the fixed version produces varied outputs
     z_hyp_id = proj_id(z_tangent, as_manifold=False)
@@ -160,7 +159,7 @@ def test_identity_vs_non_identity():
         f"Fixed version should have more variation: fixed={fixed_std:.4f}, identity={id_std:.4f}"
     )
 
-    print(f"✓ Fixed version has better output variation than identity")
+    print("✓ Fixed version has better output variation than identity")
 
     return True
 

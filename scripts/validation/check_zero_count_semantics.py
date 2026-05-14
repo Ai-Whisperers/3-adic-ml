@@ -18,17 +18,17 @@ Usage:
     python scripts/validation/check_zero_count_semantics.py
 """
 
-import sys
 import os
+import sys
+
 import numpy as np
-from collections import defaultdict
 
 # Make src importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import torch
-from src.core.ternary import TERNARY
 
+from src.core.ternary import TERNARY
 
 # ─── Input domain ────────────────────────────────────────────────────────────
 # Canonical mapping: digit[k] = f(a_k, b_k)
@@ -393,7 +393,7 @@ def print_level_composition(ops: np.ndarray, zero_counts: np.ndarray, props: dic
         if n == 0:
             continue
         parts = [f"  {level:>2}  {n:>5}"]
-        for label, key in prop_cols:
+        for _label, key in prop_cols:
             if key is None:
                 v = (props["commutative"] & props["idempotent"] & props["associative"])[mask].mean() * 100
             else:
@@ -506,8 +506,7 @@ def main():
 
     print()
     v3_max = (v3_all == 0).mean() * 100
-    zc_max = (zero_counts == zero_counts[np.argmax(np.bincount(zero_counts))]).mean() * 100
-    print(f"  Index-derived: dominant level (v=0) holds {v3_max:.1f}% of ops → tied-rank ceiling.")
+    print(f"  Index-derived: dominant level (v=0) holds {v3_max:.1f}% of ops -> tied-rank ceiling.")
     print(f"  Zero-count:    peak level holds ≤{max(100*np.bincount(zero_counts)/len(ops)):.1f}% of ops → no dominant tier.")
     print()
     print("=" * 72)

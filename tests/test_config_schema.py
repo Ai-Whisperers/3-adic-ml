@@ -13,7 +13,6 @@ from src.config import N_TERNARY_OPERATIONS
 from src.config.schema import normalize_config, validate_config
 from src.core import TERNARY
 
-
 PRESETS_DIR = Path(__file__).parent.parent / "src" / "presets"
 
 
@@ -348,7 +347,6 @@ def test_validate_accepts_target_sim_boundary_values() -> None:
 def test_combined_loss_separation_margin_default() -> None:
     """CombinedLoss constructed directly must use separation_margin=0.1, not stale 0.01."""
     from src.losses.combined import CombinedLoss
-    from src.losses.padic_geodesic import RichHierarchyLoss
     config = {"rich_hierarchy": {"enabled": True}}
     loss_fn = CombinedLoss(config, curvature=1.0)
     # Access the underlying loss object to verify the margin it was built with

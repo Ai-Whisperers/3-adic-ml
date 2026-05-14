@@ -5,9 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import torch
-import yaml
-
 from scripts.analysis.project_audit import (
     PROJECT_ROOT,
     build_model_kwargs,
@@ -17,8 +14,10 @@ from scripts.analysis.project_audit import (
     stratified_probe_indices,
     summarize_scalar_series,
 )
-from src.core import TERNARY
+import torch
+import yaml
 
+from src.core import TERNARY
 
 PRESETS_DIR = PROJECT_ROOT / "src" / "presets"
 

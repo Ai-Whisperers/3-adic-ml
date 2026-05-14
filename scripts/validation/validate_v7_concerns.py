@@ -14,15 +14,16 @@ Usage:
     python scripts/validation/validate_v7_concerns.py
 """
 
-import torch
-import torch.nn.functional as F
-import yaml
 import numpy as np
 from scipy.stats import spearmanr
+import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+import yaml
+
 from src.core.ternary import TERNARY
-from src.models.vae import TernaryVAEV6Controllable
 from src.losses.combined import CombinedLoss
+from src.models.vae import TernaryVAEV6Controllable
 
 torch.manual_seed(42)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

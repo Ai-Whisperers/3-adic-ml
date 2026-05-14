@@ -21,11 +21,12 @@ Reference:
   Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
 """
 
-from typing import Optional, Tuple, Union, cast
+from typing import Tuple, Union, cast
 
 import geoopt
 import torch
 import torch.nn as nn
+
 from src.geometry import ManifoldParameter
 
 

@@ -6,10 +6,8 @@ or surfaced correctly.
 """
 import warnings
 
-import numpy as np
 import pytest
 import torch
-
 
 # ---------------------------------------------------------------------------
 # F-02 / F-11 — compute_hierarchy_metrics: collapsed flags in return dict
@@ -22,7 +20,6 @@ class TestHierarchyMetricsCollapsedFlags:
         """All points on a sphere of identical radius → radii will be constant → spearmanr NaN."""
         import sys
         sys.path.insert(0, ".")
-        from src.geometry.poincare import exp_map_zero
         vecs = torch.randn(n, dim, dtype=torch.float64)
         vecs = vecs / vecs.norm(dim=-1, keepdim=True) * radius
         return vecs
@@ -30,8 +27,9 @@ class TestHierarchyMetricsCollapsedFlags:
     def test_collapsed_flag_false_when_radii_vary(self) -> None:
         import sys
         sys.path.insert(0, ".")
-        from src.train import compute_hierarchy_metrics
         import torch
+
+        from src.train import compute_hierarchy_metrics
         z = torch.randn(200, 8, dtype=torch.float64) * 0.3
         idx = torch.arange(200)
         metrics = compute_hierarchy_metrics(z, idx, curvature=1.0)

@@ -31,8 +31,8 @@ import torch.nn.functional as F
 
 from ..core import TERNARY
 from ..geometry import hyperbolic_radius, poincare_distance
+from ..utils.scatter_utils import level_has_data, level_scatter_mean
 from .base import HierarchyLossBase, MetricsDict, RichHierarchyLossBase
-from ..utils.scatter_utils import level_scatter_mean, level_has_data
 
 
 def _exponential_target_radii(
@@ -1692,10 +1692,10 @@ class AlgebraicAdditionLoss(nn.Module):
 
         # Loss: mean squared error or smooth L1 in tangent space
         loss_val = F.smooth_l1_loss(mu_sum, mu_target)
-        
+
         loss = self.weight * loss_val
         metrics["alg_addition_loss"] = loss.item()
-        
+
         # Additive similarity metric
         with torch.no_grad():
             cos_sim = F.cosine_similarity(mu_sum, mu_target).mean()

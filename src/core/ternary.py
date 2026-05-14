@@ -255,7 +255,6 @@ class TernarySpace:
         Returns:
             Bool tensor of shape (N_OPERATIONS, N_ALG_PROPERTIES)
         """
-        import numpy as np
         ops = self._ternary_lut.numpy()  # (19683, 9) float64, values in {-1,0,1}
         N = self.N_OPERATIONS
         result = torch.zeros((N, self.N_ALG_PROPERTIES), dtype=torch.bool)
@@ -454,17 +453,17 @@ class TernarySpace:
         """
         t_a = self.to_ternary(idx_a) # (N, 9)
         t_b = self.to_ternary(idx_b) # (N, 9)
-        
+
         # Shift to {0, 1, 2} for standard modulo
         d_a = t_a + 1
         d_b = t_b + 1
-        
+
         # Modular addition in {0, 1, 2}
         d_sum = (d_a + d_b) % 3
-        
+
         # Shift back to {-1, 0, 1}
         t_sum = d_sum - 1
-        
+
         return self.from_ternary(t_sum)
 
     # =========================================================================

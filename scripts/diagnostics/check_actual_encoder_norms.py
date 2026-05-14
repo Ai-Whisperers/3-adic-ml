@@ -2,9 +2,10 @@
 """Check what the actual encoder outputs look like when passed to HyperbolicProjection"""
 
 import torch
-from src.models.vae import TernaryVAEV6Controllable
-from src.models.hyperbolic_projection import HyperbolicProjection
+
 from src.config import StateNetConfig
+from src.models.hyperbolic_projection import HyperbolicProjection
+from src.models.vae import TernaryVAEV6Controllable
 
 # Create model
 config = {
@@ -75,7 +76,7 @@ with torch.no_grad():
     hyp_norm_A = torch.norm(z_A_hyp, dim=-1)
     hyp_norm_B = torch.norm(z_B_hyp, dim=-1)
 
-print(f"\nAfter HyperbolicProjection:")
+print("\nAfter HyperbolicProjection:")
 print(
     f"Encoder A Poincaré norm: mean={hyp_norm_A.mean().item():.4f}, std={hyp_norm_A.std().item():.4f}"
 )
@@ -97,7 +98,7 @@ with torch.no_grad():
     hyp_norm_A_mu = torch.norm(z_A_hyp_mu, dim=-1)
     hyp_norm_B_mu = torch.norm(z_B_hyp_mu, dim=-1)
 
-print(f"\nWith deterministic mu output:")
+print("\nWith deterministic mu output:")
 print(
     f"Encoder A Poincaré norm: mean={hyp_norm_A_mu.mean().item():.4f}, std={hyp_norm_A_mu.std().item():.4f}"
 )

@@ -11,9 +11,9 @@ Key features:
 - Cross-block validation to catch configuration inconsistencies
 """
 
-import warnings
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
+import warnings
 
 # ============================================================================
 # CENTRALIZED DEFAULTS

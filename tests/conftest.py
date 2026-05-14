@@ -55,7 +55,6 @@ def pytest_configure(config):
 # YAML Validation Tests
 import subprocess
 
-
 # Get all YAML files in presets
 PRESETS_DIR = Path(__file__).parent.parent / "src" / "presets"
 YAML_FILES = list(PRESETS_DIR.glob("*.yaml"))
@@ -84,8 +83,9 @@ def test_yaml_linting(yaml_file):
 @pytest.mark.parametrize("yaml_file", YAML_FILES)
 def test_yaml_schema(yaml_file):
     """Test that all preset YAML files pass Pydantic schema validation."""
-    from src.config.schema import validate_config
     import yaml
+
+    from src.config.schema import validate_config
 
     with open(yaml_file) as f:
         config = yaml.safe_load(f)

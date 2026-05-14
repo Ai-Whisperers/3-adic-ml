@@ -60,8 +60,8 @@ except ImportError:
     _HAS_RIPSER = False
 
 try:
-    import plotly.graph_objects as go
     import plotly.express as px
+    import plotly.graph_objects as go
     _HAS_PLOTLY = True
 except ImportError:
     _HAS_PLOTLY = False
@@ -102,7 +102,7 @@ class VisualizationRuntimeConfig:
     def from_mapping(
         cls,
         config: Mapping[str, Any] | None,
-    ) -> "VisualizationRuntimeConfig":
+    ) -> VisualizationRuntimeConfig:
         cfg = dict(config or {})
         runtime = cls(
             max_per_level=int(cfg.get("max_per_level", 500)),
@@ -133,12 +133,10 @@ def _level_colors(n_levels: int = 10) -> list[str]:
         except AttributeError:
             cmap = plt.cm.get_cmap(_LEVEL_CMAP, n_levels)  # type: ignore[attr-defined]
         _LEVEL_COLORS_MPL = [
-            "#{:02x}{:02x}{:02x}".format(
-                int(r * 255), int(g * 255), int(b * 255)
-            )
+            f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
             for r, g, b, _ in [cmap(i) for i in range(n_levels)]
         ]
-    
+
     if _LEVEL_COLORS_MPL:
         return _LEVEL_COLORS_MPL
 
@@ -454,7 +452,7 @@ def _scatter_2d_by_level(
     val_np: np.ndarray,
     title: str,
     n_levels: int = 10,
-) -> "plt.Figure":
+) -> plt.Figure:
     """2D scatter coloured by valuation level for TensorBoard add_figure."""
     colors = _level_colors(n_levels)
     fig, ax = plt.subplots(figsize=(7, 6), dpi=100)
@@ -479,7 +477,7 @@ def _scatter_3d_by_level_mpl(
     val_np: np.ndarray,
     title: str,
     n_levels: int = 10,
-) -> "plt.Figure":
+) -> plt.Figure:
     """3D scatter coloured by valuation level for TensorBoard add_figure."""
     colors = _level_colors(n_levels)
     fig = plt.figure(figsize=(8, 7), dpi=100)
@@ -498,7 +496,7 @@ def _scatter_3d_by_level_mpl(
     return fig
 
 
-def _persistence_figure(dgms: list) -> "plt.Figure":
+def _persistence_figure(dgms: list) -> plt.Figure:
     """Persistence diagram (birth vs death scatter) for H0 and H1."""
     fig, axes = plt.subplots(1, 2, figsize=(10, 5), dpi=100)
     dim_names = ["H0 (components)", "H1 (loops)"]
@@ -535,7 +533,7 @@ def _plotly_scatter_3d(
     coords: np.ndarray,
     val_np: np.ndarray,
     title: str,
-) -> Optional["go.Figure"]:
+) -> Optional[go.Figure]:
     """Interactive 3D Plotly scatter coloured by valuation level."""
     if not _HAS_PLOTLY:
         return None
@@ -566,7 +564,7 @@ def _plotly_scatter_2d(
     coords: np.ndarray,
     val_np: np.ndarray,
     title: str,
-) -> Optional["go.Figure"]:
+) -> Optional[go.Figure]:
     """Interactive 2D Plotly scatter."""
     if not _HAS_PLOTLY:
         return None
@@ -592,7 +590,7 @@ def _plotly_scatter_2d(
     return fig
 
 
-def _plotly_persistence(dgms: list) -> Optional["go.Figure"]:
+def _plotly_persistence(dgms: list) -> Optional[go.Figure]:
     """Interactive Plotly persistence diagram."""
     if not _HAS_PLOTLY:
         return None
@@ -655,7 +653,7 @@ class VisualizationPipeline:
     def __init__(
         self,
         config: Mapping[str, Any] | None,
-        writer: Optional["SummaryWriterType"],
+        writer: Optional[SummaryWriterType],
         log_callback: Callable[[str], None] | None = None,
     ) -> None:
         runtime_cfg = VisualizationRuntimeConfig.from_mapping(config)
@@ -942,7 +940,7 @@ class VisualizationPipeline:
     ) -> None:
         """Render native 2D Poincaré disk (r-theta projection)."""
         colors = _level_colors(10)
-        
+
         # 0. Define landmark algebraic walks for visualization
         # We pick indices that are likely to be in the sample
         walks = []
@@ -970,7 +968,7 @@ class VisualizationPipeline:
             if self.writer is not None:
                 from src.utils.poincare_renderer import render_poincare_disk_mpl
                 fig = render_poincare_disk_mpl(
-                    z_np, val_np, 
+                    z_np, val_np,
                     indices=indices_np,
                     title=f"Native Poincaré Disk (epoch {epoch})",
                     c=self.curvature,
@@ -1007,7 +1005,7 @@ class VisualizationPipeline:
         # Always generate SVG as it has no dependencies — ensure dir exists
         os.makedirs(html_dir, exist_ok=True)
         svg_path = html_dir / "poincare_disk_native.svg"
-        
+
         # 0. Define landmark algebraic walks
         walks = []
         walks.append(np.array([1, 3, 9, 27, 81, 243, 729, 2187, 6561]))
@@ -1018,14 +1016,14 @@ class VisualizationPipeline:
         z_torch = torch.from_numpy(z_np).double()
         with torch.no_grad():
             v_tangent = log_map_zero(z_torch, c=self.curvature).float().numpy()
-        
+
         from sklearn.decomposition import PCA
         pca = PCA(n_components=2)
         v_2d = pca.fit_transform(v_tangent)
         v_norms = np.clip(np.linalg.norm(v_2d, axis=1, keepdims=True), 1e-10, None)
         v_dir = v_2d / v_norms
         z_2d = r_euclidean[:, np.newaxis] * v_dir
-        
+
         colors = _level_colors(10)
         save_poincare_disk_svg(
             z_2d, val_np,

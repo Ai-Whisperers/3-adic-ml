@@ -20,18 +20,19 @@ No code changes to src/ required. Direction vectors recovered as:
     dir = z_A_hyp / ||z_A_hyp||   (exact since z_hyp = r * dir, ||dir||=1)
 """
 
-import torch
-import numpy as np
-import yaml
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from pathlib import Path
-from scipy.stats import spearmanr
-from torch.utils.data import DataLoader, TensorDataset
+import numpy as np
+import torch
+import yaml
 
+matplotlib.use("Agg")
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score
+from torch.utils.data import DataLoader, TensorDataset
+
 from src.core.ternary import TERNARY
 from src.models.vae import TernaryVAEV6Controllable
 
@@ -186,7 +187,7 @@ print(f"  Best position (highest mean delta): pos={pos_deltas.mean(axis=1).argma
 # ── Q3: UMAP 2D of directions ──────────────────────────────────────────────────
 print()
 print("─" * 70)
-print("Q3: UMAP 2D — fitting on direction vectors (19683 × 28)...")
+print("Q3: UMAP 2D - fitting on direction vectors (19683 x 28)...")
 print("─" * 70)
 
 try:
@@ -316,14 +317,14 @@ ari_p3     = adjusted_rand_score(prefix3,   km_labels)
 ari_nz     = adjusted_rand_score(nzpat,     km_labels)
 ari_vp     = adjusted_rand_score(valprefix, km_labels)
 
-print(f"  Adjusted Rand Index — K-means(15) vs:")
+print("  Adjusted Rand Index — K-means(15) vs:")
 print(f"    digit_prefix_class(k=2):      ARI={ari_p2:.4f}  {'★ prefix explains islands' if ari_p2 > 0.5 else ('~ partial' if ari_p2 > 0.2 else '✗ not explained')}")
 print(f"    digit_prefix_class(k=3):      ARI={ari_p3:.4f}  {'★ prefix explains islands' if ari_p3 > 0.5 else ('~ partial' if ari_p3 > 0.2 else '✗ not explained')}")
 print(f"    nonzero_pattern (9-bit):      ARI={ari_nz:.4f}  {'★ zero-structure explains' if ari_nz > 0.5 else ('~ partial' if ari_nz > 0.2 else '✗ not explained')}")
 print(f"    valuation_prefix_class:       ARI={ari_vp:.4f}  {'★ val-prefix explains' if ari_vp > 0.5 else ('~ partial' if ari_vp > 0.2 else '✗ not explained')}")
 
 print()
-print(f"  Per K-means cluster digit statistics (d0–d2 means, zero-frac):")
+print("  Per K-means cluster digit statistics (d0-d2 means, zero-frac):")
 print(f"  {'Cls':>4} | {'N':>5} | {'d0':>5} | {'d1':>5} | {'d2':>5} | {'zeros':>6} | {'prefix2':>8} | {'nz_mode':>8}")
 print(f"  {'────':>4}-+-{'─────':>5}-+-{'─────':>5}-+-{'─────':>5}-+-{'─────':>5}-+-{'──────':>6}-+-{'────────':>8}-+-{'────────':>8}")
 v0_ternary = all_ops.cpu().numpy()[v0_mask]           # (13122, 9)

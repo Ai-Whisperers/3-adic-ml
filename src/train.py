@@ -85,7 +85,7 @@ from src.models import (
     update_optimizer_lr_scales,
 )
 from src.utils import HardwareMonitor, TensorBoardLogger
-from src.utils.checkpoint import load_checkpoint_compat
+from src.utils.checkpoint import get_model_state_dict, load_checkpoint_compat
 from src.utils.scatter_utils import level_scatter_std
 from src.utils.visualization import VisualizationPipeline
 
@@ -1266,7 +1266,7 @@ def train(
                   "Nothing to train — increase training.epochs in config.")
 
     print(f"\n{'=' * 60}")
-    print(f"  TRAINING: epochs {start_epoch}–{epochs}, batch_size={batch_size}, lr={base_lr}")
+    print(f"  TRAINING: epochs {start_epoch}-{epochs}, batch_size={batch_size}, lr={base_lr}")
     if TQDM_AVAILABLE:
         print("  Progress: tqdm enabled")
     print(f"{'=' * 60}\n")
@@ -1515,8 +1515,6 @@ def train(
                 dir_A = dir_A / dir_A.norm(dim=-1, keepdim=True).clamp(min=eps)
                 # Get valuations for all indices
                 vals = valuation_fn(idx_cat)
-                unique_vals = vals.unique()
-                intra_sims, inter_sims = [], []
                 # Sample pairs for efficiency
                 n_sample = min(500, len(idx_cat))
                 perm = torch.randperm(len(idx_cat), device=device)[:n_sample]
@@ -1530,8 +1528,8 @@ def train(
                 aq_value = intra_sim - inter_sim
 
             # Per-level ARI: K-means on direction vectors vs digit_prefix_class
-            # v=0–2: deeper prefix (k=3/4/5), k_means=18 (true class count 2×3×3)
-            # v=3–8: prefix k=2, k_means=min(n_classes, n_samples//3) adaptive
+            # v=0-2: deeper prefix (k=3/4/5), k_means=18 (true class count 2x3x3)
+            # v=3-8: prefix k=2, k_means=min(n_classes, n_samples//3) adaptive
             # v=9: single sample, skipped
             ari_per_level = {}  # {v: float}
             ari_prefix3 = float("nan")  # backward compat (v=0 ARI)
@@ -2055,7 +2053,7 @@ def main():
     # Validate config against Pydantic schema
     try:
         config = normalize_config(raw_config)
-        print(f"  Schema validation: PASSED")
+        print("  Schema validation: PASSED")
     except Exception as e:
         print(f"[ERROR] Schema validation FAILED: {e}")
         if not args.force:

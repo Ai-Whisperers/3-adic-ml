@@ -2,6 +2,7 @@
 """Test the effect of init_identity fix alone"""
 
 import torch
+
 from src.models.hyperbolic_projection import HyperbolicProjection
 
 print("Testing HyperbolicProjection with init_identity=False but tangent_scale=0.1")

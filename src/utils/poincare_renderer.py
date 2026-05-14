@@ -15,7 +15,8 @@ Features:
 - Algebraic transformation overlays (Phase 2.2)
 """
 
-from typing import Optional, Tuple, Dict, Any, List
+from typing import Any, List, Optional
+
 import numpy as np
 import torch
 
@@ -33,6 +34,7 @@ except ImportError:
 
 from src.geometry import log_map_zero
 
+
 def render_poincare_disk_mpl(
     z_hyp: np.ndarray,
     valuations: np.ndarray,
@@ -46,28 +48,28 @@ def render_poincare_disk_mpl(
     """Render embeddings in a 2D Poincaré disk using Matplotlib."""
     if not _HAS_MPL:
         return None
-        
+
     r_euclidean = np.linalg.norm(z_hyp, axis=1)
-    
+
     z_torch = torch.from_numpy(z_hyp).double()
     with torch.no_grad():
         v_tangent = log_map_zero(z_torch, c=c).float().numpy()
-    
+
     from sklearn.decomposition import PCA
     pca = PCA(n_components=2)
     v_2d = pca.fit_transform(v_tangent)
-    
+
     v_norms = np.linalg.norm(v_2d, axis=1, keepdims=True)
     v_norms = np.clip(v_norms, 1e-10, None)
     v_dir = v_2d / v_norms
     z_2d = r_euclidean[:, np.newaxis] * v_dir
-    
+
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100)
-    
+
     # Draw boundary
     boundary = plt.Circle((0, 0), 1, color='gray', fill=False, linestyle='--', alpha=0.5)
     ax.add_artist(boundary)
-    
+
     if colors is None:
         colors = [plt.cm.plasma(i/10) for i in range(10)]
 
@@ -76,7 +78,7 @@ def render_poincare_disk_mpl(
         from src.core import TERNARY
         from src.utils.geodesic_utils import get_geodesic_arc
         idx_map = {idx: i for i, idx in enumerate(indices)}
-        
+
         parents = TERNARY.parent(torch.from_numpy(indices)).numpy()
         for i, p_idx in enumerate(parents):
             if p_idx in idx_map:
@@ -97,7 +99,7 @@ def render_poincare_disk_mpl(
                 for idx in walk_indices:
                     if idx in idx_map:
                         pts.append(z_2d[idx_map[idx]])
-                
+
                 if len(pts) > 1:
                     pts = np.array(pts)
                     ax.plot(pts[:, 0], pts[:, 1], color='cyan', alpha=0.6, linewidth=1.5, zorder=3, marker='>')
@@ -128,17 +130,17 @@ def render_poincare_disk_mpl(
             continue
         ax.scatter(
             z_2d[mask, 0], z_2d[mask, 1],
-            c=[colors[v]], s=10, alpha=0.7, label=f"v={v}", 
+            c=[colors[v]], s=10, alpha=0.7, label=f"v={v}",
             edgecolors='none', zorder=2
         )
-        
+
     ax.set_xlim(-1.1, 1.1)
     ax.set_ylim(-1.1, 1.1)
     ax.set_aspect('equal')
     ax.axis('off')
     ax.set_title(title)
     ax.legend(loc='upper right', markerscale=2, fontsize='small')
-    
+
     return fig
 
 def render_poincare_disk(
@@ -154,40 +156,40 @@ def render_poincare_disk(
     """Render embeddings in a 2D Poincaré disk."""
     if not _HAS_PLOTLY:
         return None
-    
+
     # This Plotly implementation currently ignores show_tree and walks for simplicity
     N, D = z_hyp.shape
-    
+
     # 1. Calculate Poincaré Radius (r)
-    # Norm in Poincaré ball is NOT Euclidean distance to origin, 
-    # but we can use the Euclidean norm ||z|| for the 2D plot 
+    # Norm in Poincaré ball is NOT Euclidean distance to origin,
+    # but we can use the Euclidean norm ||z|| for the 2D plot
     # because it maps monotonically to hyperbolic distance.
     r_euclidean = np.linalg.norm(z_hyp, axis=1)
-    
+
     # 2. Project Directions to 2D
     # We use logmap0 to get tangent vectors, then PCA to 2D for the direction.
     # This preserves the "relative orientation" of vectors at the origin.
     z_torch = torch.from_numpy(z_hyp).double()
     with torch.no_grad():
         v_tangent = log_map_zero(z_torch, c=c).float().numpy()
-    
+
     # Use PCA to get the two most significant direction components
     from sklearn.decomposition import PCA
     pca = PCA(n_components=2)
     v_2d = pca.fit_transform(v_tangent)
-    
+
     # Normalize v_2d to unit length to get 'pure' direction (theta)
     v_norms = np.linalg.norm(v_2d, axis=1, keepdims=True)
     v_norms = np.clip(v_norms, 1e-10, None)
     v_dir = v_2d / v_norms
-    
+
     # 3. Reconstruct 2D Poincaré coordinates
     # (x, y) = r_euclidean * v_dir
     z_2d = r_euclidean[:, np.newaxis] * v_dir
-    
+
     # 4. Create Plotly Figure
     fig = go.Figure()
-    
+
     # Draw the boundary circle
     theta = np.linspace(0, 2*np.pi, 100)
     fig.add_trace(go.Scatter(
@@ -206,7 +208,7 @@ def render_poincare_disk(
         mask = valuations == v
         if not mask.any():
             continue
-        
+
         fig.add_trace(go.Scatter(
             x=z_2d[mask, 0].tolist(),
             y=z_2d[mask, 1].tolist(),
@@ -231,7 +233,7 @@ def render_poincare_disk(
         legend=dict(itemsizing='constant'),
         margin=dict(l=20, r=20, t=60, b=20)
     )
-    
+
     return fig
 
 def save_poincare_disk(

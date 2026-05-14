@@ -2,8 +2,9 @@
 """Check the actual norm of encoder outputs"""
 
 import torch
-from src.models.vae import TernaryVAEV6Controllable
+
 from src.config import StateNetConfig
+from src.models.vae import TernaryVAEV6Controllable
 
 # Create a minimal config
 config = {

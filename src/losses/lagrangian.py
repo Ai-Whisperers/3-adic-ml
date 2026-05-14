@@ -43,7 +43,7 @@ Usage:
     dual_state.load_state_dict(ckpt['lagrangian_state'])
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 class LagrangianDualState:

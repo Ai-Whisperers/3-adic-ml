@@ -2,6 +2,7 @@
 """Check the tangent_net weights at initialization"""
 
 import torch
+
 from src.models.hyperbolic_projection import HyperbolicProjection
 
 # Create projection with our fixes

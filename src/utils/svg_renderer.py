@@ -9,9 +9,12 @@ Generates beautiful, standalone vector graphics with true hyperbolic geodesics.
 Zero dependencies beyond numpy.
 """
 
-from typing import Optional, List
+from typing import List, Optional
+
 import numpy as np
+
 from src.utils.geodesic_utils import get_geodesic_arc
+
 
 def render_poincare_disk_svg(
     z_2d: np.ndarray,
@@ -55,17 +58,18 @@ def render_poincare_disk_svg(
     # SVG Header
     svg = [
         f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" style="background:#0b0e14; font-family: sans-serif;">',
-        f'<rect width="100%" height="100%" fill="#0b0e14"/>',
+        '<rect width="100%" height="100%" fill="#0b0e14"/>',
         f'<circle cx="{cx}" cy="{cy}" r="{scale}" fill="none" stroke="#2a2e37" stroke-dasharray="4,2"/>'
     ]
 
     # 1. Tree Edges (Geodesic Arcs)
     idx_map = {idx: i for i, idx in enumerate(indices)} if indices is not None else None
     if show_tree and indices is not None and idx_map:
-        from src.core import TERNARY
         import torch
+
+        from src.core import TERNARY
         parents = TERNARY.parent(torch.from_numpy(indices)).numpy()
-        
+
         for i, p_idx in enumerate(parents):
             if p_idx in idx_map:
                 p_i = idx_map[p_idx]
@@ -76,7 +80,7 @@ def render_poincare_disk_svg(
                     sx, sy = to_svg(pt)
                     cmd = "M" if k == 0 else "L"
                     path_data.append(f"{cmd}{sx:.2f},{sy:.2f}")
-                
+
                 path_str = " ".join(path_data)
                 svg.append(f'<path d="{path_str}" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>')
 
@@ -87,21 +91,22 @@ def render_poincare_disk_svg(
             for idx in walk_indices:
                 if idx in idx_map:
                     pts.append(z_2d[idx_map[idx]])
-            
+
             if len(pts) > 1:
                 path_data = []
                 for k, pt in enumerate(pts):
                     sx, sy = to_svg(pt)
                     cmd = "M" if k == 0 else "L"
                     path_data.append(f"{cmd}{sx:.2f},{sy:.2f}")
-                
+
                 path_str = " ".join(path_data)
                 svg.append(f'<path d="{path_str}" fill="none" stroke="#00f2ff" stroke-width="1.5" stroke-opacity="0.7" marker-end="url(#arrowhead)"/>')
 
     # 3. Prefix Territory Shading
     if indices is not None:
-        from src.core import TERNARY
         import torch
+
+        from src.core import TERNARY
         prefix_classes = TERNARY.digit_prefix_class(torch.from_numpy(indices), k=3).numpy()
         unique_prefixes = np.unique(prefix_classes)
         for p in unique_prefixes:
@@ -125,7 +130,7 @@ def render_poincare_disk_svg(
         mask = valuations == v
         if not mask.any():
             continue
-        
+
         color = colors[v]
         v_indices = np.where(mask)[0]
         for i in v_indices:
@@ -139,7 +144,7 @@ def render_poincare_disk_svg(
 
     # Title
     svg.append(f'<text x="20" y="30" fill="#8b949e" font-size="14" font-weight="bold">{title}</text>')
-    
+
     # Legend
     for v in range(10):
         svg.append(f'<circle cx="20" cy="{50 + v*15}" r="4" fill="{colors[v]}"/>')

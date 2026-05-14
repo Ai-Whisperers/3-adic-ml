@@ -74,7 +74,7 @@ class ModelConfig(StrictConfigModel):
     positional_encoding: bool = False
 
     @model_validator(mode="after")
-    def validate_radial_dims(self) -> "ModelConfig":
+    def validate_radial_dims(self) -> ModelConfig:
         if self.factored and self.radial_dims >= self.latent_dim:
             raise ValueError(
                 f"radial_dims={self.radial_dims} must be < latent_dim={self.latent_dim} "
@@ -201,7 +201,7 @@ class RichHierarchyLossConfig(StrictConfigModel):
     min_richness_ratio: float | None = Field(default=None, ge=0, le=1.0)
 
     @model_validator(mode="after")
-    def validate_radius_ordering(self) -> "RichHierarchyLossConfig":
+    def validate_radius_ordering(self) -> RichHierarchyLossConfig:
         if self.inner_radius >= self.outer_radius:
             raise ValueError(
                 f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
@@ -225,7 +225,7 @@ class RadialLossConfig(StrictConfigModel):
     margin_weight: float = Field(default=1.0, ge=0)
 
     @model_validator(mode="after")
-    def validate_radius_ordering(self) -> "RadialLossConfig":
+    def validate_radius_ordering(self) -> RadialLossConfig:
         if self.inner_radius >= self.outer_radius:
             raise ValueError(
                 f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
@@ -272,7 +272,7 @@ class MonotonicLossConfig(StrictConfigModel):
     temperature: float = Field(default=0.05, gt=0)
 
     @model_validator(mode="after")
-    def validate_radius_ordering(self) -> "MonotonicLossConfig":
+    def validate_radius_ordering(self) -> MonotonicLossConfig:
         if self.inner_radius >= self.outer_radius:
             raise ValueError(
                 f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
@@ -358,7 +358,7 @@ class ValuationPriorConfig(StrictConfigModel):
     outer_radius: float | None = Field(default=None, gt=0, lt=1.0)
 
     @model_validator(mode="after")
-    def validate_radius_ordering(self) -> "ValuationPriorConfig":
+    def validate_radius_ordering(self) -> ValuationPriorConfig:
         if (
             self.inner_radius is not None
             and self.outer_radius is not None
@@ -470,7 +470,7 @@ class TrainingSchedulerConfig(StrictConfigModel):
     phases: list[SchedulerPhaseConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_multi_phase(self) -> "TrainingSchedulerConfig":
+    def validate_multi_phase(self) -> TrainingSchedulerConfig:
         if self.type == "multi_phase_cosine" and not self.phases:
             raise ValueError("scheduler.phases must be provided when type='multi_phase_cosine'")
         return self
@@ -537,7 +537,7 @@ class DataConfig(StrictConfigModel):
     )
 
     @model_validator(mode="after")
-    def validate_splits(self) -> "DataConfig":
+    def validate_splits(self) -> DataConfig:
         if self.train_split + self.val_split > 1.0 + 1e-9:
             raise ValueError("data.train_split + data.val_split must be <= 1.0")
         return self
@@ -661,7 +661,7 @@ class TrainingConfigSchema(StrictConfigModel):
     version: VersionConfig | None = None
 
     @model_validator(mode="after")
-    def validate_cross_section_consistency(self) -> "TrainingConfigSchema":
+    def validate_cross_section_consistency(self) -> TrainingConfigSchema:
         if abs(self.visualization.curvature - self.model.curvature) > 1e-12:
             raise ValueError(
                 "visualization.curvature must match model.curvature to keep "

@@ -22,9 +22,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-from sklearn.linear_model import SGDClassifier
 from sklearn.cluster import KMeans
+from sklearn.linear_model import SGDClassifier
 from sklearn.manifold import trustworthiness
 from sklearn.metrics import (
     accuracy_score,
@@ -37,6 +36,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 import torch
 import torch.nn.functional as F
 import yaml
@@ -47,7 +47,6 @@ from src.models.vae import TernaryVAEV6Controllable
 from src.symbolic import build_symbolic_subsystem
 from src.train import compute_accuracy, compute_coverage, compute_hierarchy_metrics
 from src.utils.checkpoint import load_checkpoint_compat
-
 
 DEFAULT_RUN = PROJECT_ROOT / "runs" / "v7_large_20260324_013725"
 LEVEL_PREFIX_DEPTHS = {0: 3, 1: 4, 2: 3, 3: 4, 4: 5, 5: 6}
@@ -379,7 +378,7 @@ def representation_probe_suite(
     return {
         "levels_included": list(range(max_level + 1)),
         "levels_excluded_due_to_sparse_support": list(range(max_level + 1, TERNARY.MAX_VALUATION + 1)),
-        "sample_size": int(len(sampled_labels)),
+        "sample_size": len(sampled_labels),
         "class_counts": {
             str(level): int((sampled_labels == level).sum())
             for level in np.unique(sampled_labels)
@@ -510,7 +509,7 @@ def _retrieval_metrics_from_distances(
         parent_hits.append(int(present[parent_index] in nn[row].tolist()))
 
     return {
-        "sample_size": int(len(idx_eval)),
+        "sample_size": len(idx_eval),
         "k": k,
         "valuation_nn1_accuracy": float((valuations[nn1] == valuations).double().mean().item()),
         "same_valuation_precision_at_k": float((nn_vals == valuations[:, None]).double().mean().item()),
@@ -543,7 +542,7 @@ def retrieval_ablation_suite(
         hyp_distances = poincare_distance(z_hyp_eval[:, None, :], z_hyp_eval[None, :, :], c=1.0)
         tangent_distances = torch.cdist(z_tangent_eval, z_tangent_eval, p=2)
     return {
-        "sample_size": int(len(idx_eval)),
+        "sample_size": len(idx_eval),
         "k": k,
         "hyperbolic_embedding": _retrieval_metrics_from_distances(hyp_distances, idx_eval, k),
         "tangent_euclidean": _retrieval_metrics_from_distances(tangent_distances, idx_eval, k),
@@ -622,10 +621,10 @@ def symbolic_orbit_retrieval_benchmark(
         distances = _cross_distances(query_reps[key], banks[key], metric=metric)
         metrics[key] = _ranking_metrics(distances, target_positions)
     return {
-        "sample_size": int(len(bank_positions)),
+        "sample_size": len(bank_positions),
         "backend": SYMBOLIC_SUBSYSTEM.name,
         "description": SYMBOLIC_SUBSYSTEM.describe(),
-        "group_size": int(len(SYMBOLIC_SUBSYSTEM.engine.elements)),
+        "group_size": len(SYMBOLIC_SUBSYSTEM.engine.elements),
         "notes": [
             "Each query is a non-identity symbolic transform of one orbit representative.",
             "Candidate banks contain one canonical representative per sampled symbolic orbit.",
@@ -667,7 +666,7 @@ def symbolic_pair_verification_benchmark(
             "average_precision": float(average_precision_score(labels, scores)),
         }
     return {
-        "sample_size": int(len(anchors)),
+        "sample_size": len(anchors),
         "notes": pairs["notes"],
         **metrics,
     }

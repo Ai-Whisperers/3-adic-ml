@@ -31,9 +31,10 @@ class DummyWriter:
 def test_stratified_subsample_caps_per_level_and_is_reproducible() -> None:
     z_hyp = torch.arange(90, dtype=torch.float64).reshape(30, 3)
     valuations = torch.tensor([0] * 10 + [1] * 10 + [2] * 10)
+    indices = torch.arange(30)
 
-    z_1, val_1 = _stratified_subsample(z_hyp, valuations, max_per_level=4, seed=7)
-    z_2, val_2 = _stratified_subsample(z_hyp, valuations, max_per_level=4, seed=7)
+    z_1, val_1, _ = _stratified_subsample(z_hyp, valuations, indices, max_per_level=4, seed=7)
+    z_2, val_2, _ = _stratified_subsample(z_hyp, valuations, indices, max_per_level=4, seed=7)
 
     assert z_1.shape == (12, 3)
     assert np.array_equal(z_1, z_2)
@@ -104,6 +105,7 @@ def test_visualization_pipeline_validates_tensor_shapes(tmp_path) -> None:
             epoch=1,
             z_hyp=torch.randn(4, 3, dtype=torch.float64),
             valuations=torch.tensor([0, 1, 2]),
+            indices=torch.arange(3),
         )
 
 
@@ -148,13 +150,14 @@ def test_visualization_pipeline_runs_expected_steps(monkeypatch, tmp_path) -> No
 
     z_hyp = torch.randn(20, 4, dtype=torch.float64) * 0.05
     valuations = torch.arange(20) % 10
+    indices = torch.arange(20)
 
-    pipeline.run(epoch=1, z_hyp=z_hyp, valuations=valuations)
+    pipeline.run(epoch=1, z_hyp=z_hyp, valuations=valuations, indices=indices)
     assert calls == ["umap", "pacmap", "trimap", "poincare", "persist"]
     assert writer.flush_calls == 1
 
     calls.clear()
-    pipeline.run(epoch=2, z_hyp=z_hyp, valuations=valuations)
+    pipeline.run(epoch=2, z_hyp=z_hyp, valuations=valuations, indices=indices)
     assert calls == ["umap", "pacmap", "trimap", "poincare"]
     assert writer.flush_calls == 2
 
@@ -236,6 +239,7 @@ def test_combined_loss_output_importable() -> None:
 def test_combined_loss_output_total_key_pattern() -> None:
     """Verify the recommended access pattern works on a real forward pass."""
     import torch
+
     from src.losses import CombinedLoss, CombinedLossOutput
 
     config = {
@@ -292,13 +296,16 @@ def test_stratified_subsample_empty_level_excluded() -> None:
     z = torch.randn(20, 4, dtype=torch.float64) * 0.3
     vals = torch.zeros(20, dtype=torch.long)
     vals[10:] = 2  # levels 0 and 2 only — level 1 absent
-    _, v_out = _stratified_subsample(z, vals, max_per_level=100)
+    indices = torch.arange(20)
+    _, v_out, _ = _stratified_subsample(z, vals, indices, max_per_level=100)
     assert 1 not in v_out.tolist()
 
 
 def test_stratified_subsample_dtype_contract() -> None:
     z = torch.randn(30, 8, dtype=torch.float64)
     vals = torch.arange(30) % 5
-    z_out, v_out = _stratified_subsample(z, vals)
+    indices = torch.arange(30)
+    z_out, v_out, i_out = _stratified_subsample(z, vals, indices)
     assert z_out.dtype == np.float32, "z output must be float32"
     assert v_out.dtype == np.int32, "val output must be int32"
+    assert i_out.dtype == np.int32, "idx output must be int32"

@@ -31,7 +31,6 @@ Usage:
 """
 
 from typing import Any, Dict, List, Optional, Union
-from .base import CombinedLossOutput
 import warnings
 
 import torch
@@ -39,6 +38,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.core.ternary import get_valuation_fn
+
+from .base import CombinedLossOutput
 from .hyperbolic_kl import HyperbolicKLDivergence
 from .padic_geodesic import (
     AlgebraicAdditionLoss,

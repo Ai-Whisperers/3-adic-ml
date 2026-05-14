@@ -1,6 +1,6 @@
 """Symbolic transformation utilities for neurosymbolic feedback loops."""
 
-from .engine import FiniteTernaryGroupEngine, GroupElement, TERNARY_GROUP_ENGINE
+from .engine import TERNARY_GROUP_ENGINE, FiniteTernaryGroupEngine, GroupElement
 from .subsystem import (
     DisabledSymbolicSubsystem,
     GroupOrbitSymbolicSubsystem,

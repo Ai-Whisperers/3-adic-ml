@@ -20,19 +20,17 @@ Usage:
 """
 
 import argparse
-import os
-import sys
-from pathlib import Path
-
 import ctypes
-import torch
+import os
+from pathlib import Path
+import sys
+
 import numpy as np
+import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.ternary import TERNARY
 from src.models.vae import TernaryVAEV6
-
 
 # ---------------------------------------------------------------------------
 # C ternary hash bridge
@@ -72,23 +70,10 @@ def path_to_ternary(path: str) -> list[int]:
 
 
 def path_depth_valuation(path: str) -> int:
-    """3-adic valuation of path depth."""
-    depth = len(Path(path).parts) - 1
-    if depth == 0:
-        return 9
-    n = depth
-    v = 0
-    while n % 3 == 0:
-        v += 1
-        n //= 3
-    return v
-
-
-def path_depth_valuation(path: str) -> int:
     """3-adic valuation of path depth.
 
-    Depth d → valuation = v_3(d+1) where v_3 counts powers of 3.
-    Root (depth 0) → highest valuation (closest to origin).
+    Depth d -> valuation = v_3(d+1) where v_3 counts powers of 3.
+    Root (depth 0) -> highest valuation (closest to origin).
     """
     depth = len(Path(path).parts) - 1
     if depth == 0:
@@ -214,7 +199,7 @@ def main():
     else:
         print(f"\nScanning real filesystem: {args.root}")
         paths = []
-        for root, dirs, files in os.walk(args.root):
+        for root, _dirs, _files in os.walk(args.root):
             paths.append(root)
             if len(paths) >= args.max_paths:
                 break
@@ -248,7 +233,7 @@ def main():
             print("  RESULT: NO TRANSFER — geometry does not preserve hierarchy")
     except ImportError:
         print("  scipy not available — install with: pip install scipy")
-        print(f"  Raw: mean radius per level printed above.")
+        print("  Raw: mean radius per level printed above.")
 
     print("\nDone.")
 

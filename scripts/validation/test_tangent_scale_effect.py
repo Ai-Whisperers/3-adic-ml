@@ -2,9 +2,10 @@
 """Test effect of tangent_scale on initial Poincaré norm"""
 
 import torch
+
+from src.config import StateNetConfig
 from src.models.hyperbolic_projection import HyperbolicProjection
 from src.models.vae import TernaryVAEV6Controllable
-from src.config import StateNetConfig
 
 # Create model to get realistic encoder outputs
 config = {

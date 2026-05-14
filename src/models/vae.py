@@ -49,7 +49,6 @@ from typing import Any, Dict, List, Tuple
 import torch
 import torch.nn as nn
 
-from src.geometry import log_map_zero
 from src.models.hyperbolic_projection import DualHyperbolicProjection
 
 # =============================================================================
@@ -435,11 +434,11 @@ class TernaryVAEV6(nn.Module):
         # Convert indices to ternary
         from src.core import TERNARY
         x = TERNARY.to_ternary(indices).to(device).to(torch.float64)
-        
+
         # Apply positional encoding if enabled
         if self.positional_encoding:
             x = torch.cat([x, x * self.pos_weights], dim=-1)
-            
+
         # Get mu from head_A (primary coverage pathway)
         mu_A, _ = self.head_A(x)
         return mu_A

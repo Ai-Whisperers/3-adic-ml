@@ -11,6 +11,21 @@ Exports project paths and centralized StateNet configuration.
 from .constants import N_TERNARY_OPERATIONS
 from .paths import CHECKPOINTS_DIR, MODELS_DIR, PROJECT_ROOT, RUNS_DIR, SRC_PRESETS_DIR
 
+# Pydantic schema validation (V7.2+)
+from .schema import (
+    # Sub-schemas for granular validation
+    AngularCoherenceLossConfig,
+    LossConfig,
+    ModelConfig,
+    TrainingConfig,
+    TrainingConfigSchema,
+    VisualizationConfig,
+    normalize_config,
+    validate,
+    validate_and_normalize,
+    validate_config,
+)
+
 # Centralized configuration (single source of truth)
 from .statenet_config import (
     ControllerThresholds,
@@ -20,21 +35,6 @@ from .statenet_config import (
     LRScales,
     StateNetConfig,
     TimingConfig,
-)
-
-# Pydantic schema validation (V7.2+)
-from .schema import (
-    TrainingConfigSchema,
-    validate_config,
-    validate,
-    normalize_config,
-    validate_and_normalize,
-    # Sub-schemas for granular validation
-    AngularCoherenceLossConfig,
-    LossConfig,
-    ModelConfig,
-    TrainingConfig,
-    VisualizationConfig,
 )
 
 __all__ = [
