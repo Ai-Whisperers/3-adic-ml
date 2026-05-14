@@ -6,9 +6,7 @@
 """Learning Rate Controller - Unified Training Control via Optimizer.
 
 Replaces StateNet's if/else decision logic with:
-1. Schedule-based control (predetermined epochs)
-2. Metric-based control (soft gating via LR multipliers)
-3. Learnable control (differentiable LR prediction)
+Metric-based control (soft gating via LR multipliers).
 
 Philosophy (Option C Aggressive):
     - ALL trainability control happens via LR multipliers
@@ -17,21 +15,16 @@ Philosophy (Option C Aggressive):
     - Optimizer param groups are the single source of truth
 
 Usage:
-    from src.models import LRController, ScheduleBasedLR, MetricBasedLR
-
-    # Schedule-based (simplest, reproducible)
-    controller = ScheduleBasedLR({
-        'encoder_a': [(0, 0.0), (50, 0.05), (100, 0.0)],  # epoch -> lr_scale
-        'encoder_b': [(0, 0.1), (80, 0.0)],
-        'projections': [(0, 1.0)],  # always full
-    })
+    from src.models import MetricBasedLR, TrainingMetrics
 
     # Metric-based (replaces StateNet logic)
     controller = MetricBasedLR(config)
 
     # In training loop
-    lr_scales = controller.get_lr_scales(epoch, metrics)
-    update_param_group_lrs(optimizer, base_lr, lr_scales)
+    metrics = TrainingMetrics(epoch, coverage, hierarchy_a, ...)
+    state = controller.update(metrics)
+    lr_scales = state['lr_scales']
+    update_optimizer_lr_scales(optimizer, current_base_lr, lr_scales)
 """
 
 from abc import ABC, abstractmethod
@@ -71,6 +64,9 @@ class TrainingMetrics:
     dist_corr_a: float = 0.0
     q_value: float = 0.0
     grad_norm_projections: float = 0.0
+    # Collapse flags (from Spearman NaN check)
+    hierarchy_a_collapsed: bool = False
+    hierarchy_b_collapsed: bool = False
 
     def __post_init__(self) -> None:
         for name in ("coverage", "hierarchy_a", "hierarchy_b", "dist_corr_a"):
@@ -96,6 +92,8 @@ class TrainingMetrics:
             dist_corr_a=d.get('dist_corr_a', d.get('dist_corr_A', 0.0)),
             q_value=d.get('q_value', d.get('Q', 0.0)),
             grad_norm_projections=d.get('grad_norm_projections', 0.0),
+            hierarchy_a_collapsed=d.get('hierarchy_a_collapsed', d.get('hierarchy_collapsed', False)),
+            hierarchy_b_collapsed=d.get('hierarchy_b_collapsed', False),
         )
 
 
@@ -194,13 +192,16 @@ class MetricBasedLR(LRController):
 
         # Advance stall counter here (single write path per epoch, not in gate methods)
         window = self.config.timing.window_size
-        if len(self._hierarchy_a_history) >= window:
+        if len(self._hierarchy_a_history) >= window and not metrics.hierarchy_a_collapsed:
             recent_a = list(self._hierarchy_a_history)
             improvement_a = abs(recent_a[-1]) - abs(recent_a[0])
             if improvement_a < self.config.hierarchy.plateau_threshold:
                 self._hierarchy_a_stall_count += delta
             else:
                 self._hierarchy_a_stall_count = 0
+        elif metrics.hierarchy_a_collapsed:
+            # Collapse reset - don't count a collapse as a 'stall'
+            self._hierarchy_a_stall_count = 0
 
     def _compute_coverage_gate(self, metrics: TrainingMetrics) -> Tuple[float, Optional[str]]:
         """Compute soft coverage gate for encoder_a.
@@ -223,8 +224,9 @@ class MetricBasedLR(LRController):
         else:
             # Currently frozen - unfreeze when coverage recovers OR hierarchy stalls
             # (stall without coverage means encoder_a needs to train to break the stall)
+            # Never unfreeze based on hierarchy if the hierarchy is currently collapsed.
             coverage_ok = metrics.coverage >= cfg.train_threshold
-            hierarchy_stalled = self._is_hierarchy_a_stalled()
+            hierarchy_stalled = self._is_hierarchy_a_stalled() and not metrics.hierarchy_a_collapsed
             if coverage_ok or hierarchy_stalled:
                 self._active['encoder_a'] = True
                 self._last_change['encoder_a'] = metrics.epoch
@@ -263,7 +265,10 @@ class MetricBasedLR(LRController):
                 recent = list(self._hierarchy_b_history)
                 improvement = abs(recent[-1]) - abs(recent[0])
 
-                if improvement < cfg.plateau_threshold:
+                # Don't increment plateau count if collapsed - collapse is not a plateau
+                if metrics.hierarchy_b_collapsed:
+                    self._hierarchy_b_plateau_count = 0
+                elif improvement < cfg.plateau_threshold:
                     self._hierarchy_b_plateau_count += delta
                 else:
                     self._hierarchy_b_plateau_count = 0
@@ -277,8 +282,17 @@ class MetricBasedLR(LRController):
             # Unfreeze only on sustained degradation: net decline > 2% over window/2 steps.
             # plateau_threshold is for stagnation (0.0005 scale), not decline — use a
             # fixed meaningful threshold (0.02 on correlation scale) to avoid noise oscillation.
+            # Also unfreeze IF collapsed (collapse is the ultimate degradation).
             _DEGRADATION_THRESHOLD = 0.02
             half_win = max(2, self.config.timing.window_size // 2)
+            
+            if metrics.hierarchy_b_collapsed:
+                self._active['encoder_b'] = True
+                self._hierarchy_b_plateau_count = 0
+                self._last_change['encoder_b'] = metrics.epoch
+                event = "encoder_b unfrozen (hierarchy collapsed)"
+                return (self.config.lr_scales.encoder_b, event)
+
             if len(self._hierarchy_b_history) >= half_win:
                 recent = list(self._hierarchy_b_history)[-half_win:]
                 net_change = abs(recent[-1]) - abs(recent[0])
@@ -448,20 +462,33 @@ def update_optimizer_lr_scales(
         base_lr: Base learning rate
         lr_scales: Dict mapping group name to LR scale
     """
-    matched = set()
+    import warnings
+
+    matched_scales = set()
+    unmatched_groups = []
     for group in optimizer.param_groups:
         name = group.get('name', '')
         if name in lr_scales:
             group['lr'] = base_lr * lr_scales[name]
-            matched.add(name)
+            matched_scales.add(name)
+        elif name:
+            unmatched_groups.append(name)
 
-    unmatched_scales = set(lr_scales) - matched
+    unmatched_scales = set(lr_scales) - matched_scales
     if unmatched_scales:
-        import warnings
         warnings.warn(
             f"update_optimizer_lr_scales: lr_scales keys {unmatched_scales} matched no "
             f"optimizer param group. LR control is silently inactive for these components. "
-            f"Group names present: {[g.get('name','<unnamed>') for g in optimizer.param_groups]}",
+            f"Group names present in optimizer: {[g.get('name','<unnamed>') for g in optimizer.param_groups]}",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    if unmatched_groups:
+        warnings.warn(
+            f"update_optimizer_lr_scales: Optimizer param groups {unmatched_groups} "
+            f"have no corresponding scale in lr_scales {list(lr_scales.keys())}. "
+            f"These groups will stay at the base learning rate (cosine-annealed).",
             UserWarning,
             stacklevel=2,
         )

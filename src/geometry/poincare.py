@@ -61,13 +61,18 @@ def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str
     Returns:
         geoopt.PoincareBall manifold with internal tensors on the specified device
     """
-    # Defensive clamping for learnable curvature that might drift <= 0
+    # If c is a tensor (learnable curvature), we must key by its object ID
+    # to avoid a memory leak. Keying by c.item() creates a new manifold
+    # instance every batch as the value drifts, leaking memory and
+    # breaking the gradient flow.
     if isinstance(c, torch.Tensor):
         c_clamped = c.clamp(min=1e-6)
-        c_val = float(c_clamped.item())
+        # Use object ID for cache key (stable for the lifetime of the parameter)
+        c_key: Union[float, int] = id(c)
     else:
         c_val = max(float(c), 1e-6)
         c_clamped = c_val
+        c_key = c_val
 
     # Normalize device to string for cache key
     if device is None:
@@ -77,7 +82,7 @@ def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str
     else:
         device_str = device
 
-    cache_key = (c_val, device_str)
+    cache_key = (c_key, device_str)
     if cache_key not in _manifold_cache:
         # Use the clamped curvature for the manifold instance.
         # This allows gradients to flow if c is a learnable parameter.

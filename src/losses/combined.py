@@ -725,9 +725,12 @@ class CombinedLoss(nn.Module):
 
         # 13. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:
-            coverage_loss = self._compute_coverage_loss(logits, targets)
-            losses['coverage'] = coverage_loss
-            total = total + coverage_loss
+            # Respect coverage_weight from config even if rich_hierarchy is disabled
+            coverage_weight = self.config.get('rich_hierarchy', {}).get('coverage_weight', 1.0)
+            if coverage_weight > 0.0:
+                coverage_loss = self._compute_coverage_loss(logits, targets)
+                losses['coverage'] = coverage_loss
+                total = total + coverage_weight * coverage_loss
 
         losses['total'] = total
         return losses

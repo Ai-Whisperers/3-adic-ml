@@ -1026,7 +1026,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         else:
             # logits shape: (B, 9, 3) or (B, 27) depending on decoder
             # targets are in {-1, 0, 1}, shift to {0, 1, 2} for cross_entropy
-            targets_shifted = (targets + 1).long()
+            targets_shifted = (targets + 1).long().clamp(0, 2)
             if logits.shape[-1] == 3:  # (B, 9, 3)
                 coverage_loss = F.cross_entropy(
                     logits.view(-1, 3),

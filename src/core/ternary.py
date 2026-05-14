@@ -438,11 +438,12 @@ class TernarySpace:
     def ternary_add(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
         """Perform 3-adic modular addition of two indices.
         
-        Operation-wise addition: (a_i + b_i + 1) % 3 - 1
+        Operation-wise addition in Z_3 (modular field).
         Maps {-1, 0, 1} digits such that:
-           1 + 1 = -1
-          -1 - 1 = 1
-           0 + x = x
+            0 + x = x
+            1 + 1 = -1
+           -1 + -1 = 1
+            1 + -1 = 0
         
         Args:
             idx_a: Tensor of indices, shape (N,)
@@ -454,15 +455,16 @@ class TernarySpace:
         t_a = self.to_ternary(idx_a) # (N, 9)
         t_b = self.to_ternary(idx_b) # (N, 9)
 
-        # Shift to {0, 1, 2} for standard modulo
-        d_a = t_a + 1
-        d_b = t_b + 1
+        # Map {-1, 0, 1} to {2, 0, 1} which is standard Z_3
+        d_a = t_a % 3
+        d_b = t_b % 3
 
         # Modular addition in {0, 1, 2}
         d_sum = (d_a + d_b) % 3
 
-        # Shift back to {-1, 0, 1}
-        t_sum = d_sum - 1
+        # Map back to {-1, 0, 1}: 0->0, 1->1, 2->-1
+        t_sum = d_sum.clone()
+        t_sum[d_sum == 2] = -1
 
         return self.from_ternary(t_sum)
 

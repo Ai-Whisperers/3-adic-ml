@@ -52,7 +52,7 @@ class HyperbolicProjection(nn.Module):
         latent_dim: int = 16,
         hidden_dim: int = 64,
         max_radius: float = 0.95,
-        curvature: float = 1.0,
+        curvature: Union[float, torch.Tensor, geoopt.PoincareBall] = 1.0,
         init_identity: bool = False,
         tangent_scale_init: float = 0.1,
         n_layers: int = 1,
@@ -67,7 +67,7 @@ class HyperbolicProjection(nn.Module):
             latent_dim: Dimension of latent space
             hidden_dim: Hidden dimension for tangent network
             max_radius: Maximum radius constraint (applied after expmap)
-            curvature: Hyperbolic curvature parameter
+            curvature: Hyperbolic curvature parameter, tensor, or existing manifold
             init_identity: If True, initialize tangent_net as identity
             tangent_scale_init: Initial value for learnable tangent_scale (default 0.1)
             n_layers: Number of hidden layers
@@ -82,10 +82,14 @@ class HyperbolicProjection(nn.Module):
                 f"HyperbolicProjection: max_radius must be in (0, 1) for a valid "
                 f"Poincaré ball constraint, got {max_radius}"
             )
-        if curvature <= 0.0:
-            raise ValueError(
-                f"HyperbolicProjection: curvature must be > 0, got {curvature}"
-            )
+        # Validate curvature only if it's a float/tensor (manifold handles its own c)
+        if not isinstance(curvature, geoopt.PoincareBall):
+            c_val = curvature if isinstance(curvature, float) else curvature.item()
+            if c_val <= 0.0:
+                raise ValueError(
+                    f"HyperbolicProjection: curvature must be > 0, got {c_val}"
+                )
+
         if not (0.0 <= tangent_scale_init):
             raise ValueError(
                 f"HyperbolicProjection: tangent_scale_init must be >= 0, got {tangent_scale_init}"
@@ -103,8 +107,11 @@ class HyperbolicProjection(nn.Module):
         self.factored = factored
         self.radial_dims = radial_dims
 
-        # Create manifold (used for non-factored mode; kept for curvature tracking)
-        self.manifold = geoopt.PoincareBall(c=curvature, learnable=learnable_curvature)
+        # Create or assign manifold (used for non-factored mode; kept for curvature tracking)
+        if isinstance(curvature, geoopt.PoincareBall):
+            self.manifold = curvature
+        else:
+            self.manifold = geoopt.PoincareBall(c=curvature, learnable=learnable_curvature)
         self.curvature = self.manifold.c
 
         # In factored mode:
@@ -340,15 +347,16 @@ class DualHyperbolicProjection(nn.Module):
             radial_dims=radial_dims,
         )
 
-        # VAE-B projection (separate)
+        # VAE-B projection (shares the exact same manifold instance from proj_A)
+        # This ensures they share the same curvature parameter and manifold logic.
         self.proj_B = HyperbolicProjection(
             latent_dim,
             hidden_dim,
             max_radius,
-            curvature,
+            curvature=self.proj_A.manifold,
             n_layers=n_layers,
             dropout=dropout,
-            learnable_curvature=False,  # Share curvature with A
+            learnable_curvature=False,  # Ignored when manifold is passed
             init_identity=init_identity,
             tangent_scale_init=tangent_scale_init,
             factored=factored,

@@ -47,7 +47,8 @@ def level_scatter_std(  # noqa: used for metrics only — NOT for differentiable
     sum_sq.scatter_add_(0, index, deviations ** 2)
     counts.scatter_add_(0, index, torch.ones_like(src))
     variance = sum_sq / (counts - 1.0).clamp(min=1.0)
-    return variance.clamp(min=0.0).sqrt()
+    # Add epsilon before sqrt to prevent NaN gradient at variance=0
+    return (variance.clamp(min=0.0) + 1e-12).sqrt()
 
 
 def level_has_data(index: torch.LongTensor, dim_size: int = 10) -> torch.BoolTensor:

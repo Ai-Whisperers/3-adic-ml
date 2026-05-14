@@ -796,9 +796,16 @@ def _build_checkpoint_payload(
         payload["controller_state"] = {
             "active": dict(lr_controller._active),
             "best_q": lr_controller._best_q,
+            "last_epoch": lr_controller._last_epoch,
+            "last_change": dict(lr_controller._last_change),
+            "hierarchy_b_plateau_count": lr_controller._hierarchy_b_plateau_count,
+            "grad_low_count": lr_controller._grad_low_count,
+            "hierarchy_a_stall_count": lr_controller._hierarchy_a_stall_count,
             "coverage_history": list(lr_controller._coverage_history),
             "hierarchy_a_history": list(lr_controller._hierarchy_a_history),
             "hierarchy_b_history": list(lr_controller._hierarchy_b_history),
+            "grad_norm_history": list(lr_controller._grad_norm_history),
+            "q_history": list(lr_controller._q_history),
         }
     if dual_state is not None:
         payload["lagrangian_state"] = dual_state.state_dict()
@@ -807,8 +814,12 @@ def _build_checkpoint_payload(
             payload["loss_fn_state_dict"] = loss_fn.state_dict()
         if loss_fn_b is not None:
             payload["loss_fn_b_state_dict"] = loss_fn_b.state_dict()
-    if extra:
-        payload.update(extra)
+    if grokking_detector is not None:
+        payload["grokking_state"] = {
+            "history": {k: list(v) for k, v in grokking_detector.history.items()},
+            "plateau_start": grokking_detector.plateau_start,
+            "events": [e.__dict__ for e in grokking_detector.events],
+        }
     return payload
 
 
@@ -1240,21 +1251,44 @@ def train(
 
         if lr_controller is not None and "controller_state" in ckpt:
             cs = ckpt["controller_state"]
+            # Restore active states and metadata
             lr_controller._active.update(cs.get("active", {}))
             lr_controller._best_q = cs.get("best_q", -1.0)
-            lr_controller._coverage_history = deque(
-                cs.get("coverage_history", []),
-                maxlen=lr_controller._coverage_history.maxlen,
-            )
-            lr_controller._hierarchy_a_history = deque(
-                cs.get("hierarchy_a_history", []),
-                maxlen=lr_controller._hierarchy_a_history.maxlen,
-            )
-            lr_controller._hierarchy_b_history = deque(
-                cs.get("hierarchy_b_history", []),
-                maxlen=lr_controller._hierarchy_b_history.maxlen,
-            )
-            print("  [Resume] LR controller state restored.")
+            lr_controller._last_epoch = cs.get("last_epoch", start_epoch - 1)
+            
+            # Restore hysteresis timers
+            if "last_change" in cs:
+                lr_controller._last_change.update(cs["last_change"])
+            
+            # Restore plateau and stall counters
+            lr_controller._hierarchy_b_plateau_count = cs.get("hierarchy_b_plateau_count", 0)
+            lr_controller._grad_low_count = cs.get("grad_low_count", 0)
+            lr_controller._hierarchy_a_stall_count = cs.get("hierarchy_a_stall_count", 0)
+
+            # Restore rolling histories (deques)
+            history_keys = {
+                "coverage_history": "_coverage_history",
+                "hierarchy_a_history": "_hierarchy_a_history",
+                "hierarchy_b_history": "_hierarchy_b_history",
+                "grad_norm_history": "_grad_norm_history",
+                "q_history": "_q_history"
+            }
+            for ckpt_key, attr_name in history_keys.items():
+                if ckpt_key in cs:
+                    history_list = cs[ckpt_key]
+                    target_deque = getattr(lr_controller, attr_name)
+                    setattr(lr_controller, attr_name, deque(history_list, maxlen=target_deque.maxlen))
+            
+            print("  [Resume] LR controller state restored (including histories and counters).")
+
+        if "grokking_state" in ckpt and grokking_detector is not None:
+            gs = ckpt["grokking_state"]
+            grokking_detector.history = gs.get("history", grokking_detector.history)
+            grokking_detector.plateau_start = gs.get("plateau_start")
+            # Restore events if any (re-wrap in NamedTuple if needed, or just list of dicts)
+            saved_events = gs.get("events", [])
+            grokking_detector.events = [GrokkingEvent(**e) for e in saved_events]
+            print("  [Resume] Grokking detector state restored.")
 
         best_Q = float(ckpt["Q"]) if ckpt.get("Q") is not None else float(ckpt.get("best_Q", -1.0))
         best_hierarchy = float(ckpt["hierarchy_A"]) if ckpt.get("hierarchy_A") is not None else float(ckpt.get("best_hierarchy", 0.0))
@@ -1362,7 +1396,8 @@ def train(
                                         val = m.get(k)
                                         if isinstance(val, (int, float)) and val > 0.0:
                                             dual_violation_acc[k] = dual_violation_acc.get(k, 0.0) + val
-                        dual_violation_count += 1
+                        # Count each VAE branch as a separate "instance" to avoid double-averaging bias
+                        dual_violation_count += 2
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
@@ -1488,6 +1523,7 @@ def train(
                     if out.get("r_A") is not None:
                         r_A_all.append(out["r_A"].detach())
 
+            assert val_batches > 0, f"No validation batches at epoch {epoch} — DataLoader may be empty"
             avg_val_acc = val_acc_sum / val_batches
             avg_val_coverage = val_coverage_sum / val_batches
 
@@ -1613,6 +1649,8 @@ def train(
                     dist_corr_a=hier_metrics_A["dist_corr"],
                     q_value=hier_metrics_A["Q"],
                     grad_norm_projections=controller_grad_norm or 0.0,
+                    hierarchy_a_collapsed=hier_metrics_A.get("hierarchy_collapsed", False),
+                    hierarchy_b_collapsed=hier_metrics_B.get("hierarchy_collapsed", False),
                 )
                 controller_state = lr_controller.update(metrics)
 
