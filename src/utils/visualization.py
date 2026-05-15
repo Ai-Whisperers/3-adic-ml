@@ -26,13 +26,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional, Union
 
 import numpy as np
 import torch
 
 if TYPE_CHECKING:
-    from torch.utils.tensorboard import SummaryWriter as SummaryWriterType
+    from src.utils.tensorboard_logger import TensorBoardLogger
 
 # Optional imports — all installed, but guard defensively
 try:
@@ -131,7 +131,7 @@ def _level_colors(n_levels: int = 10) -> list[str]:
         try:
             cmap = matplotlib.colormaps[_LEVEL_CMAP].resampled(n_levels)
         except AttributeError:
-            cmap = plt.cm.get_cmap(_LEVEL_CMAP, n_levels)  # type: ignore[attr-defined]
+            cmap = plt.cm.get_cmap(_LEVEL_CMAP, n_levels)
         _LEVEL_COLORS_MPL = [
             f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
             for r, g, b, _ in [cmap(i) for i in range(n_levels)]
@@ -653,7 +653,7 @@ class VisualizationPipeline:
     def __init__(
         self,
         config: Mapping[str, Any] | None,
-        writer: Optional[SummaryWriterType],
+        logger: Optional[TensorBoardLogger] = None,
         log_callback: Callable[[str], None] | None = None,
     ) -> None:
         runtime_cfg = VisualizationRuntimeConfig.from_mapping(config)
@@ -663,7 +663,7 @@ class VisualizationPipeline:
         self.save_html: bool = runtime_cfg.save_html
         self.umap_neighbors: int = runtime_cfg.umap_neighbors
         self.curvature: float = runtime_cfg.curvature
-        self.writer = writer
+        self.logger = logger
         self._log = log_callback or (lambda msg: None)
 
         # Report availability
@@ -697,7 +697,7 @@ class VisualizationPipeline:
             valuations: (N,) integer valuation labels 0..9
             indices: (N,) original operation indices
         """
-        if self.writer is None and not self.save_html:
+        if self.logger is None and not self.save_html:
             return
 
         self._validate_inputs(epoch, z_hyp, valuations)
@@ -749,8 +749,8 @@ class VisualizationPipeline:
             except OSError:
                 pass
 
-        if self.writer is not None:
-            self.writer.flush()
+        if self.logger is not None:
+            self.logger.flush()
 
     @staticmethod
     def _validate_inputs(
@@ -795,10 +795,10 @@ class VisualizationPipeline:
             return
 
         # TensorBoard add_embedding (replaces the Euclidean one from tensorboard_logger)
-        if self.writer is not None:
+        if self.logger is not None:
             # Build metadata matching TensorBoard's expected format
             metadata = [[str(v)] for v in val_np.tolist()]
-            self.writer.add_embedding(
+            self.logger.add_embedding(
                 torch.from_numpy(coords),
                 metadata=metadata,
                 metadata_header=["valuation"],
@@ -807,9 +807,9 @@ class VisualizationPipeline:
             )
 
         # TensorBoard 3D scatter figure
-        if self.writer is not None and _HAS_MPL:
+        if self.logger is not None and _HAS_MPL:
             fig = _scatter_3d_by_level_mpl(coords, val_np, f"UMAP 3D — Poincaré metric (epoch {epoch})")
-            self.writer.add_figure("Topology/UMAP3D", fig, global_step=epoch)
+            self.logger.add_figure("Topology/UMAP3D", fig, global_step=epoch)
             plt.close(fig)
 
         # Plotly HTML
@@ -830,9 +830,9 @@ class VisualizationPipeline:
         if coords is None:
             return
 
-        if self.writer is not None and _HAS_MPL:
+        if self.logger is not None and _HAS_MPL:
             fig = _scatter_2d_by_level(coords, val_np, f"PaCMAP 2D — mid-range structure (epoch {epoch})")
-            self.writer.add_figure("Topology/PaCMAP2D", fig, global_step=epoch)
+            self.logger.add_figure("Topology/PaCMAP2D", fig, global_step=epoch)
             plt.close(fig)
 
         if self.save_html and _HAS_PLOTLY:
@@ -851,9 +851,9 @@ class VisualizationPipeline:
         if coords is None:
             return
 
-        if self.writer is not None and _HAS_MPL:
+        if self.logger is not None and _HAS_MPL:
             fig = _scatter_2d_by_level(coords, val_np, f"TriMAP 2D — distance ordering (epoch {epoch})")
-            self.writer.add_figure("Topology/TriMAP2D", fig, global_step=epoch)
+            self.logger.add_figure("Topology/TriMAP2D", fig, global_step=epoch)
             plt.close(fig)
 
         if self.save_html and _HAS_PLOTLY:
@@ -872,12 +872,12 @@ class VisualizationPipeline:
         if coords is None:
             return
 
-        if self.writer is not None and _HAS_MPL:
+        if self.logger is not None and _HAS_MPL:
             fig = _scatter_3d_by_level_mpl(
                 coords, val_np,
                 f"Poincaré ball (tangent PCA, epoch {epoch})"
             )
-            self.writer.add_figure("Topology/Poincare3D", fig, global_step=epoch)
+            self.logger.add_figure("Topology/Poincare3D", fig, global_step=epoch)
             plt.close(fig)
 
         if self.save_html and _HAS_PLOTLY:
@@ -904,12 +904,12 @@ class VisualizationPipeline:
         entropy = result["persistence_entropy"]
 
         # TensorBoard scalars
-        if self.writer is not None:
-            self.writer.add_scalar("Topology/betti_0", betti_0, epoch)
-            self.writer.add_scalar("Topology/betti_1", betti_1, epoch)
-            self.writer.add_scalar("Topology/persistence_entropy", entropy, epoch)
+        if self.logger is not None:
+            self.logger.log_scalar("Topology/betti_0", betti_0, epoch)
+            self.logger.log_scalar("Topology/betti_1", betti_1, epoch)
+            self.logger.log_scalar("Topology/persistence_entropy", entropy, epoch)
             # ratio: H1/H0 — should be near 0 for a tree-like structure
-            self.writer.add_scalar(
+            self.logger.log_scalar(
                 "Topology/betti_ratio", betti_1 / (betti_0 + 1e-6), epoch
             )
 
@@ -919,9 +919,9 @@ class VisualizationPipeline:
         )
 
         # TensorBoard persistence diagram figure
-        if self.writer is not None and _HAS_MPL:
+        if self.logger is not None and _HAS_MPL:
             fig = _persistence_figure(dgms)
-            self.writer.add_figure("Topology/PersistenceDiagram", fig, global_step=epoch)
+            self.logger.add_figure("Topology/PersistenceDiagram", fig, global_step=epoch)
             plt.close(fig)
 
         # Plotly HTML
@@ -964,8 +964,8 @@ class VisualizationPipeline:
                 show_tree=True,
                 walks=walks
             )
-            # Add to TensorBoard if writer is present
-            if self.writer is not None:
+            # Add to TensorBoard if logger is present
+            if self.logger is not None:
                 from src.utils.poincare_renderer import render_poincare_disk_mpl
                 fig = render_poincare_disk_mpl(
                     z_np, val_np,
@@ -976,7 +976,7 @@ class VisualizationPipeline:
                     show_tree=True,
                     walks=walks
                 )
-                self.writer.add_figure("Topology/PoincareDiskNative", fig, global_step=epoch)
+                self.logger.add_figure("Topology/PoincareDiskNative", fig, global_step=epoch)
                 plt.close(fig)
 
         # 2. Try to save interactive HTML if Plotly available

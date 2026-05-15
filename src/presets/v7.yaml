@@ -19,12 +19,8 @@
 # Device Configuration
 # =============================================================================
 device:
-  name: "v7_factored"
   cuda_device: 0
   use_amp: false
-  pin_memory: true
-  num_workers: 4
-  empty_cache_freq: 25
 
 # =============================================================================
 # Model Architecture (V7.0 Factored Latent)
@@ -57,12 +53,6 @@ riemannian:
   enabled: true
   optimizer: adam
   stabilize: 10
-
-# =============================================================================
-# Precision Settings
-# =============================================================================
-precision:
-  dtype: float64
 
 # =============================================================================
 # Differential Learning Rates
@@ -193,6 +183,7 @@ loss:
 # Training Configuration
 # =============================================================================
 training:
+  num_workers: 4
   epochs: 1500
   batch_size: 4096  # 2048→4096: ~70 same-class AC pairs/batch; 6GB VRAM gives full headroom
   lr: 8.0e-4
@@ -209,19 +200,9 @@ training:
   print_every: 5
 
 # =============================================================================
-# Data Configuration
-# =============================================================================
-data:
-  use_full_dataset: true
-  n_operations: 19683
-
-# =============================================================================
 # Logging
 # =============================================================================
 logging:
-  tensorboard: true
-  log_dir: runs/v7_aggressive
-  print_every: 5
 
   enhanced_metrics:
     enabled: true
@@ -234,23 +215,6 @@ logging:
 # =============================================================================
 # Checkpoints
 # =============================================================================
-checkpoints:
-  save_dir: runs/checkpoints/v7_aggressive
-  save_best: true
-  best_metric: composite_score
-  checkpoint_name: v7_aggressive
-
-# =============================================================================
-# Success Criteria
-# =============================================================================
-targets:
-  coverage: 1.0
-  hierarchy_B: -0.95   # V7 target: factored latent eliminates radial scatter
-  richness: 0.008
-  r_v9: 0.12
-  distance_correlation: 0.94
-  Q_target: 2.37
-
 # =============================================================================
 # Memory Optimization
 # =============================================================================

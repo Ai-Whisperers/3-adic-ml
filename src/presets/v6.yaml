@@ -22,12 +22,8 @@
 # Device Configuration
 # =============================================================================
 device:
-  name: "v6_hyperbolic"
   cuda_device: 0
   use_amp: false  # Disable AMP for numerical stability near manifold boundary
-  pin_memory: true
-  num_workers: 4
-  empty_cache_freq: 25
 
 # =============================================================================
 # Model Architecture (V6.0 True Hyperbolic)
@@ -67,18 +63,6 @@ riemannian:
 # =============================================================================
 # NOTE: geometry.use_manifold_parameter and geometry.geodesic_steps were removed
 # (dead config, no code reads them). Archived in archive-for-review/config_drift/
-# =============================================================================
-# Precision Settings (V6.0)
-# =============================================================================
-precision:
-  # All geometry and loss computations use float64 for numerical stability
-  # near the Poincaré ball boundary (radius → 1.0)
-  dtype: float64
-  # Modules using float64:
-  # - src/core/ternary.py (3-adic valuations and distances)
-  # - src/losses/*.py (loss computations)
-  # - src/geometry/poincare.py (geoopt operations)
-
 # =============================================================================
 # Differential Learning Rates (Complementary Learning Systems)
 # =============================================================================
@@ -215,6 +199,7 @@ loss:
 # Training Configuration
 # =============================================================================
 training:
+  num_workers: 4
   epochs: 200
   batch_size: 512
   lr: 8.0e-4
@@ -237,19 +222,9 @@ training:
   print_every: 2
 
 # =============================================================================
-# Data Configuration
-# =============================================================================
-data:
-  use_full_dataset: true
-  n_operations: 19683  # 3^9 ternary operations
-
-# =============================================================================
 # Logging
 # =============================================================================
 logging:
-  tensorboard: true
-  log_dir: runs/v6
-  print_every: 2
 
   enhanced_metrics:
     enabled: true
@@ -262,23 +237,6 @@ logging:
 # =============================================================================
 # Checkpoints
 # =============================================================================
-checkpoints:
-  save_dir: runs/checkpoints/v6
-  save_best: true
-  best_metric: composite_score
-  checkpoint_name: v6
-
-# =============================================================================
-# Success Criteria
-# =============================================================================
-targets:
-  coverage: 1.0
-  hierarchy_B: -0.83
-  richness: 0.008
-  r_v9: 0.12
-  distance_correlation: 0.70
-  Q_target: 2.2
-
 # =============================================================================
 # Memory Optimization
 # =============================================================================

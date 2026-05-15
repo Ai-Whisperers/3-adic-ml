@@ -101,8 +101,8 @@ def render_poincare_disk_mpl(
                         pts.append(z_2d[idx_map[idx]])
 
                 if len(pts) > 1:
-                    pts = np.array(pts)
-                    ax.plot(pts[:, 0], pts[:, 1], color='cyan', alpha=0.6, linewidth=1.5, zorder=3, marker='>')
+                    pts_np = np.array(pts)
+                    ax.plot(pts_np[:, 0], pts_np[:, 1], color='cyan', alpha=0.6, linewidth=1.5, zorder=3, marker='>')
 
     # 3. Draw Prefix Territory Shading
     if indices is not None:

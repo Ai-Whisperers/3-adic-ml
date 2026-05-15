@@ -114,6 +114,12 @@ class CombinedLossOutput(TypedDict, total=False):
     angular_coherence_metrics: MetricsDict
     valuation_prior_metrics: MetricsDict
     wlc_metrics: MetricsDict
+    alg_coherence_metrics: MetricsDict
+    alg_addition_metrics: MetricsDict
+    algebraic_coherence: Any
+    algebraic_addition: Any
+    ac_skipped_no_r: int
+    alg_skipped_no_r: int
 
 
 class HierarchyLossBase(ABC, nn.Module):

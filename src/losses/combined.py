@@ -286,6 +286,8 @@ class CombinedLoss(nn.Module):
                 inner_radius=inner_r,
                 outer_radius=outer_r,
                 scale=vp_cfg.get('scale', 3.0),
+                sigma_base=vp_cfg.get('sigma_base', 0.5),
+                sigma_scale=vp_cfg.get('sigma_scale', 0.1),
                 valuation_fn=self._valuation_fn,
             )
             self.valuation_prior_weight = vp_cfg.get('weight', 1.0)
@@ -524,7 +526,7 @@ class CombinedLoss(nn.Module):
             Dict with 'total' loss and individual loss components
         """
         device = z_hyp.device
-        losses = {}
+        losses: CombinedLossOutput = {}
         total = torch.tensor(0.0, device=device, dtype=torch.float64)
 
         # 1. RichHierarchyLoss (if enabled)
@@ -612,11 +614,11 @@ class CombinedLoss(nn.Module):
                 losses['kl'] = kl_contribution
                 total = total + kl_contribution
 
-        # 7. ValuationPriorLoss (valuation-conditioned μ prior)
+        # 7. ValuationPriorLoss (valuation-conditioned μ/σ prior)
         # Requires mu and indices. Uses current curvature when learnable.
         if self.valuation_prior is not None and mu is not None:
             cur_c = curvature if curvature is not None else self.curvature
-            vp_out, vp_metrics = self.valuation_prior(mu, indices, curvature=cur_c)
+            vp_out, vp_metrics = self.valuation_prior(mu, logvar, indices, curvature=cur_c)
             vp_contribution = self.valuation_prior_weight * vp_out
             losses['valuation_prior'] = vp_contribution
             losses['valuation_prior_metrics'] = vp_metrics

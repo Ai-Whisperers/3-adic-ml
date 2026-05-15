@@ -12,7 +12,6 @@
 
 # Device Configuration
 device:
-  name: "v5_12_4_extended_grokking"  # Metadata only
   cuda_device: 0       # CUDA device index (used by train.py)
   use_amp: false       # Automatic mixed precision (used by train.py)
 
@@ -167,18 +166,6 @@ logging:
   enhanced_metrics:
     enabled: true  # Enable batch-level TensorBoard logging
   histogram_every: 10   # Log weight histograms every N epochs
-  embedding_every: 50   # Log embeddings every N epochs
-
-# =============================================================================
-# METADATA (for documentation, not used by train.py)
-# =============================================================================
-
-# Success Criteria (reference targets for evaluation)
-targets:
-  coverage: 1.0
-  hierarchy_B: -0.83
-  Q_target: 2.2
-
 # Version tracking
 version:
   model: "6.0"

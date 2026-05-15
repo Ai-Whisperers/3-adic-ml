@@ -1,10 +1,7 @@
 # quick_eval.yaml - Simplified for immediate evaluation
 device:
-  name: "quick_eval"
   cuda_device: 0
   use_amp: false
-  pin_memory: true
-  num_workers: 4
 
 model:
   name: TernaryVAEV6Controllable
@@ -92,6 +89,7 @@ loss:
     scale: 3.0
 
 training:
+  num_workers: 4
   epochs: 5
   batch_size: 512
   lr: 1.0e-3
@@ -105,13 +103,6 @@ training:
   save_every: 5
   print_every: 1
 
-data:
-  use_full_dataset: true
-  n_operations: 19683
-
 logging:
-  tensorboard: true
-  log_dir: runs/quick_eval
-  print_every: 1
   enhanced_metrics:
     enabled: true

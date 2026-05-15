@@ -18,11 +18,15 @@ from src.utils.visualization import (
 )
 
 
-class DummyWriter:
-    """Minimal TensorBoard-like writer for pipeline tests."""
+class DummyLogger:
+    """Minimal TensorBoard-like logger for pipeline tests."""
 
     def __init__(self) -> None:
         self.flush_calls = 0
+
+    def log_scalar(self, *args, **kwargs) -> None: pass
+    def add_figure(self, *args, **kwargs) -> None: pass
+    def add_embedding(self, *args, **kwargs) -> None: pass
 
     def flush(self) -> None:
         self.flush_calls += 1
@@ -97,9 +101,8 @@ def test_visualization_runtime_config_rejects_invalid_values() -> None:
 def test_visualization_pipeline_validates_tensor_shapes(tmp_path) -> None:
     pipeline = VisualizationPipeline(
         config={"save_html": False, "html_dir": str(tmp_path)},
-        writer=DummyWriter(),
+        logger=DummyLogger(),
     )
-
     with pytest.raises(ValueError, match="same first dimension"):
         pipeline.run(
             epoch=1,
@@ -111,10 +114,10 @@ def test_visualization_pipeline_validates_tensor_shapes(tmp_path) -> None:
 
 def test_visualization_pipeline_runs_expected_steps(monkeypatch, tmp_path) -> None:
     calls: list[str] = []
-    writer = DummyWriter()
+    logger = DummyLogger()
     pipeline = VisualizationPipeline(
         config={"save_html": False, "persist_every": 3, "html_dir": str(tmp_path)},
-        writer=writer,
+        logger=logger,
     )
 
     def fake_distance_matrix(z_np: np.ndarray, c: float = 1.0) -> np.ndarray:
@@ -154,12 +157,12 @@ def test_visualization_pipeline_runs_expected_steps(monkeypatch, tmp_path) -> No
 
     pipeline.run(epoch=1, z_hyp=z_hyp, valuations=valuations, indices=indices)
     assert calls == ["umap", "pacmap", "trimap", "poincare", "persist"]
-    assert writer.flush_calls == 1
+    assert logger.flush_calls == 1
 
     calls.clear()
     pipeline.run(epoch=2, z_hyp=z_hyp, valuations=valuations, indices=indices)
     assert calls == ["umap", "pacmap", "trimap", "poincare"]
-    assert writer.flush_calls == 2
+    assert logger.flush_calls == 2
 
 
 # ---------------------------------------------------------------------------

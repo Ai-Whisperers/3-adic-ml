@@ -28,6 +28,9 @@ jobs:
     - name: Lint with ruff
       run: |
         ruff check .
+    - name: Static type check with mypy
+      run: |
+        mypy src/ --ignore-missing-imports --check-untyped-defs
     - name: Run tests
       run: |
         python -m pytest tests/ -v

@@ -18,7 +18,7 @@ Latent space visualization is handled by VisualizationPipeline.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional, Union
 
 import torch
 
@@ -120,6 +120,104 @@ class TensorBoardLogger:
                 self.writer.add_histogram(f"Weights/{name}", param.data, epoch)
                 if param.grad is not None:
                     self.writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
+
+    def log_scalar(self, tag: str, value: float, step: int) -> None:
+        """Log a scalar metric.
+
+        Args:
+            tag: Tag for the metric (e.g. 'Loss/train')
+            value: Scalar value to log
+            step: Global step or epoch
+        """
+        if self.writer is not None:
+            self.writer.add_scalar(tag, value, step)
+
+    def log_hparams(
+        self,
+        hparam_dict: Mapping[str, Union[str, float, int, bool]],
+        metric_dict: Mapping[str, float],
+        run_name: Optional[str] = None,
+    ) -> None:
+        """Log hyperparameters and associated best metrics.
+
+        Args:
+            hparam_dict: Hyperparameter configuration
+            metric_dict: Best results metrics
+            run_name: Optional custom run name for the hparams entry
+        """
+        if self.writer is not None:
+            self.writer.add_hparams(hparam_dict, metric_dict, run_name=run_name)
+
+    def log_text(self, tag: str, text_string: str, global_step: Optional[int] = None) -> None:
+        """Log a text string.
+
+        Args:
+            tag: Tag for the text
+            text_string: Text to log (supports markdown)
+            global_step: Optional global step
+        """
+        if self.writer is not None:
+            self.writer.add_text(tag, text_string, global_step)
+
+    def add_custom_scalars(self, layout: dict[str, dict[str, list[Any]]]) -> None:
+        """Add custom scalars layout for dashboard organization.
+
+        Args:
+            layout: Layout dictionary defining multi-line charts
+        """
+        if self.writer is not None:
+            self.writer.add_custom_scalars(layout)
+
+    def add_embedding(
+        self,
+        mat: torch.Tensor,
+        metadata: Optional[list[Any]] = None,
+        label_img: Optional[torch.Tensor] = None,
+        global_step: Optional[int] = None,
+        tag: str = "default",
+        metadata_header: Optional[list[str]] = None,
+    ) -> None:
+        """Add high-dimensional embeddings for TensorBoard Projector.
+
+        Args:
+            mat: Embedding matrix (N, D)
+            metadata: List of labels per sample
+            label_img: Images associated with samples
+            global_step: Current step/epoch
+            tag: Name for this embedding
+            metadata_header: Header for the metadata columns
+        """
+        if self.writer is not None:
+            self.writer.add_embedding(
+                mat,
+                metadata=metadata,
+                label_img=label_img,
+                global_step=global_step,
+                tag=tag,
+                metadata_header=metadata_header,
+            )
+
+    def add_figure(
+        self,
+        tag: str,
+        figure: Any,
+        global_step: Optional[int] = None,
+        close: bool = True,
+        walltime: Optional[float] = None,
+    ) -> None:
+        """Add a Matplotlib figure to TensorBoard.
+
+        Args:
+            tag: Name for the figure
+            figure: Matplotlib figure or list of figures
+            global_step: Current step/epoch
+            close: If True, close the figure after logging
+            walltime: Custom timestamp
+        """
+        if self.writer is not None:
+            self.writer.add_figure(
+                tag, figure, global_step=global_step, close=close, walltime=walltime
+            )
 
     def flush(self) -> None:
         """Flush pending TensorBoard events."""

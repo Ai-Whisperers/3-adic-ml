@@ -1129,6 +1129,8 @@ class ValuationPriorLoss(nn.Module):
         inner_radius: float = 0.08,
         outer_radius: float = 0.85,
         scale: float = 3.0,
+        sigma_base: float = 0.5,
+        sigma_scale: float = 0.1,
         max_valuation: int = 9,
         valuation_fn=None,
     ):
@@ -1137,6 +1139,8 @@ class ValuationPriorLoss(nn.Module):
         self.inner_radius = inner_radius
         self.outer_radius = outer_radius
         self.scale = scale
+        self.sigma_base = sigma_base
+        self.sigma_scale = sigma_scale
         self.max_valuation = max_valuation
         self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
         # Precompute Euclidean target radii (fixed by geometry, not by curvature)
@@ -1145,23 +1149,32 @@ class ValuationPriorLoss(nn.Module):
         )
         self.register_buffer('target_r_euclid', target_r_euclid)  # (max_v+1,)
 
+        # Precompute target variances: σ[v] = sigma_base * exp(-v * sigma_scale)
+        # Higher valuation -> tighter clusters near origin
+        import math
+        v_indices = torch.arange(max_valuation + 1, dtype=torch.float64)
+        target_sigmas = sigma_base * torch.exp(-v_indices * sigma_scale)
+        self.register_buffer('target_sigmas', target_sigmas)  # (max_v+1,)
+
     def forward(
         self,
         mu: torch.Tensor,
+        logvar: Optional[torch.Tensor],
         batch_indices: torch.Tensor,
         curvature: Optional[Union[float, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
-        """Compute valuation-conditioned mean prior loss.
+        """Compute valuation-conditioned mean and variance prior loss.
 
         Args:
             mu: Tangent space posterior means, shape (B, d), float64
+            logvar: Tangent space log-variances, shape (B, d), float64 (Optional)
             batch_indices: Ternary operation indices, shape (B,)
             curvature: Current curvature (use model's if learnable). Falls
                        back to curvature_init if None.
 
         Returns:
-            loss: Scalar MSE((||μ||, target_tangent[v]))
-            metrics: Logging dict with mean norms per valuation level
+            loss: Total prior loss (Mean MSE + Variance MSE if logvar provided)
+            metrics: Logging dict with mean norms and sigmas per valuation level
         """
         if curvature is None:
             curvature = self.curvature_init
@@ -1183,12 +1196,27 @@ class ValuationPriorLoss(nn.Module):
 
         # Get valuation per sample using precomputed LUT
         valuations = self._valuation_fn(batch_indices).long().clamp(0, self.max_valuation)
+        
+        # 1. Mean Prior Loss (Radial targets in tangent space)
         target_norms = target_tangent_norms[valuations.cpu()].to(device)  # (B,)
-
-        # ||μ|| per sample
         mu_norms = torch.norm(mu, dim=-1)  # (B,)
+        mean_loss = F.mse_loss(mu_norms, target_norms)
 
-        loss = F.mse_loss(mu_norms, target_norms)
+        # 2. Variance Prior Loss (Optional: Phase 3A completion)
+        # target_sigmas[v] = sigma_base * exp(-v * sigma_scale)
+        var_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
+        avg_sigma = 0.0
+        if logvar is not None:
+            logvar = logvar.to(torch.float64)
+            sigmas = torch.exp(0.5 * logvar)  # (B, d)
+            target_s = self.target_sigmas.to(device)[valuations]  # (B,)
+            # Expand target_s to match sigmas shape: (B, d)
+            target_s_expanded = target_s.unsqueeze(-1).expand_as(sigmas)
+            var_loss = F.mse_loss(sigmas, target_s_expanded)
+            with torch.no_grad():
+                avg_sigma = sigmas.mean().item()
+
+        loss = mean_loss + var_loss
 
         # Per-level gap tensors for Lagrangian dual (remain in computation graph).
         # vp_gap_tensor_v{v} = |mean(||μ||_v) - target_v| for each level present.
@@ -1200,6 +1228,15 @@ class ValuationPriorLoss(nn.Module):
         per_level_gap_tensors: Dict[str, torch.Tensor] = {}
         per_level_gaps: Dict[str, float] = {}
         per_level_norms: Dict[str, float] = {}
+        per_level_sigmas: Dict[str, float] = {}
+
+        # Log sigma metrics if logvar was provided
+        if logvar is not None:
+            sigmas = torch.exp(0.5 * logvar).mean(dim=-1) # Mean sigma per sample (B,)
+            mean_sigmas_all = level_scatter_mean(sigmas, valuations, dim_size=dim_size)
+            for v in present_mask.nonzero(as_tuple=False).squeeze(-1).tolist():
+                per_level_sigmas[f'vp_sigma_v{v}'] = mean_sigmas_all[v].detach().item()
+
         for v in present_mask.nonzero(as_tuple=False).squeeze(-1).tolist():
             per_level_gap_tensors[f'vp_gap_tensor_v{v}'] = gaps_all[v]
             per_level_gaps[f'vp_gap_v{v}'] = gaps_all[v].detach().item()
@@ -1214,8 +1251,10 @@ class ValuationPriorLoss(nn.Module):
             'vp_mean_mu_norm': mean_mu_norm,
             'vp_mean_target': mean_target,
             'vp_gap': abs(mean_mu_norm - mean_target),
+            'vp_mean_sigma': avg_sigma,
             **per_level_norms,
             **per_level_gaps,
+            **per_level_sigmas,
         }
         # Tensor gap values added outside no_grad to keep computation graph alive
         metrics.update(per_level_gap_tensors)

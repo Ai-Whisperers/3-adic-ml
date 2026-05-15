@@ -18,12 +18,8 @@
 # Device Configuration
 # =============================================================================
 device:
-  name: "v8_positional"
   cuda_device: 0
   use_amp: false
-  pin_memory: true
-  num_workers: 4
-  empty_cache_freq: 25
 
 # =============================================================================
 # Model Architecture
@@ -56,12 +52,6 @@ riemannian:
   enabled: true
   optimizer: adam
   stabilize: 10
-
-# =============================================================================
-# Precision Settings
-# =============================================================================
-precision:
-  dtype: float64
 
 # =============================================================================
 # Differential Learning Rates
@@ -178,6 +168,7 @@ loss:
 # Training Configuration
 # =============================================================================
 training:
+  num_workers: 4
   epochs: 1500
   batch_size: 4096
   lr: 8.0e-4
@@ -194,19 +185,9 @@ training:
   print_every: 5
 
 # =============================================================================
-# Data Configuration
-# =============================================================================
-data:
-  use_full_dataset: true
-  n_operations: 19683
-
-# =============================================================================
 # Logging
 # =============================================================================
 logging:
-  tensorboard: true
-  log_dir: runs/v8_positional
-  print_every: 5
 
   enhanced_metrics:
     enabled: true
@@ -219,23 +200,6 @@ logging:
 # =============================================================================
 # Checkpoints
 # =============================================================================
-checkpoints:
-  save_dir: runs/checkpoints/v8_positional
-  save_best: true
-  best_metric: composite_score
-  checkpoint_name: v8_positional
-
-# =============================================================================
-# Success Criteria
-# =============================================================================
-targets:
-  coverage: 1.0
-  hierarchy_B: -0.95
-  richness: 0.008
-  r_v9: 0.12
-  distance_correlation: 0.94
-  Q_target: 2.37
-
 # =============================================================================
 # Memory Optimization
 # =============================================================================

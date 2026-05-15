@@ -269,6 +269,8 @@ class ModelAuditor:
             tangent_scale_init=model_cfg.get("tangent_scale", 0.1),
             factored=model_cfg.get("factored", False),
             radial_dims=model_cfg.get("radial_dims", 4),
+            detach_radial=model_cfg.get("detach_radial", False),
+            positional_encoding=model_cfg.get("positional_encoding", False),
             encoder_a_trainable=encoder_a_trainable,
             encoder_b_trainable=encoder_b_trainable,
             projections_trainable=projections_trainable,
@@ -763,6 +765,7 @@ def _build_checkpoint_payload(
     loss_cfg: Optional[Dict[str, Any]] = None,
     loss_fn: Optional[nn.Module] = None,
     loss_fn_b: Optional[nn.Module] = None,
+    grokking_detector: Any = None,
     extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build a checkpoint payload dict with all resumable state.
@@ -1058,16 +1061,16 @@ def train(
                 lr_lambda=multi_phase_lr_lambda,
             )
             # Use ChainedScheduler to compose cosine restarts with phase scaling
-            scheduler = torch.optim.lr_scheduler.ChainedScheduler(
+            scheduler = torch.optim.lr_scheduler.ChainedScheduler(  # type: ignore[assignment]
                 [base_scheduler, phase_scheduler]
             )
             print(f"  Scheduler: multi_phase_cosine ({len(phases)} phases)")
         else:
             # No phases defined — fall back to plain cosine
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)  # type: ignore[assignment]
             print("  Scheduler: cosine (multi_phase_cosine with no phases)")
     else:
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)  # type: ignore[assignment]
 
     # Mixed precision
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
@@ -1119,15 +1122,15 @@ def train(
                 "Betti Ratio (H1/H0)": ["Multiline", ["Topology/betti_ratio"]],
             },
         }
-        tb_logger.writer.add_custom_scalars(_layout)
+        tb_logger.add_custom_scalars(_layout)
         # Log full config YAML as text for run reproducibility.
-        tb_logger.writer.add_text("Config/yaml", f"```yaml\n{yaml.dump(config, default_flow_style=False)}```", 0)
+        tb_logger.log_text("Config/yaml", f"```yaml\n{yaml.dump(config, default_flow_style=False)}```", 0)
 
     # Phase 2 Visualization Pipeline — hyperbolic geometry projections + topology
     vis_cfg = config.get("visualization", {})
     vis_pipeline = VisualizationPipeline(
         config=vis_cfg,
-        writer=tb_logger.writer,
+        logger=tb_logger,
         log_callback=lambda msg: print(f"  {msg}"),
     )
 
@@ -1456,7 +1459,7 @@ def train(
             if log_batch_metrics and tb_logger.is_available:
                 tb_logger.log_batch(global_step, loss.item())
                 if hasattr(grad_norm, "item"):
-                    tb_logger.writer.add_scalar(
+                    tb_logger.log_scalar(
                         "Batch/GradNorm", grad_norm.item(), global_step
                     )
 
@@ -1482,7 +1485,7 @@ def train(
         # Log learning rate
         current_lr = scheduler.get_last_lr()[0]
         if tb_logger.is_available:
-            tb_logger.writer.add_scalar("LR/scheduled", current_lr, epoch)
+            tb_logger.log_scalar("LR/scheduled", current_lr, epoch)
 
         assert n_batches > 0, f"No training batches at epoch {epoch} — DataLoader may be empty"
         avg_train_loss = train_loss_sum / n_batches
@@ -1649,8 +1652,8 @@ def train(
                     dist_corr_a=hier_metrics_A["dist_corr"],
                     q_value=hier_metrics_A["Q"],
                     grad_norm_projections=controller_grad_norm or 0.0,
-                    hierarchy_a_collapsed=hier_metrics_A.get("hierarchy_collapsed", False),
-                    hierarchy_b_collapsed=hier_metrics_B.get("hierarchy_collapsed", False),
+                    hierarchy_a_collapsed=bool(hier_metrics_A.get("hierarchy_collapsed", False)),
+                    hierarchy_b_collapsed=bool(hier_metrics_B.get("hierarchy_collapsed", False)),
                 )
                 controller_state = lr_controller.update(metrics)
 
@@ -1722,21 +1725,21 @@ def train(
             # NOTE: Uses add_scalar (not add_scalars) to avoid phantom sub-run
             # directories. TensorBoard auto-groups by "/" prefix in the UI.
             if tb_logger.is_available:
-                tb_logger.writer.add_scalar("Accuracy/train", avg_train_acc, epoch)
-                tb_logger.writer.add_scalar("Accuracy/val", avg_val_acc, epoch)
-                tb_logger.writer.add_scalar("Loss/train", avg_train_loss, epoch)
-                tb_logger.writer.add_scalar("Coverage", avg_val_coverage, epoch)
-                tb_logger.writer.add_scalar("Hierarchy/corr_VAE_A", hier_metrics_A["hierarchy"], epoch)
-                tb_logger.writer.add_scalar("Hierarchy/corr_VAE_B", hier_metrics_B["hierarchy"], epoch)
-                tb_logger.writer.add_scalar("Hierarchy/Q_VAE_A", hier_metrics_A["Q"], epoch)
-                tb_logger.writer.add_scalar("Hierarchy/Q_VAE_B", hier_metrics_B["Q"], epoch)
-                tb_logger.writer.add_scalar("Hierarchy/dist_corr", hier_metrics_A["dist_corr"], epoch)
-                tb_logger.writer.add_scalar("Radius/mean_VAE_A", hier_metrics_A["mean_radius"], epoch)
+                tb_logger.log_scalar("Accuracy/train", avg_train_acc, epoch)
+                tb_logger.log_scalar("Accuracy/val", avg_val_acc, epoch)
+                tb_logger.log_scalar("Loss/train", avg_train_loss, epoch)
+                tb_logger.log_scalar("Coverage", avg_val_coverage, epoch)
+                tb_logger.log_scalar("Hierarchy/corr_VAE_A", hier_metrics_A["hierarchy"], epoch)
+                tb_logger.log_scalar("Hierarchy/corr_VAE_B", hier_metrics_B["hierarchy"], epoch)
+                tb_logger.log_scalar("Hierarchy/Q_VAE_A", hier_metrics_A["Q"], epoch)
+                tb_logger.log_scalar("Hierarchy/Q_VAE_B", hier_metrics_B["Q"], epoch)
+                tb_logger.log_scalar("Hierarchy/dist_corr", hier_metrics_A["dist_corr"], epoch)
+                tb_logger.log_scalar("Radius/mean_VAE_A", hier_metrics_A["mean_radius"], epoch)
                 if hier_metrics_A.get("hierarchy_collapsed"):
-                    tb_logger.writer.add_scalar("Diagnostics/hierarchy_collapsed", 1.0, epoch)
+                    tb_logger.log_scalar("Diagnostics/hierarchy_collapsed", 1.0, epoch)
                 if hier_metrics_A.get("dist_corr_collapsed"):
-                    tb_logger.writer.add_scalar("Diagnostics/dist_corr_collapsed", 1.0, epoch)
-                tb_logger.writer.add_scalar("Radius/mean_VAE_B", hier_metrics_B["mean_radius"], epoch)
+                    tb_logger.log_scalar("Diagnostics/dist_corr_collapsed", 1.0, epoch)
+                tb_logger.log_scalar("Radius/mean_VAE_B", hier_metrics_B["mean_radius"], epoch)
 
                 # Per-level mean radii — full dataset (from full-dataset pass done for ARI)
                 # Falls back to val-set norms if ARI pass wasn't triggered.
@@ -1745,7 +1748,7 @@ def train(
                     for _v in range(10):
                         _mask = (_vals_full == _v)
                         if _mask.sum() >= 2:
-                            tb_logger.writer.add_scalar(
+                            tb_logger.log_scalar(
                                 f"Radius/r_v{_v}_A", _r_norms_full[_mask].mean().item(), epoch
                             )
                 else:
@@ -1755,14 +1758,14 @@ def train(
                         for _v in range(10):
                             _mask = (vals_all == _v)
                             if _mask.sum() >= 2:
-                                tb_logger.writer.add_scalar(
+                                tb_logger.log_scalar(
                                     f"Radius/r_v{_v}_A", r_norms[_mask].mean().item(), epoch
                                 )
 
                 # Per-level radius std (from RichHierarchyLoss scatter refactor — batch-averaged)
                 if r_std_per_level_sum and n_batches > 0:
                     for _v, _sum in r_std_per_level_sum.items():
-                        tb_logger.writer.add_scalar(
+                        tb_logger.log_scalar(
                             f"Radius/std_v{_v}_A", _sum / n_batches, epoch
                         )
 
@@ -1774,40 +1777,40 @@ def train(
                         _m1 = ((_vals_full == _v + 1).sum() >= 2)
                         if _m0 and _m1:
                             _g = _r_full_cat[_vals_full == _v].mean() - _r_full_cat[_vals_full == _v + 1].mean()
-                            tb_logger.writer.add_scalar(f"Geometry/level_gap_v{_v}", _g.item(), epoch)
+                            tb_logger.log_scalar(f"Geometry/level_gap_v{_v}", _g.item(), epoch)
 
                 # Angular Q metric (direction geometry)
                 if r_A_all:
-                    tb_logger.writer.add_scalar("Direction/AQ", aq_value, epoch)
-                    tb_logger.writer.add_scalar("Direction/intra_level_sim", intra_sim, epoch)
-                    tb_logger.writer.add_scalar("Direction/inter_level_sim", inter_sim, epoch)
+                    tb_logger.log_scalar("Direction/AQ", aq_value, epoch)
+                    tb_logger.log_scalar("Direction/intra_level_sim", intra_sim, epoch)
+                    tb_logger.log_scalar("Direction/inter_level_sim", inter_sim, epoch)
                     if not np.isnan(ari_prefix3):
-                        tb_logger.writer.add_scalar("Direction/ARI_prefix3", ari_prefix3, epoch)
+                        tb_logger.log_scalar("Direction/ARI_prefix3", ari_prefix3, epoch)
                     for v, ari_v in ari_per_level.items():
-                        tb_logger.writer.add_scalar(f"Direction/ARI_v{v}", ari_v, epoch)
+                        tb_logger.log_scalar(f"Direction/ARI_v{v}", ari_v, epoch)
                     if len(ari_per_level) >= 2:
                         # Composite: weighted by data fraction
                         # v=0:66.7%, v=1:22.2%, v=2:7.4%, v=3:2.5%, v=4+:<1%
                         w = {0: 0.60, 1: 0.20, 2: 0.10, 3: 0.05, 4: 0.02, 5: 0.01, 6: 0.01, 7: 0.005, 8: 0.005}
                         ari_composite = sum(w.get(v, 0) * a for v, a in ari_per_level.items())
-                        tb_logger.writer.add_scalar("Direction/ARI_composite", ari_composite, epoch)
+                        tb_logger.log_scalar("Direction/ARI_composite", ari_composite, epoch)
 
                 # Per-level AC loss (Bug 5 fix: per-level breakdown, epoch-averaged from train batches)
                 if ac_loss_per_level_sum and n_batches > 0:
                     for _v, _sum in ac_loss_per_level_sum.items():
-                        tb_logger.writer.add_scalar(
+                        tb_logger.log_scalar(
                             f"Direction/AC_loss_v{_v}", _sum / n_batches, epoch
                         )
 
                 # Tree coherence (lower = better tree structure)
-                tb_logger.writer.add_scalar("TreeCoherence/VAE_A", hier_metrics_A["tree_coherence"], epoch)
-                tb_logger.writer.add_scalar("TreeCoherence/VAE_B", hier_metrics_B["tree_coherence"], epoch)
+                tb_logger.log_scalar("TreeCoherence/VAE_A", hier_metrics_A["tree_coherence"], epoch)
+                tb_logger.log_scalar("TreeCoherence/VAE_B", hier_metrics_B["tree_coherence"], epoch)
 
                 # Per-level hierarchy (log worst and mean)
-                tb_logger.writer.add_scalar(
+                tb_logger.log_scalar(
                     "LevelHierarchy/worst_level_A", hier_metrics_A["worst_level"], epoch
                 )
-                tb_logger.writer.add_scalar(
+                tb_logger.log_scalar(
                     "LevelHierarchy/mean_A",
                     hier_metrics_A["mean_level_hierarchy"],
                     epoch,
@@ -1817,22 +1820,22 @@ def train(
                 if controller_state is not None:
                     # V6.0: Log LR scales (continuous, 0.0 = frozen)
                     scales = controller_state.get("lr_scales", {})
-                    tb_logger.writer.add_scalar(
+                    tb_logger.log_scalar(
                         "LRController/encoder_a_lr_scale",
                         scales.get("encoder_a", 0),
                         epoch,
                     )
-                    tb_logger.writer.add_scalar(
+                    tb_logger.log_scalar(
                         "LRController/encoder_b_lr_scale",
                         scales.get("encoder_b", 0),
                         epoch,
                     )
-                    tb_logger.writer.add_scalar(
+                    tb_logger.log_scalar(
                         "LRController/projections_lr_scale",
                         scales.get("projections", 0),
                         epoch,
                     )
-                    tb_logger.writer.add_scalar(
+                    tb_logger.log_scalar(
                         "LRController/best_Q", controller_state.get("best_q", 0), epoch
                     )
 
@@ -1843,17 +1846,17 @@ def train(
 
                     # Grad norm
                     if controller_grad_norm is not None:
-                        tb_logger.writer.add_scalar(
+                        tb_logger.log_scalar(
                             "Controller/grad_norm", controller_grad_norm, epoch
                         )
 
                 # Hardware metrics
                 if device.type == "cuda":
                     gpu_mem = hw_monitor.get_gpu_memory_gb()
-                    tb_logger.writer.add_scalar(
+                    tb_logger.log_scalar(
                         "Hardware/GPU_allocated_GB", gpu_mem["allocated"], epoch
                     )
-                    tb_logger.writer.add_scalar(
+                    tb_logger.log_scalar(
                         "Hardware/GPU_peak_GB", gpu_mem["peak"], epoch
                     )
 
@@ -1864,11 +1867,11 @@ def train(
                 if dual_state is not None:
                     dw = dual_state.get_dual_weights()
                     for v, lam in enumerate(dw.get("lambda_margin", [])):
-                        tb_logger.writer.add_scalar(
+                        tb_logger.log_scalar(
                             f"Lagrangian/margin_v{v}", lam, epoch
                         )
                     for v, lam in enumerate(dw.get("lambda_scatter", [])):
-                        tb_logger.writer.add_scalar(
+                        tb_logger.log_scalar(
                             f"Lagrangian/scatter_v{v}", lam, epoch
                         )
                     all_lams = (
@@ -1876,7 +1879,7 @@ def train(
                         + dw.get("lambda_scatter", [])
                         + dw.get("lambda_prior", [])
                     )
-                    tb_logger.writer.add_scalar(
+                    tb_logger.log_scalar(
                         "Lagrangian/n_active",
                         sum(1 for x in all_lams if x > 0),
                         epoch,
@@ -1901,7 +1904,7 @@ def train(
                     if log_gradients:
                         for name, param in model.named_parameters():
                             if param.grad is not None:
-                                tb_logger.writer.add_scalar(
+                                tb_logger.log_scalar(
                                     f"Gradients/{name}",
                                     param.grad.norm(2).item(),
                                     epoch,
@@ -1915,6 +1918,7 @@ def train(
                         epoch, model, optimizer, scheduler,
                         lr_controller=lr_controller, dual_state=dual_state,
                         loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
+                        grokking_detector=grokking_detector,
                         extra={
                             "Q": best_Q,
                             "hierarchy_A": hier_metrics_A["hierarchy"],
@@ -1971,7 +1975,9 @@ def train(
                     epoch, model, optimizer, scheduler,
                     lr_controller=lr_controller, dual_state=dual_state,
                     loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
+                    grokking_detector=grokking_detector,
                 ),
+
                 ckpt_dir / f"epoch_{epoch}.pt",
             )
 
@@ -1985,6 +1991,7 @@ def train(
             epochs, model, optimizer, scheduler,
             lr_controller=lr_controller, dual_state=dual_state,
             loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
+            grokking_detector=grokking_detector,
             extra={
                 "best_Q": best_Q,
                 "best_hierarchy": best_hierarchy,
@@ -2014,7 +2021,7 @@ def train(
             "hparam/best_hierarchy": best_hierarchy,
             "hparam/best_coverage": best_coverage,
         }
-        tb_logger.writer.add_hparams(_hparam_dict, _metric_dict, run_name=".")
+        tb_logger.log_hparams(_hparam_dict, _metric_dict, run_name=".")
 
     # Close TensorBoard logger
     tb_logger.close()

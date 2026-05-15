@@ -39,14 +39,8 @@ class StrictConfigModel(BaseModel):
 class DeviceConfig(StrictConfigModel):
     """Device and hardware configuration."""
 
-    name: str = "cuda"
     cuda_device: int = Field(default=0, ge=0, description="CUDA device index")
     use_amp: bool = Field(default=False, description="Automatic mixed precision")
-    pin_memory: bool = True
-    num_workers: int = Field(default=0, ge=0, le=16, description="DataLoader workers")
-    empty_cache_freq: int = Field(
-        default=0, ge=0, le=1000, description="Epochs between cache clears"
-    )
 
 
 # =============================================================================
@@ -64,6 +58,7 @@ class ModelConfig(StrictConfigModel):
     curvature: float = Field(default=1.0, gt=0, description="Hyperbolic curvature")
     factored: bool = True
     radial_dims: int = Field(default=4, ge=1, le=32, description="Radial dimensions (z_r)")
+    detach_radial: bool = False
     projection_layers: int = Field(default=2, ge=1, le=5, description="Projection network layers")
     projection_dropout: float = Field(default=0.0, ge=0, lt=1.0, description="Dropout rate")
     init_identity: bool = True
@@ -96,12 +91,6 @@ class RiemannianConfig(StrictConfigModel):
     stabilize: int = Field(default=10, ge=0, le=100, description="Stabilization frequency")
 
 
-class PrecisionConfig(StrictConfigModel):
-    """Numerical precision configuration."""
-
-    dtype: Literal["float32", "float64"] = "float64"
-
-
 class OptionCConfig(StrictConfigModel):
     """Differential learning rate scales per component."""
 
@@ -119,9 +108,9 @@ class OptionCConfig(StrictConfigModel):
 class StateNetCoverageConfig(StrictConfigModel):
     """StateNet coverage thresholds."""
 
-    fix_threshold: float = Field(default=0.995, ge=0, le=1.0)
-    train_threshold: float = Field(default=1.0, ge=0, le=1.0)
-    floor: float = Field(default=0.95, ge=0, le=1.0)
+    fix_threshold: float = Field(default=0.35, ge=0, le=1.0)
+    train_threshold: float = Field(default=0.45, ge=0, le=1.0)
+    floor: float = Field(default=0.3, ge=0, le=1.0)
 
 
 class StateNetHierarchyConfig(StrictConfigModel):
@@ -165,7 +154,6 @@ class StateNetInitialStatesConfig(StrictConfigModel):
     encoder_a_trainable: bool = False
     encoder_b_trainable: bool = True
     projections_trainable: bool = True
-    decoders_trainable: bool = True
 
 
 class StateNetConfigSchema(StrictConfigModel):
@@ -354,6 +342,8 @@ class ValuationPriorConfig(StrictConfigModel):
     enabled: bool = False
     weight: float = Field(default=1.0, ge=0)
     scale: float = Field(default=3.0, gt=0)
+    sigma_base: float = Field(default=0.5, gt=0)
+    sigma_scale: float = Field(default=0.1, ge=0)
     inner_radius: float | None = Field(default=None, gt=0, lt=1.0)
     outer_radius: float | None = Field(default=None, gt=0, lt=1.0)
 
@@ -521,13 +511,8 @@ class TrainingConfig(StrictConfigModel):
 
 
 class DataConfig(StrictConfigModel):
-    """Data loading configuration."""
+    """Data loading and preprocessing configuration."""
 
-    train_split: float = Field(default=0.9, ge=0.1, le=1.0)
-    val_split: float = Field(default=0.1, ge=0.0, le=0.5)
-    shuffle: bool = True
-    use_full_dataset: bool = True
-    n_operations: int = Field(default=19683, ge=1)
     valuation_type: Literal["index", "digit_count"] = Field(
         default="index",
         description=(
@@ -535,13 +520,6 @@ class DataConfig(StrictConfigModel):
             "'digit_count': zero_count_valuation (content-based, no tied-rank ceiling)."
         ),
     )
-
-    @model_validator(mode="after")
-    def validate_splits(self) -> DataConfig:
-        if self.train_split + self.val_split > 1.0 + 1e-9:
-            raise ValueError("data.train_split + data.val_split must be <= 1.0")
-        return self
-
 
 class EnhancedMetricsConfig(StrictConfigModel):
     """Enhanced metrics sub-config."""
@@ -557,37 +535,9 @@ class EnhancedMetricsConfig(StrictConfigModel):
 class LoggingConfig(StrictConfigModel):
     """TensorBoard and metrics logging."""
 
-    tensorboard: bool = True
     verbose: bool = False
-    log_dir: str = "runs"
     histogram_every: int = Field(default=10, ge=1)
-    embedding_every: int = Field(default=50, ge=1)
-    print_every: int | None = Field(default=None, ge=1)
     enhanced_metrics: EnhancedMetricsConfig = Field(default_factory=EnhancedMetricsConfig)
-
-
-class CheckpointConfig(StrictConfigModel):
-    """Checkpoint saving configuration."""
-
-    save_dir: str = "models/checkpoints"
-    save_best: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("save_best", "save_best_only"),
-    )
-    best_metric: str = "composite_score"
-    checkpoint_name: str | None = None
-    save_freq: int = Field(default=50, ge=1)
-
-
-class TargetsConfig(StrictConfigModel):
-    """Reference targets for evaluation."""
-
-    coverage: float | None = Field(default=None, ge=0, le=1.0)
-    hierarchy_B: float | None = Field(default=None, ge=-1.0, le=1.0)
-    richness: float | None = Field(default=None, ge=0)
-    r_v9: float | None = Field(default=None, ge=0)
-    distance_correlation: float | None = Field(default=None, ge=-1.0, le=1.0)
-    Q_target: float | None = None
 
 
 class MemoryConfig(StrictConfigModel):
@@ -645,15 +595,12 @@ class TrainingConfigSchema(StrictConfigModel):
     device: DeviceConfig = Field(default_factory=DeviceConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
     riemannian: RiemannianConfig = Field(default_factory=RiemannianConfig)
-    precision: PrecisionConfig = Field(default_factory=PrecisionConfig)
     option_c: OptionCConfig = Field(default_factory=OptionCConfig)
     statenet: StateNetConfigSchema = Field(default_factory=StateNetConfigSchema)
     loss: LossConfig = Field(default_factory=LossConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     data: DataConfig = Field(default_factory=DataConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    checkpoints: CheckpointConfig = Field(default_factory=CheckpointConfig)
-    targets: TargetsConfig | None = None
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     visualization: VisualizationConfig = Field(default_factory=VisualizationConfig)
     anchor_checkpoint: AnchorCheckpointConfig | None = None

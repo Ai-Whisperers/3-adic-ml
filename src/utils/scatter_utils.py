@@ -51,7 +51,7 @@ def level_scatter_std(  # noqa: used for metrics only — NOT for differentiable
     return (variance.clamp(min=0.0) + 1e-12).sqrt()
 
 
-def level_has_data(index: torch.LongTensor, dim_size: int = 10) -> torch.BoolTensor:
+def level_has_data(index: torch.LongTensor, dim_size: int = 10) -> torch.Tensor:
     """(dim_size,) bool: which levels have at least 1 sample."""
     counts = torch.zeros(dim_size, dtype=torch.long, device=index.device)
     counts.scatter_add_(0, index, torch.ones_like(index))

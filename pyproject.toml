@@ -29,6 +29,8 @@ dependencies = [
     "scipy>=1.10.0",
     "geoopt>=0.5.0",
     "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "scikit-learn>=1.3.0",
     "tensorboard>=2.13.0",
     "tqdm>=4.65.0",
     "psutil>=5.9.0",
@@ -57,7 +59,7 @@ where = ["src"]
 "" = "src"
 
 [tool.pytest.ini_options]
-addopts = "--ignore-glob='*venv*' --ignore-glob='*local*' --ignore-glob='*archive*'"
+addopts = "--ignore-glob='*venv*' --ignore-glob='*local*' --ignore-glob='*archive*' --cov=src --cov-report=term-missing --cov-report=html"
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
@@ -65,6 +67,7 @@ testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: marks tests that require GPU",
+    "integration: marks tests as integration tests",
 ]
 
 # =============================================================================
@@ -132,8 +135,8 @@ explicit_package_bases = true        # avoids "found twice" errors on src/
 module = "src.train"
 disallow_untyped_defs = false
 warn_return_any = false
-# tb_logger.is_available guards all writer; scheduler/tqdm unions are runtime-safe
-ignore_errors = true
+# scheduler/tqdm unions are runtime-safe
+# ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "src.losses.padic_geodesic"

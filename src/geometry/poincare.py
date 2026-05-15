@@ -65,6 +65,7 @@ def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str
     # to avoid a memory leak. Keying by c.item() creates a new manifold
     # instance every batch as the value drifts, leaking memory and
     # breaking the gradient flow.
+    c_clamped: Union[torch.Tensor, float]
     if isinstance(c, torch.Tensor):
         c_clamped = c.clamp(min=1e-6)
         # Use object ID for cache key (stable for the lifetime of the parameter)

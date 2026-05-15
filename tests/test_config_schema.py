@@ -113,18 +113,6 @@ def test_validate_rejects_radial_dims_ge_latent_dim_when_factored() -> None:
 
 
 # ---------------------------------------------------------------------------
-# DataConfig split validation
-# ---------------------------------------------------------------------------
-
-def test_validate_rejects_splits_exceeding_1() -> None:
-    config = _load_preset("v7_large.yaml")
-    config["data"]["train_split"] = 0.95
-    config["data"]["val_split"] = 0.10  # 0.95 + 0.10 > 1.0
-    with pytest.raises(ValueError, match="train_split.*val_split.*must be"):
-        validate_config(config)
-
-
-# ---------------------------------------------------------------------------
 # TrainingSchedulerConfig phase validation
 # ---------------------------------------------------------------------------
 

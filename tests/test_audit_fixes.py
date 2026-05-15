@@ -148,8 +148,9 @@ class TestLRScaleNameMismatch:
             update_optimizer_lr_scales(opt, base_lr=1e-3, lr_scales={"encoder_b": 0.1})
         warns = [w for w in caught if issubclass(w.category, UserWarning)
                  and "update_optimizer_lr_scales" in str(w.message)]
-        assert len(warns) == 1
-        assert "encoder_b" in str(warns[0].message)
+        assert len(warns) == 2
+        assert "matched no optimizer param group" in str(warns[0].message)
+        assert "have no corresponding scale" in str(warns[1].message)
 
     def test_unmatched_key_leaves_lr_unchanged(self) -> None:
         import sys

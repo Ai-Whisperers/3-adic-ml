@@ -175,26 +175,21 @@ statenet:
     projections_trainable: true   # Start trainable (fast adapter)
 
   coverage:
-    fix_threshold: 0.995          # Freeze encoder_A when coverage drops below
-    train_threshold: 1.0          # Unfreeze encoder_A when above (+ stall)
-    floor: 0.95                   # Minimum threshold (annealing limit)
+    fix_threshold: 0.35           # Freeze encoder_A when coverage drops below
+    train_threshold: 0.45         # Unfreeze encoder_A when above (+ stall)
+    floor: 0.3                    # Minimum threshold (annealing limit)
 
   hierarchy:
     plateau_threshold: 0.0005     # Improvement below this = plateau
     plateau_patience: 10          # Epochs before freezing encoder_B
-    patience_ceiling: 25          # Max patience (annealing)
+    patience_ceiling: 25          # Max patience
     stall_patience: 5             # For encoder_A stall detection
 
   controller:
     grad_threshold: 0.005         # Freeze projections when grad norm below
     grad_patience: 5              # Epochs of low grad before freeze
-    patience_ceiling: 20          # Max patience (annealing)
+    patience_ceiling: 20          # Max patience
     spike_multiplier: 2.0         # Unfreeze when grad > avg * this
-
-  annealing:
-    enabled: true
-    step: 0.002                   # Threshold adjustment step
-    q_decrease_threshold: -0.05   # Q drop triggers tightening
 
   timing:
     warmup_epochs: 10             # Skip decisions during warmup

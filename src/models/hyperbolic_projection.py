@@ -21,7 +21,7 @@ Reference:
   Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
 """
 
-from typing import Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import geoopt
 import torch
@@ -46,6 +46,9 @@ class HyperbolicProjection(nn.Module):
     Key insight: ||expmap0(v)|| increases with ||v||, so learning the
     right tangent magnitudes achieves the right radial positions.
     """
+
+    tangent_net: nn.Sequential
+    linear_r: Optional[nn.Linear]
 
     def __init__(
         self,
@@ -145,7 +148,7 @@ class HyperbolicProjection(nn.Module):
             nn.init.normal_(self.linear_r.weight, std=0.1)
             nn.init.zeros_(self.linear_r.bias)
         else:
-            self.linear_r = None  # type: ignore[assignment]
+            self.linear_r = None
 
         # Tangent scale: in non-factored mode scales encoder outputs before expmap0.
         # In factored mode scales z_θ before direction residual network.
@@ -386,7 +389,7 @@ class DualHyperbolicProjection(nn.Module):
             z_B_hyp = self.proj_B(z_B, as_manifold=as_manifold)
             return z_A_hyp, z_B_hyp, None, None
 
-    def get_curvature(self) -> float:
+    def get_curvature(self) -> Union[torch.Tensor, float]:
         """Get current curvature value."""
         return self.proj_A.get_curvature()
 

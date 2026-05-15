@@ -276,8 +276,9 @@ class TernaryVAEV6(nn.Module):
         tangent_scale_init: float = 0.1,
         factored: bool = False,
         radial_dims: int = 4,
+        detach_radial: bool = False,
         positional_encoding: bool = False,
-    ):
+        ):
         super().__init__()
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
@@ -286,6 +287,8 @@ class TernaryVAEV6(nn.Module):
         self.encoder_type = encoder_type
         self.decoder_type = decoder_type
         self.factored = factored
+        self.radial_dims = radial_dims
+        self.detach_radial = detach_radial
         self.positional_encoding = positional_encoding
 
         # Positional significance weights: pos_weights[k] = 1/3^k.
@@ -394,14 +397,30 @@ class TernaryVAEV6(nn.Module):
             z_A_tangent, z_B_tangent, as_manifold=False
         )
 
+        # Decoder receives tangent vectors. If detach_radial is enabled,
+        # we detach the radial part (z_r) so reconstruction gradients cannot
+        # influence hierarchy-specific dimensions.
+        if self.factored and self.detach_radial:
+            z_A_dec = torch.cat([
+                z_A_tangent[:, :self.radial_dims].detach(),
+                z_A_tangent[:, self.radial_dims:]
+            ], dim=-1)
+            z_B_dec = torch.cat([
+                z_B_tangent[:, :self.radial_dims].detach(),
+                z_B_tangent[:, self.radial_dims:]
+            ], dim=-1)
+        else:
+            z_A_dec = z_A_tangent
+            z_B_dec = z_B_tangent
+
         # Decoder receives z_tangent directly (not logmap0(z_hyp)).
         # logmap0(expmap0(v)) = v, so there is no information difference, but
         # feeding logmap0(z_hyp) coupled the decoder to tangent_scale, causing
         # reconstruction loss to collapse tangent_scale toward 0 and prevent
         # points from reaching target Poincaré radii.
-        logits_A = self.decoder_A(z_A_tangent)
+        logits_A = self.decoder_A(z_A_dec)
         if decode_b:
-            logits_B = self.decoder_B(z_B_tangent)
+            logits_B = self.decoder_B(z_B_dec)
         else:
             logits_B = None  # decoder_B skipped; coverage must be disabled in caller
 

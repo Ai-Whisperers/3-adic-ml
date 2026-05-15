@@ -20,12 +20,8 @@
 # Device Configuration
 # =============================================================================
 device:
-  name: "v9_digit_count"
   cuda_device: 0
   use_amp: false
-  pin_memory: true
-  num_workers: 4
-  empty_cache_freq: 25
 
 # =============================================================================
 # Model Architecture (identical to v7_large)
@@ -58,12 +54,6 @@ riemannian:
   enabled: true
   optimizer: adam
   stabilize: 10
-
-# =============================================================================
-# Precision Settings
-# =============================================================================
-precision:
-  dtype: float64
 
 # =============================================================================
 # Differential Learning Rates
@@ -180,6 +170,7 @@ loss:
 # Training Configuration
 # =============================================================================
 training:
+  num_workers: 4
   epochs: 1500
   batch_size: 4096
   lr: 8.0e-4
@@ -199,17 +190,12 @@ training:
 # Data Configuration — KEY CHANGE
 # =============================================================================
 data:
-  use_full_dataset: true
-  n_operations: 19683
   valuation_type: digit_count   # Option B: content-based hierarchy
 
 # =============================================================================
 # Logging
 # =============================================================================
 logging:
-  tensorboard: true
-  log_dir: runs/v9_digit_count
-  print_every: 5
 
   enhanced_metrics:
     enabled: true
@@ -222,23 +208,6 @@ logging:
 # =============================================================================
 # Checkpoints
 # =============================================================================
-checkpoints:
-  save_dir: runs/checkpoints/v9_digit_count
-  save_best: true
-  best_metric: composite_score
-  checkpoint_name: v9_digit_count
-
-# =============================================================================
-# Success Criteria (Q ceiling unknown — baseline to beat is 2.163)
-# =============================================================================
-targets:
-  coverage: 1.0
-  hierarchy_B: -0.95
-  richness: 0.008
-  r_v9: 0.12
-  distance_correlation: 0.94
-  Q_target: 2.50   # Aspirational — no structural ceiling for digit_count
-
 # =============================================================================
 # Memory Optimization
 # =============================================================================

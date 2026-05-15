@@ -353,8 +353,8 @@ class MetricBasedLR(LRController):
             }
 
         cov_scale, _ = self._compute_coverage_gate(metrics)
-        hier_scale, _ = self._compute_hierarchy_gate(metrics)
-        proj_scale, _ = self._compute_projections_gate(metrics)
+        hier_scale, _ = self._compute_hierarchy_gate(metrics, delta=0)
+        proj_scale, _ = self._compute_projections_gate(metrics, delta=0)
 
         return {
             'encoder_a': cov_scale,

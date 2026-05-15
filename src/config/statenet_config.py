@@ -107,12 +107,12 @@ class StateNetConfig:
         statenet:
           enabled: true
           coverage:
-            fix_threshold: 0.995
-            train_threshold: 1.0
+            fix_threshold: 0.35
+            train_threshold: 0.45
           hierarchy:
             plateau_patience: 10
           timing:
-            warmup_epochs: 15
+            warmup_epochs: 10
     """
     # Enable/disable training controller
     enabled: bool = True
