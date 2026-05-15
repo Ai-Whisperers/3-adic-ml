@@ -25,7 +25,7 @@ class TestHierarchyMetricsCollapsedFlags:
     def test_collapsed_flag_false_when_radii_vary(self) -> None:
         import torch
 
-        from src.train import compute_hierarchy_metrics
+        from src.training.metrics import compute_hierarchy_metrics
         z = torch.randn(200, 8, dtype=torch.float64) * 0.3
         idx = torch.arange(200)
         metrics = compute_hierarchy_metrics(z, idx, curvature=1.0)
@@ -35,7 +35,7 @@ class TestHierarchyMetricsCollapsedFlags:
 
     def test_collapsed_flag_present_in_early_exit(self) -> None:
         """When n < 2, early-exit path must also include collapsed flags."""
-        from src.train import compute_hierarchy_metrics
+        from src.training.metrics import compute_hierarchy_metrics
         z = torch.randn(1, 8, dtype=torch.float64) * 0.3
         idx = torch.tensor([0])
         metrics = compute_hierarchy_metrics(z, idx, curvature=1.0)
@@ -157,7 +157,7 @@ class TestGeodesicCorrcoefGuard:
     """F-08: corrcoef returns NaN (not 0) when only 1 pair is available."""
 
     def test_corrcoef_nan_not_zero_for_single_pair(self) -> None:
-        from src.losses.padic_geodesic import PAdicGeodesicLoss
+        from src.losses.geodesic import PAdicGeodesicLoss
         loss_fn = PAdicGeodesicLoss(n_pairs=1)
 
         # Small batch; loss should not crash and metrics dict should be returned
@@ -169,7 +169,7 @@ class TestGeodesicCorrcoefGuard:
         assert math.isnan(metrics["distance_correlation"])
 
     def test_corrcoef_with_sufficient_pairs_is_numeric(self) -> None:
-        from src.losses.padic_geodesic import PAdicGeodesicLoss
+        from src.losses.geodesic import PAdicGeodesicLoss
         loss_fn = PAdicGeodesicLoss(n_pairs=200)
         z = torch.randn(100, 8, dtype=torch.float64) * 0.3
         idx = torch.arange(100)

@@ -39,20 +39,23 @@ import torch.nn.functional as F
 
 from src.core.ternary import get_valuation_fn
 
-from .base import CombinedLossOutput
+from src.core.contracts import CombinedLossOutput, MetricsDict
+from .base import HierarchyLossBase, RichHierarchyLossBase
 from .hyperbolic_kl import HyperbolicKLDivergence
-from .padic_geodesic import (
+from .geodesic import PAdicGeodesicLoss
+from .hierarchy import (
+    MonotonicRadialLoss,
+    RadialHierarchyLoss,
+    RichHierarchyLoss,
+    WithinLevelContrastiveLoss,
+)
+from .prior import ValuationPriorLoss
+from .algebraic import (
     AlgebraicAdditionLoss,
     AlgebraicCoherenceLoss,
     AngularCoherenceLoss,
-    GlobalRankLoss,
-    MonotonicRadialLoss,
-    PAdicGeodesicLoss,
-    RadialHierarchyLoss,
-    RichHierarchyLoss,
-    ValuationPriorLoss,
-    WithinLevelContrastiveLoss,
 )
+from .rank import GlobalRankLoss
 from .radius_defaults import (
     auto_share_radius_config,
     compare_radius_configs,

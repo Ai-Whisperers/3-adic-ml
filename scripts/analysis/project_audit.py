@@ -45,7 +45,11 @@ from src.core import TERNARY
 from src.geometry.poincare import poincare_distance
 from src.models.vae import TernaryVAEV6Controllable
 from src.symbolic import build_symbolic_subsystem
-from src.train import compute_accuracy, compute_coverage, compute_hierarchy_metrics
+from src.training.metrics import (
+    compute_accuracy,
+    compute_coverage,
+    compute_hierarchy_metrics,
+)
 from src.utils.checkpoint import load_checkpoint_compat
 
 DEFAULT_RUN = PROJECT_ROOT / "runs" / "v7_large_20260324_013725"

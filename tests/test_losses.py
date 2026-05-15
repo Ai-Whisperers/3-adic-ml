@@ -20,14 +20,14 @@ import pytest
 import torch
 
 from src.geometry import hyperbolic_radius
-from src.losses.padic_geodesic import (
+from src.losses import (
     GlobalRankLoss,
     MonotonicRadialLoss,
     PAdicGeodesicLoss,
     RadialHierarchyLoss,
     RichHierarchyLoss,
-    _exponential_target_radii,
 )
+from src.losses.utils import _exponential_target_radii
 
 # =============================================================================
 # Fixtures
@@ -618,7 +618,7 @@ class TestTargetRadiusMonotonicity:
         loss_fn = RichHierarchyLoss(inner_radius=0.1, outer_radius=0.85)
 
         # Check buffer values (now in hyperbolic distance units)
-        from src.losses.padic_geodesic import _euclidean_to_hyperbolic_radius
+        from src.losses.utils import _euclidean_to_hyperbolic_radius
         expected = _euclidean_to_hyperbolic_radius(
             _exponential_target_radii(
                 max_valuation=9,
@@ -737,7 +737,7 @@ class TestMetricBoundsGlobalRank:
         loss_fn = GlobalRankLoss()
         _, metrics = loss_fn(z_hyp, indices)
 
-        assert metrics["n_violations"] >= 0
+        assert metrics["rank_violations"] >= 0
 
     def test_n_pairs_positive_when_data(self, sample_batch):
         """Verify n_pairs > 0 with sufficient data."""

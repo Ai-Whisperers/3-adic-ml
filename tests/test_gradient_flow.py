@@ -48,6 +48,8 @@ def loss_fn():
             'enabled': True,
             'weight': 5.0,
             'margin_weight': 0.5,
+            'inner_radius': None, # Let rich_hierarchy be the source of truth
+            'outer_radius': None,
         },
         'geodesic': {
             'enabled': True,
@@ -63,8 +65,8 @@ def loss_fn():
         'monotonic': {
             'enabled': True,
             'weight': 1.0,
-            'inner_radius': 0.08,
-            'outer_radius': 0.70,
+            'inner_radius': None, # Let rich_hierarchy be the source of truth
+            'outer_radius': None,
         },
         'hyperbolic_kl': {
             'enabled': True,

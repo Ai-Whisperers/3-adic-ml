@@ -61,6 +61,8 @@ class RadiusConfig:
         Returns:
             Tuple of (is_valid, error_message)
         """
+        if self.inner_radius is None or self.outer_radius is None:
+            return False, "Radius values cannot be None during validation"
         if self.inner_radius <= 0:
             return False, f"inner_radius must be positive, got {self.inner_radius}"
         if self.outer_radius <= 0:
@@ -98,7 +100,7 @@ def auto_share_radius_config(
     # Collect all radius configs from enabled blocks
     radius_sources = {}
     for block_name, block_cfg in loss_configs.items():
-        if "inner_radius" in block_cfg or "outer_radius" in block_cfg:
+        if block_cfg.get("inner_radius") is not None or block_cfg.get("outer_radius") is not None:
             rc = RadiusConfig.from_dict(block_cfg)
             valid, msg = rc.validate()
             if not valid:

@@ -236,6 +236,9 @@ def _build_decoder(
 # =============================================================================
 
 
+from src.core.contracts import VAEOutput
+
+
 class TernaryVAEV6(nn.Module):
     """Dual Ternary VAE with true hyperbolic geometry.
 
@@ -364,9 +367,7 @@ class TernaryVAEV6(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(
-        self, x: torch.Tensor, decode_b: bool = True
-    ) -> Dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor, decode_b: bool = True) -> VAEOutput:
         """Forward pass through both VAEs.
 
         Args:

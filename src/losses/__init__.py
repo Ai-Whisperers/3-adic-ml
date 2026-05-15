@@ -2,16 +2,20 @@ from .base import CombinedLossOutput, HierarchyLossBase, MetricsDict, RichHierar
 from .combined import CombinedLoss
 from .hyperbolic_kl import HyperbolicKLDivergence
 from .lagrangian import LagrangianDualState
-from .padic_geodesic import (
-    AngularCoherenceLoss,
-    GlobalRankLoss,
+from .geodesic import PAdicGeodesicLoss
+from .hierarchy import (
     MonotonicRadialLoss,
-    PAdicGeodesicLoss,
     RadialHierarchyLoss,
     RichHierarchyLoss,
-    ValuationPriorLoss,
     WithinLevelContrastiveLoss,
 )
+from .prior import ValuationPriorLoss
+from .algebraic import (
+    AlgebraicAdditionLoss,
+    AlgebraicCoherenceLoss,
+    AngularCoherenceLoss,
+)
+from .rank import GlobalRankLoss
 
 __all__ = [
     # Abstract bases and type aliases
@@ -19,8 +23,10 @@ __all__ = [
     "RichHierarchyLossBase",
     "MetricsDict",
     "CombinedLossOutput",
-    # P-adic geodesic losses
+    # Loss implementations
     "AngularCoherenceLoss",
+    "AlgebraicAdditionLoss",
+    "AlgebraicCoherenceLoss",
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",
     "GlobalRankLoss",
