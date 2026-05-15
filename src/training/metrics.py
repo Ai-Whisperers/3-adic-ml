@@ -6,12 +6,11 @@
 """Metrics computation for p-adic VAE training."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from scipy.stats import spearmanr
 import torch
-import torch.nn as nn
 
 from ..core import TERNARY
 from ..geometry import hyperbolic_radius, poincare_distance
@@ -112,7 +111,7 @@ def compute_tree_coherence(
         child_positions = []
         parent_positions = []
 
-        for pos, (idx_val_t, p_idx_val_t) in enumerate(zip(indices, parent_indices, strict=False)):
+        for pos, (_idx_val_t, p_idx_val_t) in enumerate(zip(indices, parent_indices, strict=False)):
             parent_val = p_idx_val_t.item()
             if parent_val < 0:  # Skip root
                 continue
@@ -275,17 +274,17 @@ def compute_hierarchy_metrics(
         mean_level_hier = np.mean(list(valid_levels.values())) if valid_levels else 0.0
 
         return {
-            "hierarchy": hierarchy,
-            "dist_corr": dist_corr,
-            "Q": Q,
+            "hierarchy": float(hierarchy),
+            "dist_corr": float(dist_corr),
+            "Q": float(Q),
             "mean_radius": float(radii.mean()),
             "std_radius": float(radii.std()),
-            "tree_coherence": tree_coh,
+            "tree_coherence": float(tree_coh),
             "level_hierarchy": level_hier,
-            "worst_level": worst_level,
-            "mean_level_hierarchy": mean_level_hier,
-            "hierarchy_collapsed": hierarchy_collapsed,
-            "dist_corr_collapsed": dist_corr_collapsed,
+            "worst_level": int(worst_level),
+            "mean_level_hierarchy": float(mean_level_hier),
+            "hierarchy_collapsed": bool(hierarchy_collapsed),
+            "dist_corr_collapsed": bool(dist_corr_collapsed),
         }
 
 
@@ -296,6 +295,9 @@ class GrokkingEvent:
     plateau_duration: int
     val_lift: float
     gap_collapse: float
+
+
+from ..core.contracts import GrokkingState
 
 
 class GrokkingDetector:
@@ -315,7 +317,7 @@ class GrokkingDetector:
         self.val_lift_min = val_lift_min
         self.gap_collapse_min = gap_collapse_min
 
-        self.history = {"train_loss": [], "train_acc": [], "val_acc": []}
+        self.history: Dict[str, List[float]] = {"train_loss": [], "train_acc": [], "val_acc": []}
         self.plateau_start: Optional[int] = None
         self.events: List[GrokkingEvent] = []
 
@@ -331,7 +333,7 @@ class GrokkingDetector:
         train_loss: float,
         train_acc: float,
         val_acc: float,
-    ) -> Dict[str, Any]:
+    ) -> GrokkingState:
         """Update detector with new epoch metrics.
 
         Returns dict with:
@@ -343,7 +345,7 @@ class GrokkingDetector:
         self.history["train_acc"].append(train_acc)
         self.history["val_acc"].append(val_acc)
 
-        out = {"plateau": False, "potential": False, "event": False, "val_lift": 0.0}
+        out: GrokkingState = {"plateau": False, "potential": False, "event": False, "val_lift": 0.0}
 
         if len(self.history["train_loss"]) < self.window:
             return out
@@ -396,7 +398,7 @@ class GrokkingDetector:
                     )
                     self.events.append(event)
                     out["event"] = True
-                    out["val_lift"] = val_lift
+                    out["val_lift"] = float(val_lift)
                     self.plateau_start = None  # Reset for next potential event
 
         return out

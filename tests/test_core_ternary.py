@@ -11,7 +11,6 @@ Failures here indicate fundamental bugs that cascade through the entire system.
 import pytest
 import torch
 
-
 from src.core import TERNARY
 
 

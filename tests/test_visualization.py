@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 import torch
@@ -16,9 +18,6 @@ from src.utils.visualization import (
     _stratified_subsample,
     compute_hyperbolic_distance_matrix,
 )
-
-
-from unittest.mock import MagicMock
 
 
 def test_stratified_subsample_caps_per_level_and_is_reproducible() -> None:

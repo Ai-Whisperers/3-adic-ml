@@ -7,11 +7,10 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import torch
 import torch.nn as nn
-import yaml
 
 from ..utils import TensorBoardLogger
 
@@ -27,7 +26,7 @@ def _build_checkpoint_payload(
     loss_fn: Optional[nn.Module] = None,
     loss_fn_b: Optional[nn.Module] = None,
     grokking_detector: Any = None,
-    extra: Optional[Dict[str, Any]] = None,
+    extra: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build a checkpoint payload dict with all resumable state.
 

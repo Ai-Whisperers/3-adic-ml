@@ -16,9 +16,8 @@ Modularized version (V6.2):
 
 import argparse
 import atexit
-import os
-import sys
 from pathlib import Path
+import sys
 
 import torch
 import yaml
@@ -28,17 +27,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config.schema import normalize_config
-from src.training.bootstrap import DataAuditor, ModelAuditor, set_determinism, get_timestamp
+from src.training.bootstrap import DataAuditor, ModelAuditor, get_timestamp, set_determinism
+from src.training.engine import train_model
+from src.training.reporting import ReportingManager
 from src.training.setup import (
+    setup_controller,
     setup_dataloaders,
+    setup_lagrangian,
     setup_losses,
     setup_optimizer,
     setup_scheduler,
-    setup_controller,
-    setup_lagrangian,
 )
-from src.training.engine import train_model
-from src.training.reporting import ReportingManager, _build_checkpoint_payload
 from src.utils import TensorBoardLogger
 
 
@@ -119,14 +118,14 @@ def main():
     # 7. Component Setup
     train_loader, val_loader = setup_dataloaders(train_ds, val_ds, config, seed)
     loss_fn, loss_fn_b = setup_losses(config, device)
-    
+
     # Extract loss parameters if learnable weights enabled
     loss_cfg = config.get("loss", {})
     loss_params = (
         list(loss_fn.parameters()) + list(loss_fn_b.parameters())
         if loss_cfg.get("learnable_weights", False) else []
     )
-    
+
     optimizer = setup_optimizer(model, config, loss_params)
     scheduler = setup_scheduler(optimizer, config)
     lr_controller = setup_controller(config)
@@ -139,11 +138,11 @@ def main():
         log_callback=lambda msg: print(f"  {msg}") if config.get("logging", {}).get("verbose", False) else None
     )
     atexit.register(tb_logger.close)
-    
+
     reporting = ReportingManager(log_dir, config, tb_logger)
 
     # 9. Train Model
-    print(f"\n[OK] Starting training engine...")
+    print("\n[OK] Starting training engine...")
     results = train_model(
         config=config,
         device=device,

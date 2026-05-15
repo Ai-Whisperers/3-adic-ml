@@ -5,7 +5,7 @@
 
 """Radial and hierarchical consistency losses for p-adic VAE."""
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple
 
 import torch
 import torch.nn as nn
@@ -13,9 +13,9 @@ import torch.nn.functional as F
 
 from ..core import TERNARY
 from ..geometry import hyperbolic_radius, poincare_distance
-from ..utils.scatter_utils import level_has_data, level_scatter_mean, level_scatter_std
+from ..utils.scatter_utils import level_has_data, level_scatter_mean
 from .base import HierarchyLossBase, MetricsDict, RichHierarchyLossBase
-from .utils import _exponential_target_radii, _euclidean_to_hyperbolic_radius
+from .utils import _euclidean_to_hyperbolic_radius, _exponential_target_radii
 
 
 class RadialHierarchyLoss(HierarchyLossBase):
@@ -291,14 +291,14 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         dim_size = 10
         present_mask = level_has_data(valuations, dim_size=dim_size)
         means_all = level_scatter_mean(radii, valuations, dim_size=dim_size)
-        
+
         deviations = radii - means_all[valuations]
         variance_all = torch.zeros(dim_size, dtype=radii.dtype, device=device)
         counts_all = torch.zeros(dim_size, dtype=radii.dtype, device=device)
         variance_all.scatter_add_(0, valuations, deviations ** 2)
         counts_all.scatter_add_(0, valuations, torch.ones_like(radii))
         variance_all = variance_all / counts_all.clamp(min=1.0)
-        
+
         with torch.no_grad():
             stds_all = variance_all.clamp(min=0.0).sqrt()
 
@@ -307,7 +307,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         if present_mask.any():
             hierarchy_loss = F.mse_loss(means_all[present_mask], target_radii_adj[present_mask])
             variance_loss = variance_all[present_mask].mean()
-        
+
         total_hier_loss = hierarchy_loss + self.variance_weight * variance_loss
 
         coverage_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
@@ -327,7 +327,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
             margin = torch.maximum(min_m, target_radii_adj[v] - target_radii_adj[v_next])
             separation_loss = separation_loss + F.relu(means_all[v_next] - means_all[v] + margin)
 
-        metrics = {"hierarchy": hierarchy_loss.item(), "coverage": coverage_loss.item(), 
+        metrics = {"hierarchy": hierarchy_loss.item(), "coverage": coverage_loss.item(),
                    "separation": separation_loss.item(), "variance": variance_loss.item()}
         with torch.no_grad():
             for v in range(dim_size):
@@ -373,7 +373,7 @@ class WithinLevelContrastiveLoss(nn.Module):
                 import math
                 n_take = min(z_v.size(0), int(math.ceil((2 * self.max_pairs_per_level) ** 0.5)) + 1)
                 z_v = z_v[torch.randperm(z_v.size(0), device=device)[:n_take]]
-            
+
             idx_i, idx_j = torch.triu_indices(z_v.size(0), z_v.size(0), offset=1, device=device)
             if idx_i.numel() == 0: continue
             d_sq = poincare_distance(z_v[idx_i], z_v[idx_j], c=cur_c) ** 2

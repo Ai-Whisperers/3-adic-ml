@@ -5,7 +5,7 @@
 
 """Ranking-based losses for p-adic VAE hierarchy."""
 
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -74,7 +74,7 @@ class GlobalRankLoss(HierarchyLossBase):
         n_viol = 0
 
         if higher_v_mask.any():
-            # v_i > v_j => r_i should be < r_j. 
+            # v_i > v_j => r_i should be < r_j.
             # Violation if r_i - r_j > 0.
             viol_high = F.sigmoid((r_i[higher_v_mask] - r_j[higher_v_mask]) / self.temperature)
             loss = loss + viol_high.mean()

@@ -30,7 +30,6 @@ import torch.nn as nn
 from src.core.contracts import CombinedLossOutput, MetricsDict
 
 
-
 class HierarchyLossBase(ABC, nn.Module):
     """Abstract base for p-adic hierarchy losses returning a scalar loss.
 

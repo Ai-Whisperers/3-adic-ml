@@ -8,7 +8,7 @@
 from datetime import datetime
 import os
 import random
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import torch

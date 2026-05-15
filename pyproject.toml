@@ -29,6 +29,7 @@ dependencies = [
     "scipy>=1.10.0",
     "geoopt>=0.5.0",
     "pyyaml>=6.0",
+    "yamllint>=1.33.0",
     "pydantic>=2.0",
     "scikit-learn>=1.3.0",
     "tensorboard>=2.13.0",
@@ -42,14 +43,21 @@ dev = [
     "pytest-cov>=4.1.0",
     "ruff>=0.15.0",
     "mypy>=1.9.0",
+    "types-PyYAML",
 ]
 viz = [
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
-    "plotly>=5.14.0"
+    "plotly>=5.14.0",
+    "umap-learn>=0.5.0",
+    "pacmap>=0.7.0",
+    "trimap>=1.1.0",
+    "ripser>=0.6.0",
+    "persim>=0.3.0",
+    "pillow>=10.0.0",
 ]
 analysis = [
-    "pandas>=2.0.0"
+    "pandas>=2.0.0",
 ]
 
 [tool.setuptools.packages.find]

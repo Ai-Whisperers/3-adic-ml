@@ -5,7 +5,7 @@
 
 """P-Adic Geodesic Loss for hyperbolic embedding alignment."""
 
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Tuple
 
 import torch
 import torch.nn.functional as F

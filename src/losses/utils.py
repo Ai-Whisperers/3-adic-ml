@@ -6,6 +6,7 @@
 """Internal utilities for p-adic VAE losses."""
 
 from typing import Union
+
 import torch
 
 

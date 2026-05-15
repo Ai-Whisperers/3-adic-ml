@@ -6,10 +6,9 @@
 """Type-safe contracts for p-adic VAE components."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict, Union
 
 import torch
-
 
 # Metrics dicts primarily contain int or float scalars for logging.
 # Any is allowed so that Lagrangian dual code can store per-level violation
@@ -108,3 +107,19 @@ class EpochMetrics:
     aq_value: Optional[float] = None
     intra_sim: Optional[float] = None
     inter_sim: Optional[float] = None
+
+
+class ControllerState(TypedDict):
+    """Output from the MetricBasedLR controller."""
+    lr_scales: Dict[str, float]
+    events: List[Dict[str, Any]]
+    status: Dict[str, Union[bool, float, int, str]]
+    best_q: float
+
+
+class GrokkingState(TypedDict):
+    """Output from the GrokkingDetector."""
+    plateau: bool
+    potential: bool
+    event: bool
+    val_lift: float

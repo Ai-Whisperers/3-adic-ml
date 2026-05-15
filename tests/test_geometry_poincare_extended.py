@@ -11,9 +11,9 @@ These tests verify:
 """
 
 import math
+
 import pytest
 import torch
-
 
 from src.geometry import (
     exp_map_zero,

@@ -12,7 +12,6 @@ from discrete 3-adic to continuous latent space.
 import pytest
 import torch
 
-
 from src.geometry import (
     exp_map_zero,
     get_manifold,

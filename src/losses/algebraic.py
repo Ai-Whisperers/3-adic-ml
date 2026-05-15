@@ -5,14 +5,14 @@
 
 """Algebraic coherence and addition losses for p-adic VAE."""
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ..core import TERNARY
-from .base import HierarchyLossBase, MetricsDict
+from .base import MetricsDict
 
 
 class AngularCoherenceLoss(nn.Module):

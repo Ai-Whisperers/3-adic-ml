@@ -14,7 +14,6 @@ These tests verify:
 import pytest
 import torch
 
-
 from src.core import TERNARY
 
 

@@ -285,7 +285,7 @@ class MetricBasedLR(LRController):
             # Also unfreeze IF collapsed (collapse is the ultimate degradation).
             _DEGRADATION_THRESHOLD = 0.02
             half_win = max(2, self.config.timing.window_size // 2)
-            
+
             if metrics.hierarchy_b_collapsed:
                 self._active['encoder_b'] = True
                 self._hierarchy_b_plateau_count = 0
