@@ -8,13 +8,9 @@ These tests verify the mathematical foundation of the 3-adic VAE.
 Failures here indicate fundamental bugs that cascade through the entire system.
 """
 
-from pathlib import Path
-import sys
-
 import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core import TERNARY
 

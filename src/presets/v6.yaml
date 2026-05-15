@@ -75,10 +75,10 @@ option_c:
 # =============================================================================
 # Anchor Checkpoint (Optional: Start from Pre-trained Weights)
 # =============================================================================
-anchor_checkpoint:
-  path: "runs/v6_20260321_210840/checkpoints/best_Q.pt"  # Best: Q=2.163, hier=0.839 (ceiling confirmed)
-  encoder_to_load: both
-  decoder_to_load: decoder_A
+# anchor_checkpoint:
+#   path: "runs/v6_20260321_210840/checkpoints/best_Q.pt"  # Best: Q=2.163, hier=0.839 (ceiling confirmed)
+#   encoder_to_load: both
+#   decoder_to_load: decoder_A
 
 # =============================================================================
 # StateNet Controller (Dynamic Trainability)

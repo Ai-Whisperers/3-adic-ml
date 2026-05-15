@@ -18,15 +18,11 @@ class TestHierarchyMetricsCollapsedFlags:
 
     def _make_z_uniform_radius(self, n: int = 50, dim: int = 4, radius: float = 0.5) -> torch.Tensor:
         """All points on a sphere of identical radius → radii will be constant → spearmanr NaN."""
-        import sys
-        sys.path.insert(0, ".")
         vecs = torch.randn(n, dim, dtype=torch.float64)
         vecs = vecs / vecs.norm(dim=-1, keepdim=True) * radius
         return vecs
 
     def test_collapsed_flag_false_when_radii_vary(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         import torch
 
         from src.train import compute_hierarchy_metrics
@@ -34,20 +30,17 @@ class TestHierarchyMetricsCollapsedFlags:
         idx = torch.arange(200)
         metrics = compute_hierarchy_metrics(z, idx, curvature=1.0)
         # With random radii and mixed valuations, spearmanr should not be NaN
-        assert "hierarchy_collapsed" in metrics
-        assert "dist_corr_collapsed" in metrics
+        assert metrics["hierarchy_collapsed"] is False
+        assert metrics["dist_corr_collapsed"] is False
 
     def test_collapsed_flag_present_in_early_exit(self) -> None:
         """When n < 2, early-exit path must also include collapsed flags."""
-        import sys
-        sys.path.insert(0, ".")
         from src.train import compute_hierarchy_metrics
         z = torch.randn(1, 8, dtype=torch.float64) * 0.3
         idx = torch.tensor([0])
         metrics = compute_hierarchy_metrics(z, idx, curvature=1.0)
-        assert "hierarchy_collapsed" in metrics
-        assert "dist_corr_collapsed" in metrics
-        assert metrics["dist_corr_collapsed"] is True  # forced True in early-exit path
+        assert metrics["hierarchy_collapsed"] is True
+        assert metrics["dist_corr_collapsed"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -58,8 +51,6 @@ class TestACSkipCounter:
     """F-04: after one-time warning, subsequent skips are counted in losses dict."""
 
     def _make_loss_fn(self) -> object:
-        import sys
-        sys.path.insert(0, ".")
         from src.losses.combined import CombinedLoss
         cfg = {
             "rich_hierarchy": {
@@ -128,8 +119,6 @@ class TestLRScaleNameMismatch:
         return torch.optim.Adam([{"params": [p], "name": group_name, "lr": 1e-3}])
 
     def test_matched_name_no_warning(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.models.lr_controller import update_optimizer_lr_scales
         opt = self._make_optimizer("encoder_a")
         with warnings.catch_warnings(record=True) as caught:
@@ -139,8 +128,6 @@ class TestLRScaleNameMismatch:
         assert abs(opt.param_groups[0]["lr"] - 1e-4) < 1e-10
 
     def test_unmatched_key_emits_warning(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.models.lr_controller import update_optimizer_lr_scales
         opt = self._make_optimizer("encoder_a")
         with warnings.catch_warnings(record=True) as caught:
@@ -153,8 +140,6 @@ class TestLRScaleNameMismatch:
         assert "have no corresponding scale" in str(warns[1].message)
 
     def test_unmatched_key_leaves_lr_unchanged(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.models.lr_controller import update_optimizer_lr_scales
         opt = self._make_optimizer("encoder_a")
         original_lr = opt.param_groups[0]["lr"]
@@ -172,21 +157,18 @@ class TestGeodesicCorrcoefGuard:
     """F-08: corrcoef returns NaN (not 0) when only 1 pair is available."""
 
     def test_corrcoef_nan_not_zero_for_single_pair(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.losses.padic_geodesic import PAdicGeodesicLoss
         loss_fn = PAdicGeodesicLoss(n_pairs=1)
 
         # Small batch; loss should not crash and metrics dict should be returned
         z = torch.randn(8, 8, dtype=torch.float64) * 0.3
         idx = torch.arange(8)
+        import math
         loss_val, metrics = loss_fn(z, idx)
-        assert "n_pairs" in metrics
-        assert "distance_correlation" in metrics
+        assert metrics["n_pairs"] == 1
+        assert math.isnan(metrics["distance_correlation"])
 
     def test_corrcoef_with_sufficient_pairs_is_numeric(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.losses.padic_geodesic import PAdicGeodesicLoss
         loss_fn = PAdicGeodesicLoss(n_pairs=200)
         z = torch.randn(100, 8, dtype=torch.float64) * 0.3
@@ -205,8 +187,6 @@ class TestStateNetDeepKeyValidation:
     """F-10: misspelled sub-keys now raise ValueError instead of using defaults."""
 
     def test_typo_in_coverage_subkey_raises(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.config.statenet_config import StateNetConfig
         with pytest.raises(ValueError, match="unknown keys in 'coverage'"):
             StateNetConfig.from_dict({
@@ -214,8 +194,6 @@ class TestStateNetDeepKeyValidation:
             })
 
     def test_typo_in_hierarchy_subkey_raises(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.config.statenet_config import StateNetConfig
         with pytest.raises(ValueError, match="unknown keys in 'hierarchy'"):
             StateNetConfig.from_dict({
@@ -223,8 +201,6 @@ class TestStateNetDeepKeyValidation:
             })
 
     def test_typo_in_timing_subkey_raises(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.config.statenet_config import StateNetConfig
         with pytest.raises(ValueError, match="unknown keys in 'timing'"):
             StateNetConfig.from_dict({
@@ -232,8 +208,6 @@ class TestStateNetDeepKeyValidation:
             })
 
     def test_valid_subkeys_do_not_raise(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.config.statenet_config import StateNetConfig
         cfg = StateNetConfig.from_dict({
             "coverage": {"fix_threshold": 0.95},
@@ -243,8 +217,6 @@ class TestStateNetDeepKeyValidation:
         assert cfg.timing.warmup_epochs == 20
 
     def test_typo_in_lr_scales_subkey_raises(self) -> None:
-        import sys
-        sys.path.insert(0, ".")
         from src.config.statenet_config import StateNetConfig
         with pytest.raises(ValueError, match="unknown keys in 'lr_scales'"):
             StateNetConfig.from_dict({

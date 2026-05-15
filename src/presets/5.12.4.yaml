@@ -36,10 +36,10 @@ option_c:
   encoder_a_lr_scale: 0.05
 
 # Anchor Checkpoint (pre-trained weights to start from for coverage preservation)
-anchor_checkpoint:
-  path: models/checkpoints/v5_12/v5_12_4/best_Q.pt  # Use compatible V5.12.4 checkpoint
-  encoder_to_load: both  # Load both encoders for coverage preservation
-  decoder_to_load: decoder_A  # Load decoder for reconstruction
+# anchor_checkpoint:
+#   path: models/checkpoints/v5_12/v5_12_4/best_Q.pt  # Use compatible V5.12.4 checkpoint
+#   encoder_to_load: both  # Load both encoders for coverage preservation
+#   decoder_to_load: decoder_A  # Load decoder for reconstruction
 
 # StateNet Control (Enhanced for extended training)
 statenet:

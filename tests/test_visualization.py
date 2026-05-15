@@ -18,18 +18,7 @@ from src.utils.visualization import (
 )
 
 
-class DummyLogger:
-    """Minimal TensorBoard-like logger for pipeline tests."""
-
-    def __init__(self) -> None:
-        self.flush_calls = 0
-
-    def log_scalar(self, *args, **kwargs) -> None: pass
-    def add_figure(self, *args, **kwargs) -> None: pass
-    def add_embedding(self, *args, **kwargs) -> None: pass
-
-    def flush(self) -> None:
-        self.flush_calls += 1
+from unittest.mock import MagicMock
 
 
 def test_stratified_subsample_caps_per_level_and_is_reproducible() -> None:
@@ -101,7 +90,7 @@ def test_visualization_runtime_config_rejects_invalid_values() -> None:
 def test_visualization_pipeline_validates_tensor_shapes(tmp_path) -> None:
     pipeline = VisualizationPipeline(
         config={"save_html": False, "html_dir": str(tmp_path)},
-        logger=DummyLogger(),
+        logger=MagicMock(),
     )
     with pytest.raises(ValueError, match="same first dimension"):
         pipeline.run(
@@ -114,7 +103,7 @@ def test_visualization_pipeline_validates_tensor_shapes(tmp_path) -> None:
 
 def test_visualization_pipeline_runs_expected_steps(monkeypatch, tmp_path) -> None:
     calls: list[str] = []
-    logger = DummyLogger()
+    logger = MagicMock()
     pipeline = VisualizationPipeline(
         config={"save_html": False, "persist_every": 3, "html_dir": str(tmp_path)},
         logger=logger,
@@ -157,12 +146,12 @@ def test_visualization_pipeline_runs_expected_steps(monkeypatch, tmp_path) -> No
 
     pipeline.run(epoch=1, z_hyp=z_hyp, valuations=valuations, indices=indices)
     assert calls == ["umap", "pacmap", "trimap", "poincare", "persist"]
-    assert logger.flush_calls == 1
+    assert logger.flush.call_count == 1
 
     calls.clear()
     pipeline.run(epoch=2, z_hyp=z_hyp, valuations=valuations, indices=indices)
     assert calls == ["umap", "pacmap", "trimap", "poincare"]
-    assert logger.flush_calls == 2
+    assert logger.flush.call_count == 2
 
 
 # ---------------------------------------------------------------------------

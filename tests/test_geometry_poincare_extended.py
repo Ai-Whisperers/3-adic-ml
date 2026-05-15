@@ -11,13 +11,9 @@ These tests verify:
 """
 
 import math
-from pathlib import Path
-import sys
-
 import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.geometry import (
     exp_map_zero,

@@ -857,15 +857,15 @@ def train(
         Dict with training results and metrics
     """
     # Extract config sections
-    train_cfg = config.get("training", {})
-    statenet_cfg = config.get("statenet", {})
-    loss_cfg = config.get("loss", {})
-    riemannian_cfg = config.get("riemannian", {})
-    option_c_cfg = config.get("option_c", {})
-    memory_cfg = config.get("memory", {})
+    train_cfg = config.get("training") or {}
+    statenet_cfg = config.get("statenet") or {}
+    loss_cfg = config.get("loss") or {}
+    riemannian_cfg = config.get("riemannian") or {}
+    option_c_cfg = config.get("option_c") or {}
+    memory_cfg = config.get("memory") or {}
 
     # Resolve valuation function early — used by sampler, losses, and metrics
-    valuation_type = config.get("data", {}).get("valuation_type", "index")
+    valuation_type = (config.get("data") or {}).get("valuation_type", "index")
     valuation_fn = get_valuation_fn(valuation_type)
 
     # Hyperparameters
@@ -2107,7 +2107,7 @@ def main():
         config = raw_config
 
     # Override device settings from YAML if not specified on command line
-    device_cfg = config.get("device", {})
+    device_cfg = config.get("device") or {}
     if args.device == "cuda" and device_cfg.get("cuda_device") is not None:
         cuda_device = device_cfg.get("cuda_device", 0)
         device = torch.device(f"cuda:{cuda_device}")
@@ -2119,7 +2119,7 @@ def main():
         print("  Using AMP from config")
 
     # Memory optimization settings
-    memory_cfg = config.get("memory", {})
+    memory_cfg = config.get("memory") or {}
     if memory_cfg.get("cudnn_benchmark", True) and device.type == "cuda":
         if not torch.backends.cudnn.deterministic:
             torch.backends.cudnn.benchmark = True
