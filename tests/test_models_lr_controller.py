@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 
 from src.config.statenet_config import StateNetConfig
@@ -11,7 +13,7 @@ from src.models.lr_controller import (
 
 
 def _make_config(overrides: dict | None = None) -> StateNetConfig:
-    base = {
+    base: dict[str, Any] = {
         "timing": {
             "warmup_epochs": 0,
             "hysteresis_epochs": 0,

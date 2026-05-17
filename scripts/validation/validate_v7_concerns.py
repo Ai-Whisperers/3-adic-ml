@@ -247,7 +247,7 @@ for epoch in range(1, EPOCHS + 1):
 
     # ── Concern 3: KL + mu[:,4:] norm ────────────────────────────────────────
     with torch.no_grad():
-        c3_kl = loss_fn.kl_loss(mu_A, torch.cat(logvar_list, dim=0), z_hyp_v).item()
+        c3_kl = loss_fn.kl_loss(mu_A, torch.cat(logvar_list, dim=0), z_hyp_v).item() if loss_fn.kl_loss is not None else 0.0
     c3_mun = np.linalg.norm(mu_np[:, RADIAL_DIMS:], axis=1).mean()
 
     # ── Print row ─────────────────────────────────────────────────────────────

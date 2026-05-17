@@ -28,7 +28,7 @@ def render_poincare_disk_svg(
     height: int = 800,
 ) -> str:
     """Render Poincaré disk as an SVG string.
-    
+
     Args:
         z_2d: (N, 2) coordinates in unit disk
         valuations: (N,) integer valuations

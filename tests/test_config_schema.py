@@ -96,6 +96,8 @@ def test_validate_accepts_valid_target_sim() -> None:
     config = _load_preset("v7_large.yaml")
     config["loss"]["angular_coherence"]["target_sim"] = [1.0, 0.85, 0.70] + [0.0] * 7
     validated = validate_config(config)
+    assert validated.loss.angular_coherence is not None
+    assert validated.loss.angular_coherence.target_sim is not None
     assert validated.loss.angular_coherence.target_sim[0] == 1.0
 
 
@@ -324,6 +326,8 @@ def test_validate_accepts_target_sim_boundary_values() -> None:
     config = _load_preset("v7_large.yaml")
     config["loss"]["angular_coherence"]["target_sim"] = [1.0, 0.0] + [0.0] * 8
     validated = validate_config(config)
+    assert validated.loss.angular_coherence is not None
+    assert validated.loss.angular_coherence.target_sim is not None
     assert validated.loss.angular_coherence.target_sim[1] == 0.0
 
 

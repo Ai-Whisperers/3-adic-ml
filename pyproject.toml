@@ -61,10 +61,8 @@ analysis = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-dir]
-"" = "src"
+where = ["."]
+include = ["src*"]
 
 [tool.pytest.ini_options]
 addopts = "--ignore-glob='*venv*' --ignore-glob='*local*' --ignore-glob='*archive*' --cov=src --cov-report=term-missing --cov-report=html"
@@ -107,13 +105,19 @@ ignore = [
     "UP045",  # non-pep604-annotation-optional: same family as UP007 — deferred
     "UP035",  # deprecated-import (typing.Dict etc.) — deferred with UP006
     "TRY003", # long exception messages — intentional for diagnostics
+    "RUF001", # ambiguous unicode (math notation)
     "RUF002", # ambiguous unicode in docstrings — math notation in docstrings
+    "RUF003", # ambiguous unicode in comments
     "RUF022", # unsorted __all__ — grouped by category intentionally
+    "E701",   # multiple statements on one line (colon)
+    "E702",   # multiple statements on one line (semicolon)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# train.py inserts PROJECT_ROOT into sys.path before src/ imports — E402 is intentional
-"src/train.py" = ["E402"]
+# Late imports are sometimes necessary to avoid circular dependencies
+"src/models/vae.py" = ["E402"]
+"src/training/metrics.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
 # Test files use assignment for side-effect assertion; unused-variable is expected
 "tests/*.py" = ["F841", "RUF059"]
 
@@ -137,6 +141,7 @@ warn_unused_ignores = true
 disallow_untyped_defs = false        # deferred: __init__ methods unannotated
 check_untyped_defs = true
 explicit_package_bases = true        # avoids "found twice" errors on src/
+disable_error_code = ["import-untyped"]
 
 # Per-module overrides for known-noisy files
 [[tool.mypy.overrides]]
@@ -154,4 +159,4 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = "src.utils.tensorboard_logger"
 # SummaryWriter type assigned via try/except import; misc/return-value are false positives
-ignore_errors = true
+disallow_untyped_defs = false

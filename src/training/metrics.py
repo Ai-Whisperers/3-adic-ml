@@ -165,8 +165,9 @@ def compute_level_stratified_hierarchy(
         dim_size = TERNARY.MAX_VALUATION + 1
         vals_long = valuations.long()
 
+        from typing import cast
         # Vectorized per-level std via scatter (single pass, no Python loop)
-        stds_all = level_scatter_std(radii, vals_long, dim_size=dim_size)  # (dim_size,)
+        stds_all = level_scatter_std(radii, cast(torch.LongTensor, vals_long), dim_size=dim_size)  # (dim_size,)
         counts = torch.zeros(dim_size, dtype=torch.long, device=radii.device)
         counts.scatter_add_(0, vals_long, torch.ones_like(vals_long))
 

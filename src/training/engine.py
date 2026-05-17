@@ -63,7 +63,7 @@ def train_model(
     max_grad_norm = train_cfg.get("max_grad_norm", 1.0)
     eval_every = train_cfg.get("eval_every", 5)
     save_every = train_cfg.get("save_every", 25)
-    print_every = train_cfg.get("print_every", 5)
+    train_cfg.get("print_every", 5)
 
     # Resolve valuation function
     valuation_type = (config.get("data") or {}).get("valuation_type", "index")
@@ -94,7 +94,7 @@ def train_model(
     )
 
     for epoch in epoch_iter:
-        t0 = time.time()
+        time.time()
 
         # 1. Training Phase
         train_metrics = train_epoch(

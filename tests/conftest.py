@@ -2,13 +2,9 @@
 # Shared pytest fixtures and configuration
 
 from pathlib import Path
-import sys
 
 import pytest
 import torch
-
-# Ensure src is importable
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 @pytest.fixture(autouse=True)

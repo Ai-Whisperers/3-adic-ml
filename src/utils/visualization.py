@@ -60,7 +60,6 @@ except ImportError:
     _HAS_RIPSER = False
 
 try:
-    import plotly.express as px
     import plotly.graph_objects as go
     _HAS_PLOTLY = True
 except ImportError:
@@ -548,14 +547,14 @@ def _plotly_scatter_3d(
             y=coords[mask, 1].tolist(),
             z=coords[mask, 2].tolist(),
             mode="markers",
-            marker=dict(size=3, color=colors[v], opacity=0.7),
+            marker={"size": 3, "color": colors[v], "opacity": 0.7},
             name=f"v={v}",
         ))
     fig.update_layout(
         title=title,
-        scene=dict(xaxis_title="Dim 1", yaxis_title="Dim 2", zaxis_title="Dim 3"),
-        margin=dict(l=0, r=0, b=0, t=40),
-        legend=dict(itemsizing="constant"),
+        scene={"xaxis_title": "Dim 1", "yaxis_title": "Dim 2", "zaxis_title": "Dim 3"},
+        margin={"l": 0, "r": 0, "b": 0, "t": 40},
+        legend={"itemsizing": "constant"},
     )
     return fig
 
@@ -578,14 +577,14 @@ def _plotly_scatter_2d(
             x=coords[mask, 0].tolist(),
             y=coords[mask, 1].tolist(),
             mode="markers",
-            marker=dict(size=4, color=colors[v], opacity=0.7),
+            marker={"size": 4, "color": colors[v], "opacity": 0.7},
             name=f"v={v}",
         ))
     fig.update_layout(
         title=title,
-        xaxis=dict(showticklabels=False),
-        yaxis=dict(showticklabels=False),
-        margin=dict(l=20, r=20, b=20, t=40),
+        xaxis={"showticklabels": False},
+        yaxis={"showticklabels": False},
+        margin={"l": 20, "r": 20, "b": 20, "t": 40},
     )
     return fig
 
@@ -605,7 +604,7 @@ def _plotly_persistence(dgms: list) -> Optional[go.Figure]:
             fig.add_trace(go.Scatter(
                 x=finite[:, 0].tolist(), y=finite[:, 1].tolist(),
                 mode="markers",
-                marker=dict(size=6, color=color, opacity=0.8),
+                marker={"size": 6, "color": color, "opacity": 0.8},
                 name=f"H{i} finite ({len(finite)})",
             ))
         inf_pts = dgm[dgm[:, 1] == np.inf]
@@ -615,7 +614,7 @@ def _plotly_persistence(dgms: list) -> Optional[go.Figure]:
                 x=inf_pts[:, 0].tolist(),
                 y=[max_death * 1.15] * len(inf_pts),
                 mode="markers",
-                marker=dict(size=8, color=color, symbol="triangle-up"),
+                marker={"size": 8, "color": color, "symbol": "triangle-up"},
                 name=f"H{i} infinite ({len(inf_pts)})",
             ))
     fig.update_layout(

@@ -13,14 +13,14 @@ import numpy as np
 
 def get_geodesic_arc(u: np.ndarray, v: np.ndarray, n_points: int = 30) -> np.ndarray:
     """Calculate points on the hyperbolic geodesic between u and v in the Poincaré disk.
-    
+
     If u and v are near-collinear with the origin, returns a straight line.
     Otherwise, calculates the circular arc orthogonal to the boundary.
-    
+
     Args:
         u, v: (2,) arrays in the Poincaré disk (norm < 1)
         n_points: Number of points to sample along the arc
-        
+
     Returns:
         (n_points, 2) array of coordinates
     """

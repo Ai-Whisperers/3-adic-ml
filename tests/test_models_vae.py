@@ -496,16 +496,12 @@ class TestPositionalEncoding:
 
     def test_schema_accepts_positional_encoding_key(self) -> None:
         """ModelConfig schema accepts positional_encoding: true without error."""
-        import sys
-        sys.path.insert(0, ".")
         from src.config.schema import ModelConfig
         cfg = ModelConfig(positional_encoding=True)
         assert cfg.positional_encoding is True
 
     def test_schema_positional_encoding_default_false(self) -> None:
         """ModelConfig.positional_encoding defaults to False."""
-        import sys
-        sys.path.insert(0, ".")
         from src.config.schema import ModelConfig
         cfg = ModelConfig()
         assert cfg.positional_encoding is False

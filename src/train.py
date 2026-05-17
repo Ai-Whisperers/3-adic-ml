@@ -22,10 +22,6 @@ import sys
 import torch
 import yaml
 
-# Ensure project root is in sys.path
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
-
 from src.config.schema import normalize_config
 from src.training.bootstrap import DataAuditor, ModelAuditor, get_timestamp, set_determinism
 from src.training.engine import train_model
@@ -40,6 +36,8 @@ from src.training.setup import (
 )
 from src.utils import TensorBoardLogger
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 
 def main():
     """CLI entry point for training."""
@@ -48,26 +46,33 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--config", type=str, required=True, help="Path to YAML config file"
+        "--config",
+        type=str,
+        required=True,
+        help="Path to YAML configuration file",
     )
     parser.add_argument(
-        "--seed", type=int, default=42, help="Random seed for reproducibility"
+        "--validate-only",
+        action="store_true",
+        help="Audit config and data then exit without training",
     )
     parser.add_argument(
-        "--device", type=str, default="cuda", help="Target device (cuda or cpu)"
+        "--force-gpu",
+        action="store_true",
+        help="Fail if CUDA is not available",
     )
     parser.add_argument(
-        "--validate-only", action="store_true", help="Run audit and exit"
+        "--seed",
+        type=int,
+        help="Override config seed",
     )
-    parser.add_argument(
-        "--force", action="store_true", help="Continue even if audit fails"
-    )
+
     args = parser.parse_args()
 
-    # 1. Load and Normalize Config
+    # 1. Load and Validate Configuration
     config_path = Path(args.config)
     if not config_path.exists():
-        print(f"[ERROR] Config not found: {config_path}")
+        print(f"[ERROR] Config file not found: {args.config}")
         sys.exit(1)
 
     with open(config_path) as f:
@@ -75,35 +80,44 @@ def main():
 
     try:
         config = normalize_config(raw_config)
-        print(f"\n[OK] Config loaded and validated: {config_path.name}")
+        print(f"[OK] Config loaded and validated: {config_path.name}\n")
     except Exception as e:
-        print(f"[ERROR] Config validation failed: {e}")
-        if not args.force:
-            sys.exit(1)
-        config = raw_config
+        print(f"[ERROR] Config validation failed:\n{e}")
+        sys.exit(1)
 
-    # 2. Setup Determinism
-    seed = args.seed
-    set_determinism(seed, deterministic=True, use_float64=True)
+    # 2. Hardware & Determinism
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.force_gpu and device.type != "cuda":
+        print("[ERROR] --force-gpu specified but CUDA not available.")
+        sys.exit(1)
 
-    # 3. Setup Device
-    if args.device == "cuda" and not torch.cuda.is_available():
-        print("[WARN] CUDA requested but not available. Using CPU.")
-        device = torch.device("cpu")
-    else:
-        device = torch.device(args.device)
+    seed = args.seed if args.seed is not None else config.get("training", {}).get("seed", 42)
+    set_determinism(seed)
 
-    # 4. Data Audit & Preparation
-    data_auditor = DataAuditor(seed)
+    # 3. Data Auditing
+    data_auditor = DataAuditor(seed=seed)
     train_ds, val_ds, _ = data_auditor.prepare_data(
         val_frac=config.get("training", {}).get("val_frac", 0.1),
-        device=device
+        device=device,
     )
 
-    # 5. Model Audit & Creation
-    model_auditor = ModelAuditor(config, device)
-    model = model_auditor.create_and_validate_model(force=args.force)
+    # 4. Component Initialization
+    train_loader, val_loader = setup_dataloaders(train_ds, val_ds, config, seed)
 
+    # Extract loss params (e.g. learnable weights) if any
+    loss_fn, loss_fn_b = setup_losses(config, device)
+    loss_params = []
+    if hasattr(loss_fn, "parameters"):
+        loss_params = list(loss_fn.parameters())
+
+    model_auditor = ModelAuditor(config, device)
+    model = model_auditor.create_and_validate_model()
+    optimizer = setup_optimizer(model, config, loss_params)
+    scheduler = setup_scheduler(optimizer, config)
+    lr_controller = setup_controller(config)
+    dual_state = setup_lagrangian(config)
+
+    # 5. Validation-only mode
     if args.validate_only:
         print("\n[OK] Validation complete. Exiting (--validate-only)")
         sys.exit(0)
@@ -115,37 +129,20 @@ def main():
     log_dir.mkdir(parents=True, exist_ok=True)
     print(f"  Run directory: {log_dir}")
 
-    # 7. Component Setup
-    train_loader, val_loader = setup_dataloaders(train_ds, val_ds, config, seed)
-    loss_fn, loss_fn_b = setup_losses(config, device)
-
-    # Extract loss parameters if learnable weights enabled
-    loss_cfg = config.get("loss", {})
-    loss_params = (
-        list(loss_fn.parameters()) + list(loss_fn_b.parameters())
-        if loss_cfg.get("learnable_weights", False) else []
-    )
-
-    optimizer = setup_optimizer(model, config, loss_params)
-    scheduler = setup_scheduler(optimizer, config)
-    lr_controller = setup_controller(config)
-    dual_state = setup_lagrangian(config)
-
-    # 8. Reporting Setup
-    tb_logger = TensorBoardLogger(
-        tensorboard_dir=str(log_dir),
-        experiment_name=run_name,
-        log_callback=lambda msg: print(f"  {msg}") if config.get("logging", {}).get("verbose", False) else None
-    )
-    atexit.register(tb_logger.close)
-
+    # 7. Logger Setup
+    tb_logger = TensorBoardLogger(log_dir)
     reporting = ReportingManager(log_dir, config, tb_logger)
 
-    # 9. Train Model
+    # Save a copy of the validated config
+    with open(log_dir / "config.yaml", "w") as f:
+        yaml.dump(config, f)
+
+    # 8. Late Registration (Ensure cleanup on crash)
+    atexit.register(tb_logger.close)
+
+    # 9. Training Execution
     print("\n[OK] Starting training engine...")
     results = train_model(
-        config=config,
-        device=device,
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
@@ -153,7 +150,9 @@ def main():
         scheduler=scheduler,
         loss_fn=loss_fn,
         loss_fn_b=loss_fn_b,
+        device=device,
         reporting=reporting,
+        config=config,
         lr_controller=lr_controller,
         dual_state=dual_state,
         use_amp=config.get("device", {}).get("use_amp", False),

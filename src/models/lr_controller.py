@@ -440,23 +440,23 @@ class MetricBasedLR(LRController):
         """Restore state from dict."""
         self._coverage_history.clear()
         self._coverage_history.extend(state.get("coverage_history", []))
-        
+
         self._hierarchy_a_history.clear()
         self._hierarchy_a_history.extend(state.get("hierarchy_a_history", []))
-        
+
         self._hierarchy_b_history.clear()
         self._hierarchy_b_history.extend(state.get("hierarchy_b_history", []))
-        
+
         self._grad_norm_history.clear()
         self._grad_norm_history.extend(state.get("grad_norm_history", []))
-        
+
         self._q_history.clear()
         self._q_history.extend(state.get("q_history", []))
-        
+
         self._hierarchy_b_plateau_count = state.get("hierarchy_b_plateau_count", 0)
         self._grad_low_count = state.get("grad_low_count", 0)
         self._hierarchy_a_stall_count = state.get("hierarchy_a_stall_count", 0)
-        
+
         self._last_change = dict(state.get("last_change", self._last_change))
         self._active = dict(state.get("active", self._active))
         self._best_q = state.get("best_q", 0.0)

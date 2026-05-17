@@ -157,7 +157,7 @@ def render_poincare_disk(
         return None
 
     # This Plotly implementation currently ignores show_tree and walks for simplicity
-    N, D = z_hyp.shape
+    _N, _D = z_hyp.shape
 
     # 1. Calculate Poincaré Radius (r)
     # Norm in Poincaré ball is NOT Euclidean distance to origin,
@@ -194,7 +194,7 @@ def render_poincare_disk(
     fig.add_trace(go.Scatter(
         x=np.cos(theta).tolist(), y=np.sin(theta).tolist(),
         mode='lines',
-        line=dict(color='rgba(150,150,150,0.5)', width=1, dash='dash'),
+        line={"color": 'rgba(150,150,150,0.5)', "width": 1, "dash": 'dash'},
         name='Boundary',
         showlegend=False
     ))
@@ -212,25 +212,25 @@ def render_poincare_disk(
             x=z_2d[mask, 0].tolist(),
             y=z_2d[mask, 1].tolist(),
             mode='markers',
-            marker=dict(
-                size=6,
-                color=colors[v],
-                opacity=0.8,
-                line=dict(width=0.5, color='white')
-            ),
+            marker={
+                "size": 6,
+                "color": colors[v],
+                "opacity": 0.8,
+                "line": {"width": 0.5, "color": 'white'}
+            },
             name=f"v={v}",
             hoverinfo='name'
         ))
 
     fig.update_layout(
         title=title,
-        xaxis=dict(range=[-1.1, 1.1], scaleanchor="y", scaleratio=1, showgrid=False, zeroline=False),
-        yaxis=dict(range=[-1.1, 1.1], showgrid=False, zeroline=False),
+        xaxis={"range": [-1.1, 1.1], "scaleanchor": "y", "scaleratio": 1, "showgrid": False, "zeroline": False},
+        yaxis={"range": [-1.1, 1.1], "showgrid": False, "zeroline": False},
         width=800,
         height=800,
         plot_bgcolor='white',
-        legend=dict(itemsizing='constant'),
-        margin=dict(l=20, r=20, t=60, b=20)
+        legend={"itemsizing": 'constant'},
+        margin={"l": 20, "r": 20, "t": 60, "b": 20}
     )
 
     return fig

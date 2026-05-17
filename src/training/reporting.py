@@ -97,12 +97,12 @@ class ReportingManager:
                 tag = f"{prefix}/{name}" if prefix else name
                 self.tb_logger.log_scalar(tag, val, step)
 
-    def save_results(self, results: Dict[str, Any]) -> None:
-        """Save final results to JSON."""
+    def save_results(self, results: Mapping[str, Any]) -> None:
+        """Persist results to JSON."""
         with open(self.results_path, "w") as f:
-            json.dump(results, f, indent=4)
+            json.dump(results, f, indent=2)
 
-    def print_summary(self, results: Dict[str, Any]) -> None:
+    def print_summary(self, results: Mapping[str, Any]) -> None:
         """Print training summary to console."""
         print(f"\n{'=' * 60}")
         print("  TRAINING COMPLETE")

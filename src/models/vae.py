@@ -447,7 +447,7 @@ class TernaryVAEV6(nn.Module):
 
     def get_mu_representations(self, indices: torch.Tensor, device: torch.device) -> torch.Tensor:
         """Get raw mu representations for given indices.
-        
+
         Used by AlgebraicAdditionLoss to compute representations of sums
         within the forward pass while preserving gradients.
         """

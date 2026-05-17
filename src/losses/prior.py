@@ -5,7 +5,7 @@
 
 """Valuation-conditioned prior losses for p-adic VAE."""
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F

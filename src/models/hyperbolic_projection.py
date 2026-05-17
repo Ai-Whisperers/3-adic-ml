@@ -21,7 +21,7 @@ Reference:
   Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
 """
 
-from typing import Optional, Tuple, Union, cast
+from typing import Optional, Tuple, Union
 
 import geoopt
 import torch

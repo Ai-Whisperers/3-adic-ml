@@ -437,18 +437,18 @@ class TernarySpace:
 
     def ternary_add(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
         """Perform 3-adic modular addition of two indices.
-        
+
         Operation-wise addition in Z_3 (modular field).
         Maps {-1, 0, 1} digits such that:
             0 + x = x
             1 + 1 = -1
            -1 + -1 = 1
             1 + -1 = 0
-        
+
         Args:
             idx_a: Tensor of indices, shape (N,)
             idx_b: Tensor of indices, shape (N,)
-            
+
         Returns:
             Tensor of indices of the sums, shape (N,)
         """

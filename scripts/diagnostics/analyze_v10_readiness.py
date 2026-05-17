@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
-import torch
-import sys
 from pathlib import Path
+import sys
 
-# Add src to path
-PROJECT_ROOT = Path(__file__).parents[2]
-sys.path.insert(0, str(PROJECT_ROOT))
+import torch
 
-from src.models.vae import TernaryVAEV6Controllable
 
 def analyze_readiness(checkpoint_path):
     print(f"Analyzing checkpoint: {checkpoint_path}")
     ckpt = torch.load(checkpoint_path, map_location='cpu')
-    
+
     # Check for StateNet controller state
     if "lr_controller_state" in ckpt:
         print("\n[OK] MetricBasedLR state persisted:")
@@ -36,14 +32,14 @@ def analyze_readiness(checkpoint_path):
     # Model parameters
     state_dict = ckpt['model_state_dict']
     print(f"\nKeys in state_dict (sample): {list(state_dict.keys())[:10]}")
-    
+
     print("\nModel Parameter Analysis:")
-    
+
     # 1. Curvature
     c_keys = [k for k in state_dict.keys() if "manifold.c" in k]
     for k in c_keys:
         print(f"  Curvature parameter ({k}): {state_dict[k].item():.6f}")
-    
+
     # 2. Tangent Scales
     ts_keys = [k for k in state_dict.keys() if "tangent_scale" in k]
     for k in ts_keys:
@@ -62,7 +58,7 @@ def analyze_readiness(checkpoint_path):
     # 4. Algebraic Support
     if any("algebraic" in k for k in state_dict.keys()):
         print("\n[INFO] Model contains algebraic-specific parameters (not expected in base VAE, checking CombinedLoss instead).")
-    
+
     # Check CombinedLoss weights if learnable
     if "loss_state_dict" in ckpt:
         loss_sd = ckpt["loss_state_dict"]
@@ -74,13 +70,13 @@ def analyze_readiness(checkpoint_path):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        path = sys.argv[1]
+        checkpoint_path = Path(sys.argv[1])
     else:
         # Auto-find latest run
         runs = sorted(Path("runs").glob("v10_algebraic_*"))
         if not runs:
             print("No v10 runs found.")
             sys.exit(1)
-        path = runs[-1] / "checkpoints" / "final.pt"
-    
-    analyze_readiness(path)
+        checkpoint_path = runs[-1] / "checkpoints" / "final.pt"
+
+    analyze_readiness(checkpoint_path)

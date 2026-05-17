@@ -375,7 +375,7 @@ class WithinLevelContrastiveLoss(nn.Module):
             z_v = z_hyp[mask]
             if z_v.size(0) * (z_v.size(0)-1) // 2 > self.max_pairs_per_level:
                 import math
-                n_take = min(z_v.size(0), int(math.ceil((2 * self.max_pairs_per_level) ** 0.5)) + 1)
+                n_take = min(z_v.size(0), math.ceil((2 * self.max_pairs_per_level) ** 0.5) + 1)
                 z_v = z_v[torch.randperm(z_v.size(0), device=device)[:n_take]]
 
             idx_i, idx_j = torch.triu_indices(z_v.size(0), z_v.size(0), offset=1, device=device)

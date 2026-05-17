@@ -18,14 +18,8 @@ Usage:
     python scripts/validation/check_zero_count_semantics.py
 """
 
-import os
-import sys
 
 import numpy as np
-
-# Make src importable
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
 import torch
 
 from src.core.ternary import TERNARY
@@ -319,7 +313,7 @@ def print_summary_table(rows: list):
 
     for row in rows:
         parts = []
-        for label, key, width in header_fields:
+        for _label, key, width in header_fields:
             v = row[key]
             if key in ("level", "count"):
                 parts.append(f"{int(v):>{width}}")

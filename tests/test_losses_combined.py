@@ -484,6 +484,8 @@ class TestLearnableWeightsGradientFlow:
         losses['total'].backward()
 
         # Gradient should be nonzero
+        assert loss_fn.log_sigma_radial is not None
+        assert loss_fn.log_sigma_radial.grad is not None
         assert loss_fn.log_sigma_radial.grad.abs() > 1e-15
 
 

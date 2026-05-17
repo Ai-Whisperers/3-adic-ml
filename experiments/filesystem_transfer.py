@@ -23,12 +23,9 @@ import argparse
 import ctypes
 import os
 from pathlib import Path
-import sys
 
 import numpy as np
 import torch
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.models.vae import TernaryVAEV6
 

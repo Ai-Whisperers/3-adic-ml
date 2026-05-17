@@ -259,7 +259,7 @@ class TestTreeStructureRelationships:
             max_steps = 20  # Should reach root in at most 9 steps (log_3(19683))
 
             while n != 0 and steps < max_steps:
-                p = TERNARY.parent(torch.tensor([n])).item()
+                p = int(TERNARY.parent(torch.tensor([n])).item())
                 if p == -1:
                     break  # Reached root indicator
                 if p in visited:
