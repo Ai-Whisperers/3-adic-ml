@@ -609,11 +609,28 @@ class TrainingConfigSchema(StrictConfigModel):
 
     @model_validator(mode="after")
     def validate_cross_section_consistency(self) -> TrainingConfigSchema:
+        # 1. Curvature visualization sync
         if abs(self.visualization.curvature - self.model.curvature) > 1e-12:
             raise ValueError(
                 "visualization.curvature must match model.curvature to keep "
                 "hyperbolic distance visualizations consistent with training"
             )
+
+        # 2. Algebraic Consistency Prerequisites (V10)
+        # Algebraic addition depends on positional awareness to map digits to algebra
+        if self.loss.algebraic_addition.enabled and not self.model.positional_encoding:
+            raise ValueError(
+                "loss.algebraic_addition requires model.positional_encoding=True "
+                "to effectively map ternary digits to algebraic addition properties."
+            )
+
+        # Algebraic coherence targets the direction manifold; requires factored latents
+        if self.loss.algebraic_coherence.enabled and not self.model.factored:
+            raise ValueError(
+                "loss.algebraic_coherence requires model.factored=True "
+                "to separate algebraic direction clusters from the radial hierarchy."
+            )
+
         return self
 
 

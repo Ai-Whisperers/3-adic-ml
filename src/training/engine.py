@@ -291,18 +291,27 @@ def train_epoch(
             out: VAEOutput = model(batch_ops, decode_b=False)
             curr_c = model.projections.get_curvature()
 
-            losses_A = loss_fn(
+            losses_A, metrics_A = loss_fn(
                 out["z_A_hyp"], batch_idx, out.get("logits_A"), batch_ops,
                 epoch=epoch, mu=out.get("mu_A"), logvar=out.get("logvar_A"),
                 curvature=curr_c, dual_weights=current_dual_weights, r=out.get("r_A"),
                 model=model
             )
-            losses_B = loss_fn_b(
+            losses_B, metrics_B = loss_fn_b(
                 out["z_B_hyp"], batch_idx, None, batch_ops,
                 epoch=epoch, mu=out.get("mu_B"), logvar=out.get("logvar_B"),
                 curvature=curr_c, dual_weights=current_dual_weights, r=out.get("r_B"),
                 model=model
             )
+
+            # --- Numerical Integrity: NaN/Inf Sanitizer ---
+            for name, loss_val in losses_A.items():
+                if not torch.isfinite(loss_val):
+                    raise RuntimeError(f"Numerical instability: VAE-A {name} loss is {loss_val} at epoch {epoch}")
+            for name, loss_val in losses_B.items():
+                if not torch.isfinite(loss_val):
+                    raise RuntimeError(f"Numerical instability: VAE-B {name} loss is {loss_val} at epoch {epoch}")
+
             loss = losses_A["total"] + losses_B["total"]
 
         scaler.scale(loss).backward()

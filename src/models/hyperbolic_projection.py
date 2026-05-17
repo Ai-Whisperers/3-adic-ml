@@ -170,6 +170,12 @@ class HyperbolicProjection(nn.Module):
                 last_layer.weight.fill_(0)
                 last_layer.bias.fill_(0)
 
+    def _clamp_curvature(self) -> None:
+        """Enforce safe range on learnable curvature [0.1, 5.0]."""
+        if self.learnable_curvature:
+            with torch.no_grad():
+                self.manifold.c.clamp_(min=0.1, max=5.0)
+
     def forward(
         self, z_tangent: torch.Tensor, as_manifold: bool = False
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], "ManifoldParameter"]:
@@ -190,6 +196,9 @@ class HyperbolicProjection(nn.Module):
                       d(||r*dir||)/d(z_θ) = 0 because F.normalize Jacobian is
                       orthogonal to its output, and r*dir is collinear with dir.
         """
+        # Enforce safe curvature range
+        self._clamp_curvature()
+
         # Enforce float64 precision
         z_tangent = z_tangent.to(torch.float64)
 
