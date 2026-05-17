@@ -157,16 +157,18 @@ class HyperbolicProjection(nn.Module):
         )
 
         if init_identity:
-            self._init_identity()
+            self._init_identity_manual()
 
         # Enforce float64 precision for numerical stability
         self.to(torch.float64)
 
-    def _init_identity(self):
+    def _init_identity_manual(self):
         """Initialize tangent_net as identity (zero residual)."""
         with torch.no_grad():
-            cast(nn.Linear, self.tangent_net[-1]).weight.zero_()
-            cast(nn.Linear, self.tangent_net[-1]).bias.zero_()
+            last_layer = self.tangent_net[-1]
+            if isinstance(last_layer, nn.Linear):
+                last_layer.weight.fill_(0)
+                last_layer.bias.fill_(0)
 
     def forward(
         self, z_tangent: torch.Tensor, as_manifold: bool = False
@@ -244,6 +246,7 @@ class HyperbolicProjection(nn.Module):
         z_theta = z_tangent[:, self.radial_dims:]       # (B, D-k)
 
         # Radius: sigmoid maps to (0,1), scaled to (0, max_radius)
+        assert self.linear_r is not None
         r = torch.sigmoid(self.linear_r(z_r).squeeze(-1)) * self.max_radius  # (B,)
 
         # Direction: residual transform of z_θ, then normalize to unit sphere

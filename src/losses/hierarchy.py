@@ -5,7 +5,7 @@
 
 """Radial and hierarchical consistency losses for p-adic VAE."""
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -67,8 +67,10 @@ class RadialHierarchyLoss(HierarchyLossBase):
     ) -> Tuple[torch.Tensor, MetricsDict]:
         device = z_hyp.device
         batch_size = z_hyp.size(0)
+        from typing import cast
         cur_c = kwargs.get("curvature", self.curvature)
-        valuations = self._valuation_fn(batch_indices).double()
+        v_raw = self._valuation_fn(batch_indices)
+        valuations = cast(torch.Tensor, v_raw).double()
         actual_radius = hyperbolic_radius(z_hyp, c=cur_c)
 
         target_radii_all = _euclidean_to_hyperbolic_radius(
@@ -182,7 +184,8 @@ class MonotonicRadialLoss(HierarchyLossBase):
         if batch_size < 2:
             return torch.tensor(0.0, device=device, dtype=torch.float64), {"n_levels": 0}
 
-        valuations = self._valuation_fn(batch_indices)
+        from typing import cast
+        valuations = cast(torch.Tensor, self._valuation_fn(batch_indices))
         radii = hyperbolic_radius(z_hyp, c=cur_c)
 
         target_radii_all = _euclidean_to_hyperbolic_radius(
@@ -191,7 +194,7 @@ class MonotonicRadialLoss(HierarchyLossBase):
         )
 
         dim_size = self.max_valuation + 1
-        vals_long = valuations.long()
+        vals_long = cast(torch.LongTensor, valuations.long().to(device))
         present_mask = level_has_data(vals_long, dim_size=dim_size)
         levels_present = present_mask.nonzero(as_tuple=False).squeeze(-1).tolist()
 
@@ -226,20 +229,19 @@ class MonotonicRadialLoss(HierarchyLossBase):
         target_loss = F.mse_loss(level_means, target_guidance)
         total_loss = loss + self.target_loss_weight * target_loss
 
-        per_gap_tensors: Dict[str, torch.Tensor] = {}
+        per_gap_tensors: MetricsDict = {}
         for i in range(n_levels - 1):
-            per_gap_tensors[f"gap_viol_tensor_v{levels_present[i]}"] = F.relu(violations[i])
+            per_gap_tensors[f"gap_viol_v{levels_present[i]}"] = float(max(0.0, violations[i].item()))
 
-        metrics = {
+        metrics: MetricsDict = {
             "n_levels": n_levels,
-            "margin_violations": (violations > 0).sum().item(),
-            "monotonic_loss": loss.item(),
-            "target_loss": target_loss.item(),
+            "margin_violations": int((violations > 0).sum().item()),
+            "monotonic_loss": float(loss.item()),
+            "target_loss": float(target_loss.item()),
         }
         for i in range(n_levels):
-            metrics[f"r_v{levels_present[i]}"] = level_means[i].item()
-        for i in range(n_levels - 1):
-            metrics[f"gap_viol_v{levels_present[i]}"] = float(max(0.0, violations[i].item()))
+            metrics[f"r_v{levels_present[i]}"] = float(level_means[i].item())
+
         metrics.update(per_gap_tensors)
 
         return total_loss, metrics
@@ -273,20 +275,22 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         )
         self.register_buffer("target_radii", target_radii)
 
-    def forward(
+    def forward(  # type: ignore[override]
         self,
         z_hyp: torch.Tensor,
         batch_indices: torch.Tensor,
         **kwargs: Any,
     ) -> Tuple[Dict[str, torch.Tensor], MetricsDict]:
-        logits, targets = kwargs.get("logits"), kwargs.get("targets")
+        logits: Optional[torch.Tensor] = kwargs.get("logits")
+        targets: Optional[torch.Tensor] = kwargs.get("targets")
         device, cur_c = z_hyp.device, kwargs.get("curvature", self.curvature)
         radii = hyperbolic_radius(z_hyp, c=cur_c)
         target_radii_adj = _euclidean_to_hyperbolic_radius(
             _exponential_target_radii(9, self.inner_radius, self.outer_radius, scale=3.0).to(device),
             c=cur_c
         )
-        valuations = self._valuation_fn(batch_indices).long().to(device)
+        from typing import cast
+        valuations = cast(torch.LongTensor, self._valuation_fn(batch_indices).long().to(device))
 
         dim_size = 10
         present_mask = level_has_data(valuations, dim_size=dim_size)
@@ -327,13 +331,13 @@ class RichHierarchyLoss(RichHierarchyLossBase):
             margin = torch.maximum(min_m, target_radii_adj[v] - target_radii_adj[v_next])
             separation_loss = separation_loss + F.relu(means_all[v_next] - means_all[v] + margin)
 
-        metrics = {"hierarchy": hierarchy_loss.item(), "coverage": coverage_loss.item(),
-                   "separation": separation_loss.item(), "variance": variance_loss.item()}
+        metrics: MetricsDict = {"hierarchy": float(hierarchy_loss.item()), "coverage": float(coverage_loss.item()),
+                   "separation": float(separation_loss.item()), "variance": float(variance_loss.item())}
         with torch.no_grad():
             for v in range(dim_size):
                 if present_mask[v]:
-                    metrics[f"r_mean_v{v}"] = means_all[v].item()
-                    metrics[f"r_std_v{v}"] = stds_all[v].item()
+                    metrics[f"r_mean_v{v}"] = float(means_all[v].item())
+                    metrics[f"r_std_v{v}"] = float(stds_all[v].item())
 
         return {"hierarchy": total_hier_loss, "coverage": coverage_loss, "separation": separation_loss}, metrics
 

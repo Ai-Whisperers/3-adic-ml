@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 from ..core import TERNARY
 from ..utils.scatter_utils import level_has_data, level_scatter_mean
-from .base import HierarchyLossBase
+from .base import HierarchyLossBase, MetricsDict
 from .utils import _exponential_target_radii
 
 
@@ -51,11 +51,24 @@ class ValuationPriorLoss(HierarchyLossBase):
 
     def forward(
         self,
-        mu: torch.Tensor,
-        logvar: Optional[torch.Tensor],
+        z_hyp: torch.Tensor,
         batch_indices: torch.Tensor,
-        curvature: Optional[Union[float, torch.Tensor]] = None,
-    ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        **kwargs: Any,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
+        """Forward pass matching HierarchyLossBase contract.
+
+        Args:
+            z_hyp: Hyperbolic embeddings (mu in tangent space for this loss)
+            batch_indices: Operation indices
+            **kwargs: Must contain 'logvar' (Optional[Tensor]) and 'curvature'
+
+        Returns:
+            Tuple of (loss, metrics)
+        """
+        mu = z_hyp
+        logvar: Optional[torch.Tensor] = kwargs.get("logvar")
+        curvature: Optional[Union[float, torch.Tensor]] = kwargs.get("curvature")
+
         if curvature is None:
             curvature = self.curvature_init
 
@@ -68,10 +81,12 @@ class ValuationPriorLoss(HierarchyLossBase):
             target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c
         else:
             import math
-            sqrt_c = math.sqrt(max(curvature, 1e-6))
-            target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c
+            sqrt_c_float = math.sqrt(max(curvature, 1e-6))
+            target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c_float
 
-        valuations = self._valuation_fn(batch_indices).long().clamp(0, self.max_valuation)
+        from typing import cast
+        vals_raw = self._valuation_fn(batch_indices)
+        valuations = cast(torch.Tensor, vals_raw).long().clamp(0, self.max_valuation)
 
         # 1. Mean Prior Loss
         target_norms = target_tangent_norms[valuations.cpu()].to(device)
@@ -88,44 +103,32 @@ class ValuationPriorLoss(HierarchyLossBase):
             target_s_expanded = target_s.unsqueeze(-1).expand_as(sigmas)
             var_loss = F.mse_loss(sigmas, target_s_expanded)
             with torch.no_grad():
-                avg_sigma = sigmas.mean().item()
+                avg_sigma = float(sigmas.mean().item())
 
         loss = mean_loss + var_loss
 
         dim_size = self.max_valuation + 1
-        present_mask = level_has_data(valuations, dim_size=dim_size)
-        mean_norms_all = level_scatter_mean(mu_norms, valuations, dim_size=dim_size)
+        from typing import cast
+        valuations_long = cast(torch.LongTensor, valuations)
+        present_mask = level_has_data(valuations_long, dim_size=dim_size)
+        mean_norms_all = level_scatter_mean(mu_norms, valuations_long, dim_size=dim_size)
         gaps_all = (mean_norms_all - target_tangent_norms.to(device)).abs()
 
-        per_level_gap_tensors: Dict[str, torch.Tensor] = {}
-        per_level_gaps: Dict[str, float] = {}
-        per_level_norms: Dict[str, float] = {}
-        per_level_sigmas: Dict[str, float] = {}
+        metrics: MetricsDict = {
+            'vp_mean_mu_norm': float(mu_norms.mean().item()),
+            'vp_mean_target': float(target_norms.mean().item()),
+            'vp_gap': float(abs(mu_norms.mean().item() - target_norms.mean().item())),
+            'vp_mean_sigma': avg_sigma,
+        }
 
         if logvar is not None:
             sigmas_m = torch.exp(0.5 * logvar).mean(dim=-1)
-            mean_sigmas_all = level_scatter_mean(sigmas_m, valuations, dim_size=dim_size)
+            mean_sigmas_all = level_scatter_mean(sigmas_m, valuations_long, dim_size=dim_size)
             for v in present_mask.nonzero(as_tuple=False).squeeze(-1).tolist():
-                per_level_sigmas[f'vp_sigma_v{v}'] = mean_sigmas_all[v].detach().item()
+                metrics[f'vp_sigma_v{v}'] = float(mean_sigmas_all[v].detach().item())
 
         for v in present_mask.nonzero(as_tuple=False).squeeze(-1).tolist():
-            per_level_gap_tensors[f'vp_gap_tensor_v{v}'] = gaps_all[v]
-            per_level_gaps[f'vp_gap_v{v}'] = gaps_all[v].detach().item()
-            per_level_norms[f'vp_mu_norm_v{v}'] = mean_norms_all[v].detach().item()
-
-        with torch.no_grad():
-            mean_mu_norm = mu_norms.mean().item()
-            mean_target = target_norms.mean().item()
-
-        metrics: Dict[str, Any] = {
-            'vp_mean_mu_norm': mean_mu_norm,
-            'vp_mean_target': mean_target,
-            'vp_gap': abs(mean_mu_norm - mean_target),
-            'vp_mean_sigma': avg_sigma,
-            **per_level_norms,
-            **per_level_gaps,
-            **per_level_sigmas,
-        }
-        metrics.update(per_level_gap_tensors)
+            metrics[f'vp_gap_v{v}'] = float(gaps_all[v].detach().item())
+            metrics[f'vp_mu_norm_v{v}'] = float(mean_norms_all[v].detach().item())
 
         return loss, metrics

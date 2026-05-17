@@ -34,8 +34,10 @@ def _euclidean_to_hyperbolic_radius(
 
     if isinstance(c, torch.Tensor):
         sqrt_c = torch.sqrt(c.clamp(min=1e-6))
-        return (2.0 / sqrt_c) * torch.atanh(sqrt_c * r_safe)
+        res = (2.0 / sqrt_c) * torch.atanh(sqrt_c * r_safe)
+        return res
     else:
         import math
-        sqrt_c = math.sqrt(max(c, 1e-6))
-        return (2.0 / sqrt_c) * torch.atanh(sqrt_c * r_safe)
+        sqrt_c_float = math.sqrt(max(c, 1e-6))
+        res_float = (2.0 / sqrt_c_float) * torch.atanh(sqrt_c_float * r_safe)
+        return res_float

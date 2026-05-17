@@ -63,7 +63,8 @@ class GlobalRankLoss(HierarchyLossBase):
             same = i_idx == j_idx
             j_idx[same] = (j_idx[same] + 1) % batch_size
 
-        v_i, v_j = valuations[i_idx], valuations[j_idx]
+        from typing import cast
+        v_i, v_j = cast(torch.Tensor, valuations[i_idx]), cast(torch.Tensor, valuations[j_idx])
         r_i, r_j = actual_radius[i_idx], actual_radius[j_idx]
 
         higher_v_mask = v_i > v_j
@@ -71,21 +72,21 @@ class GlobalRankLoss(HierarchyLossBase):
         same_v_mask = v_i == v_j
 
         loss = torch.tensor(0.0, device=device, dtype=torch.float64)
-        n_viol = 0
+        n_viol_count = 0
 
         if higher_v_mask.any():
             # v_i > v_j => r_i should be < r_j.
             # Violation if r_i - r_j > 0.
             viol_high = F.sigmoid((r_i[higher_v_mask] - r_j[higher_v_mask]) / self.temperature)
             loss = loss + viol_high.mean()
-            n_viol += (r_i[higher_v_mask] > r_j[higher_v_mask]).sum().item()
+            n_viol_count += int((r_i[higher_v_mask] > r_j[higher_v_mask]).sum().item())
 
         if lower_v_mask.any():
-            # v_i < v_j => r_i should be > r_j.
+            # v_i < v_j => r_i should be < r_j.
             # Violation if r_j - r_i > 0.
             viol_low = F.sigmoid((r_j[lower_v_mask] - r_i[lower_v_mask]) / self.temperature)
             loss = loss + viol_low.mean()
-            n_viol += (r_j[lower_v_mask] > r_i[lower_v_mask]).sum().item()
+            n_viol_count += int((r_j[lower_v_mask] > r_i[lower_v_mask]).sum().item())
 
         scatter_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
         if self.scatter_weight > 0 and same_v_mask.any():
@@ -95,8 +96,8 @@ class GlobalRankLoss(HierarchyLossBase):
         n_pairs_total = i_idx.numel()
         metrics = {
             "n_pairs": n_pairs_total,
-            "rank_violations": float(n_viol),
-            "violation_rate": float(n_viol / n_pairs_total) if n_pairs_total > 0 else 0.0,
+            "rank_violations": float(n_viol_count),
+            "violation_rate": float(n_viol_count / n_pairs_total) if n_pairs_total > 0 else 0.0,
             "rank_loss": loss.item(),
             "scatter_loss": scatter_loss.item(),
         }
@@ -105,8 +106,10 @@ class GlobalRankLoss(HierarchyLossBase):
         if same_v_mask.any():
             from ..utils.scatter_utils import level_scatter_mean
             v_same = v_i[same_v_mask].long()
+            from typing import cast
+            v_same_long = cast(torch.LongTensor, v_same)
             r_diff_sq = (r_i[same_v_mask] - r_j[same_v_mask])**2
-            scatter_all = level_scatter_mean(r_diff_sq, v_same, dim_size=10)
+            scatter_all = level_scatter_mean(r_diff_sq, v_same_long, dim_size=10)
             for v in range(10):
                 if (v_same == v).any():
                     metrics[f'scatter_v{v}'] = scatter_all[v].item()

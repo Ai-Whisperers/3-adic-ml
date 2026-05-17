@@ -419,6 +419,49 @@ class MetricBasedLR(LRController):
             "active_states": dict(self._active),
         }
 
+    def state_dict(self) -> Dict[str, Any]:
+        """Return serializable state."""
+        return {
+            "coverage_history": list(self._coverage_history),
+            "hierarchy_a_history": list(self._hierarchy_a_history),
+            "hierarchy_b_history": list(self._hierarchy_b_history),
+            "grad_norm_history": list(self._grad_norm_history),
+            "q_history": list(self._q_history),
+            "hierarchy_b_plateau_count": self._hierarchy_b_plateau_count,
+            "grad_low_count": self._grad_low_count,
+            "hierarchy_a_stall_count": self._hierarchy_a_stall_count,
+            "last_change": dict(self._last_change),
+            "active": dict(self._active),
+            "best_q": self._best_q,
+            "last_epoch": self._last_epoch,
+        }
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        """Restore state from dict."""
+        self._coverage_history.clear()
+        self._coverage_history.extend(state.get("coverage_history", []))
+        
+        self._hierarchy_a_history.clear()
+        self._hierarchy_a_history.extend(state.get("hierarchy_a_history", []))
+        
+        self._hierarchy_b_history.clear()
+        self._hierarchy_b_history.extend(state.get("hierarchy_b_history", []))
+        
+        self._grad_norm_history.clear()
+        self._grad_norm_history.extend(state.get("grad_norm_history", []))
+        
+        self._q_history.clear()
+        self._q_history.extend(state.get("q_history", []))
+        
+        self._hierarchy_b_plateau_count = state.get("hierarchy_b_plateau_count", 0)
+        self._grad_low_count = state.get("grad_low_count", 0)
+        self._hierarchy_a_stall_count = state.get("hierarchy_a_stall_count", 0)
+        
+        self._last_change = dict(state.get("last_change", self._last_change))
+        self._active = dict(state.get("active", self._active))
+        self._best_q = state.get("best_q", 0.0)
+        self._last_epoch = state.get("last_epoch", -1)
+
     def reset(self):
         """Reset all state."""
         self._coverage_history.clear()

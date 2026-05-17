@@ -104,6 +104,7 @@ class CombinedLoss(nn.Module):
     wlc_loss: Optional[WithinLevelContrastiveLoss]
     angular_coherence: Optional[AngularCoherenceLoss]
     algebraic_coherence_loss: Optional[AlgebraicCoherenceLoss]
+    algebraic_addition_loss: Optional[AlgebraicAdditionLoss]
 
     def __init__(
         self,
