@@ -174,7 +174,17 @@ class HyperbolicProjection(nn.Module):
         """Enforce safe range on learnable curvature [0.1, 5.0]."""
         if self.learnable_curvature:
             with torch.no_grad():
-                self.manifold.c.clamp_(min=0.1, max=5.0)
+                # Some manifolds use softplus/exp transforms on internal parameters.
+                # We check the effective curvature and clamp the underlying data
+                # to keep it in a numerically stable 'active' region.
+                curr_c = self.manifold.c
+                if curr_c < 0.1 or curr_c > 5.0:
+                    for name, p in self.manifold.named_parameters():
+                        if any(key in name for key in ["c", "k", "kappa"]):
+                            # Clamp parameter to a safe 'latent' range
+                            # For softplus, 0.1 effective c corresponds to ~ -2.25 raw k
+                            # For softplus, 5.0 effective c corresponds to ~ 4.99 raw k
+                            p.data.clamp_(min=-3.0, max=5.0)
 
     def forward(
         self, z_tangent: torch.Tensor, as_manifold: bool = False

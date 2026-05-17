@@ -25,12 +25,16 @@ jobs:
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
         pip install -e .
-    - name: Lint with ruff
+    - name: Lint and Format check
       run: |
         ruff check .
+        ruff format --check .
     - name: Static type check with mypy
       run: |
         mypy src/
-    - name: Run tests
+    - name: Run tests (Global 68% floor)
       run: |
-        python -m pytest tests/ -v
+        python -m pytest tests/ -v --cov=src --cov-fail-under=68
+    - name: Verify Core and Losses coverage (80% minimum)
+      run: |
+        python -m pytest tests/ -v --cov=src/core --cov=src/losses --cov-fail-under=80
