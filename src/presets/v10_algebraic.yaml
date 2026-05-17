@@ -174,7 +174,7 @@ loss:
 # =============================================================================
 training:
   num_workers: 4
-  epochs: 1500
+  epochs: 100
   batch_size: 4096
   lr: 8.0e-4
   weight_decay: 1.0e-4
@@ -186,7 +186,7 @@ training:
     T_mult: 2
 
   eval_every: 5
-  save_every: 100
+  save_every: 25
   print_every: 5
 
 # =============================================================================

@@ -11,12 +11,15 @@ This script is intentionally skeptical:
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import torch
+import torch.nn.functional as F
+import yaml
 from sklearn.cluster import KMeans
 from sklearn.linear_model import SGDClassifier
 from sklearn.manifold import trustworthiness
@@ -32,11 +35,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-import torch
-import torch.nn.functional as F
-import yaml
 
 from src.core import TERNARY
+from src.core.ternary import get_valuation_fn
 from src.geometry.poincare import poincare_distance
 from src.models.vae import TernaryVAEV6Controllable
 from src.symbolic import build_symbolic_subsystem
@@ -118,6 +119,7 @@ def build_model_kwargs(config: dict[str, Any]) -> dict[str, Any]:
         "tangent_scale_init": model_cfg.get("tangent_scale", 0.1),
         "factored": model_cfg.get("factored", False),
         "radial_dims": model_cfg.get("radial_dims", 4),
+        "positional_encoding": model_cfg.get("positional_encoding", False),
         "encoder_a_lr_scale": option_c_cfg.get("encoder_a_lr_scale", 0.05),
         "encoder_b_lr_scale": option_c_cfg.get("encoder_b_lr_scale", 0.1),
         "projections_lr_scale": option_c_cfg.get("projections_lr_scale", 1.0),
@@ -207,9 +209,12 @@ def summarize_scalar_series(
 
 
 def summarize_training_curves(run_dir: Path) -> dict[str, Any]:
-    tb_dirs = sorted(path for path in run_dir.iterdir() if path.is_dir() and path.name.startswith("ternary_vae_"))
+    tb_dirs = sorted(path for path in run_dir.iterdir() if path.is_dir() and path.name.startswith("v10_"))
     if not tb_dirs:
-        return {"available": False, "summaries": {}}
+        # try without v10_
+        tb_dirs = sorted(path for path in run_dir.iterdir() if path.is_dir() and any(k in path.name for k in ["ternary_vae_", "runs/"]))
+        if not tb_dirs:
+            return {"available": False, "summaries": {}}
 
     acc = EventAccumulator(str(tb_dirs[0]))
     acc.Reload()
@@ -233,7 +238,7 @@ def summarize_training_curves(run_dir: Path) -> dict[str, Any]:
             summary = summarize_scalar_series(tag, series, optimize=optimize)
             if summary is not None:
                 summaries[tag] = asdict(summary)
-        except KeyError:
+        except (KeyError, ValueError):
             continue
 
     return {"available": True, "summaries": summaries}
@@ -250,9 +255,10 @@ def stratified_probe_indices(
     n_total = max(1, len(labels))
     for cls in np.unique(labels):
         cls_idx = np.where(labels == cls)[0]
-        proportional = round(sample_budget * len(cls_idx) / n_total)
+        proportional = int(round(sample_budget * len(cls_idx) / n_total))
         take = min(len(cls_idx), max(min_per_class, proportional))
-        selected.append(rng.choice(cls_idx, size=take, replace=False))
+        if take > 0:
+            selected.append(rng.choice(cls_idx, size=take, replace=False))
     return np.sort(np.concatenate(selected))
 
 
@@ -337,6 +343,7 @@ def representation_probe_suite(
     z_tangent: torch.Tensor,
     raw_inputs: torch.Tensor,
     indices: torch.Tensor,
+    valuation_fn,
     sample_budget: int = 2000,
     max_level: int = 6,
     min_per_class: int = 20,
@@ -344,7 +351,7 @@ def representation_probe_suite(
     trustworthiness_size: int = 800,
     seed: int = 42,
 ) -> dict[str, Any]:
-    valuations = TERNARY.valuation(indices).cpu().numpy()
+    valuations = valuation_fn(indices).cpu().numpy()
     raw_np = raw_inputs.cpu().numpy()
     z_np = z_hyp.detach().cpu().numpy()
     z_tangent_np = z_tangent.detach().cpu().numpy()
@@ -423,13 +430,14 @@ def evaluate_direction_clustering(
     z_hyp: torch.Tensor,
     r: torch.Tensor | None,
     indices: torch.Tensor,
+    valuation_fn,
 ) -> list[DirectionClusteringRow]:
     if r is None:
         return []
 
     eps = torch.tensor(1e-10, dtype=z_hyp.dtype, device=z_hyp.device)
     direction = z_hyp / r.unsqueeze(-1).clamp(min=eps)
-    valuations = TERNARY.valuation(indices)
+    valuations = valuation_fn(indices)
     rows: list[DirectionClusteringRow] = []
 
     for level, prefix_depth in LEVEL_PREFIX_DEPTHS.items():
@@ -448,10 +456,10 @@ def evaluate_direction_clustering(
         labels = KMeans(n_clusters=n_classes, n_init=5, random_state=42).fit_predict(direction_np)
         rows.append(
             DirectionClusteringRow(
-                level=level,
-                prefix_depth=prefix_depth,
-                n_samples=n_samples,
-                n_classes=n_classes,
+                level=int(level),
+                prefix_depth=int(prefix_depth),
+                n_samples=int(n_samples),
+                n_classes=int(n_classes),
                 ari=float(adjusted_rand_score(prefix_labels, labels)),
             )
         )
@@ -493,9 +501,10 @@ def reconstruction_quality(logits: torch.Tensor, targets: torch.Tensor, n_bins: 
 def _retrieval_metrics_from_distances(
     distances: torch.Tensor,
     idx_eval: torch.Tensor,
+    valuation_fn,
     k: int,
 ) -> dict[str, Any]:
-    valuations = TERNARY.valuation(idx_eval)
+    valuations = valuation_fn(idx_eval)
     parents = TERNARY.parent(idx_eval)
     distances = distances.clone()
     distances.fill_diagonal_(float("inf"))
@@ -526,6 +535,7 @@ def retrieval_ablation_suite(
     z_hyp: torch.Tensor,
     z_tangent: torch.Tensor,
     indices: torch.Tensor,
+    valuation_fn,
     sample_size: int = 2000,
     k: int = 10,
     seed: int = 123,
@@ -547,8 +557,8 @@ def retrieval_ablation_suite(
     return {
         "sample_size": len(idx_eval),
         "k": k,
-        "hyperbolic_embedding": _retrieval_metrics_from_distances(hyp_distances, idx_eval, k),
-        "tangent_euclidean": _retrieval_metrics_from_distances(tangent_distances, idx_eval, k),
+        "hyperbolic_embedding": _retrieval_metrics_from_distances(hyp_distances, idx_eval, valuation_fn, k),
+        "tangent_euclidean": _retrieval_metrics_from_distances(tangent_distances, idx_eval, valuation_fn, k),
     }
 
 
@@ -678,6 +688,7 @@ def symbolic_pair_verification_benchmark(
 def sample_decoder_prior(
     model: TernaryVAEV6Controllable,
     latent_dim: int,
+    valuation_fn,
     n_samples: int,
     seed: int,
 ) -> dict[str, Any]:
@@ -690,27 +701,29 @@ def sample_decoder_prior(
         decoded = logits.view(n_samples, 9, 3).argmax(dim=-1) - 1
 
     indices = TERNARY.from_ternary(decoded)
-    valuations = TERNARY.valuation(indices)
+    valuations = valuation_fn(indices)
     unique_indices = torch.unique(indices)
     hist = {
         str(level): int((valuations == level).sum().item())
         for level in range(TERNARY.MAX_VALUATION + 1)
         if int((valuations == level).sum().item()) > 0
     }
-    true_counts = torch.tensor(
-        [TERNARY.level_count(level) for level in range(TERNARY.MAX_VALUATION + 1)],
-        dtype=torch.float64,
-    )
+    
+    # Compute population counts for the given valuation function
+    # Note: TERNARY.level_count is index-valuation specific.
+    # We compute empirical pop distribution for JS divergence.
+    all_indices = torch.arange(TERNARY.N_OPERATIONS)
+    all_valuations = valuation_fn(all_indices)
+    true_counts = torch.bincount(all_valuations, minlength=TERNARY.MAX_VALUATION + 1).double()
     true_distribution = true_counts / true_counts.sum()
-    generated_counts = torch.tensor(
-        [(valuations == level).sum().item() for level in range(TERNARY.MAX_VALUATION + 1)],
-        dtype=torch.float64,
-    )
+    
+    generated_counts = torch.bincount(valuations, minlength=TERNARY.MAX_VALUATION + 1).double()
     generated_distribution = generated_counts / generated_counts.sum().clamp(min=1.0)
+    
     midpoint = 0.5 * (true_distribution + generated_distribution)
     js_divergence = 0.5 * (
-        (true_distribution * (true_distribution / midpoint).log()).sum()
-        + (generated_distribution * (generated_distribution / midpoint).log()).sum()
+        (true_distribution * (true_distribution / midpoint.clamp(min=1e-10)).log().clamp(min=0)).sum()
+        + (generated_distribution * (generated_distribution / midpoint.clamp(min=1e-10)).log().clamp(min=0)).sum()
     )
 
     samples = []
@@ -797,6 +810,10 @@ def evaluate_run(
     model.load_state_dict(checkpoint["model_state_dict"], strict=True)
     model.eval()
 
+    # Get valuation function from config
+    valuation_type = config.get("data", {}).get("valuation_type", "index")
+    valuation_fn = get_valuation_fn(valuation_type)
+
     all_ops = TERNARY.all_ternary().to(torch.float64)
     all_indices = torch.arange(len(all_ops), dtype=torch.long)
     torch.manual_seed(evaluation_seed)
@@ -804,11 +821,11 @@ def evaluate_run(
         output = model(all_ops)
 
     curvature = model.projections.get_curvature()
-    hierarchy = compute_hierarchy_metrics(output["z_A_hyp"], all_indices, curvature=curvature, seed=42)
+    hierarchy = compute_hierarchy_metrics(output["z_A_hyp"], all_indices, curvature=curvature, seed=42, valuation_fn=valuation_fn)
     per_level_radii = []
     explicit_radius = output.get("r_A")
     if explicit_radius is not None:
-        valuations = TERNARY.valuation(all_indices)
+        valuations = valuation_fn(all_indices)
         for level in range(TERNARY.MAX_VALUATION + 1):
             mask = valuations == level
             if mask.any():
@@ -821,7 +838,7 @@ def evaluate_run(
                     }
                 )
 
-    direction_rows = evaluate_direction_clustering(output["z_A_hyp"], output.get("r_A"), all_indices)
+    direction_rows = evaluate_direction_clustering(output["z_A_hyp"], output.get("r_A"), all_indices, valuation_fn)
     direction_ari_v0 = next((row.ari for row in direction_rows if row.level == 0), 0.0)
 
     evaluation = {
@@ -842,6 +859,7 @@ def evaluate_run(
             output["z_A_hyp"],
             output["z_A_tangent"],
             all_indices,
+            valuation_fn
         ),
         "symbolic_orbit_retrieval": symbolic_orbit_retrieval_benchmark(
             output["z_A_hyp"],
@@ -860,11 +878,12 @@ def evaluate_run(
             output["z_A_tangent"],
             all_ops,
             all_indices,
+            valuation_fn
         ),
         "training_curves": summarize_training_curves(run_dir),
         "per_level_radii": per_level_radii,
         "direction_clustering": [asdict(row) for row in direction_rows],
-        "generation_from_decoder_prior": sample_decoder_prior(model, model.latent_dim, generation_samples, seed=123),
+        "generation_from_decoder_prior": sample_decoder_prior(model, model.latent_dim, valuation_fn, generation_samples, seed=123),
     }
     evaluation["scenario_monte_carlo"] = monte_carlo_scenarios(
         observed_q=evaluation["full_domain_metrics"]["Q"],
