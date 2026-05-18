@@ -19,6 +19,7 @@ import torch
 from src.losses.algebraic import (
     AlgebraicAdditionLoss,
     AlgebraicCoherenceLoss,
+    AlgebraicMultiplicationLoss,
     AngularCoherenceLoss,
 )
 from src.losses.lagrangian import LagrangianDualState
@@ -128,6 +129,13 @@ class TestAngularCoherenceLoss:
         loss, metrics = loss_fn(z_hyp, r, indices, epoch=1)
         assert isinstance(loss, torch.Tensor)
 
+    def test_small_batch_returns_zero(self, sample_data):
+        _, _, indices, z_hyp, r = sample_data
+        loss_fn = AngularCoherenceLoss(phase_start_epoch=0)
+        # B < 4 should return zero
+        loss, metrics = loss_fn(z_hyp[:2], r[:2], indices[:2], epoch=1)
+        assert loss.item() == 0.0
+
 
 class TestAlgebraicCoherenceLoss:
     def test_gradient_flow(self, sample_data):
@@ -141,6 +149,12 @@ class TestAlgebraicCoherenceLoss:
             loss.backward()
             assert z_hyp.grad is not None
             assert torch.isfinite(z_hyp.grad).all()
+
+    def test_disabled_returns_zero(self, sample_data):
+        _, _, indices, z_hyp, r = sample_data
+        loss_fn = AlgebraicCoherenceLoss(weight=0.0)
+        loss, metrics = loss_fn(z_hyp, r, indices, epoch=100)
+        assert loss.item() == 0.0
 
     def test_min_class_size_guard(self, sample_data):
         _, _, indices, z_hyp, r = sample_data
@@ -169,6 +183,52 @@ class TestAlgebraicAdditionLoss:
         assert isinstance(loss, torch.Tensor)
         assert "alg_addition_loss" in metrics
         assert "alg_addition_sim" in metrics
+
+    def test_disabled_returns_zero(self, sample_data):
+        mu, _, indices, _, _ = sample_data
+        model = MagicMock()
+        loss_fn = AlgebraicAdditionLoss(weight=0.0)
+        loss, metrics = loss_fn(mu, indices, model, epoch=100)
+        assert loss.item() == 0.0
+        assert metrics["alg_addition_loss"] == 0.0
+
+    def test_large_n_pairs_clamping(self, sample_data):
+        """Verify that n_pairs is clamped to batch size."""
+        mu, _, indices, _, _ = sample_data
+        model = MagicMock()
+        model.get_mu_representations.return_value = torch.randn(1, 16, dtype=torch.float64)
+        
+        # Request more pairs than possible
+        loss_fn = AlgebraicAdditionLoss(n_pairs=1000)
+        loss, metrics = loss_fn(mu, indices, model, epoch=1)
+        assert "alg_addition_loss" in metrics
+
+
+class TestAlgebraicMultiplicationLoss:
+    def test_forward_with_model_mock(self, sample_data):
+        mu, _, indices, _, _ = sample_data
+        
+        # Mock model with get_mu_representations
+        model = MagicMock()
+        def mock_get_mu(idx, device):
+            # Deterministic but pseudo-random based on sum/prod to check Sim
+            return torch.randn(len(idx), 16, dtype=torch.float64, device=device)
+        model.get_mu_representations.side_effect = mock_get_mu
+        
+        loss_fn = AlgebraicMultiplicationLoss()
+        loss, metrics = loss_fn(mu, indices, model, epoch=0)
+        
+        assert isinstance(loss, torch.Tensor)
+        assert "alg_multiplication_loss" in metrics
+        assert "alg_multiplication_sim" in metrics
+
+    def test_phase_gate(self, sample_data):
+        mu, _, indices, _, _ = sample_data
+        model = MagicMock()
+        loss_fn = AlgebraicMultiplicationLoss(phase_start_epoch=50)
+        loss, metrics = loss_fn(mu, indices, model, epoch=10)
+        assert loss.item() == 0.0
+        assert metrics["alg_multiplication_loss"] == 0.0
 
 
 # =============================================================================

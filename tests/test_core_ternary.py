@@ -170,6 +170,50 @@ class TestDistanceSymmetry:
             assert d == 0.0, f"d({idx},{idx}) should be 0, got {d}"
 
 
+class TestAlgebraicOperations:
+    """Verify ternary algebraic operations (addition, multiplication)."""
+
+    def test_ternary_add_identity(self):
+        """0 + x = x in ternary addition (all-zero index = 9841)."""
+        idx_zero = torch.tensor([9841])
+        idx_x = torch.randint(0, TERNARY.N_OPERATIONS, (10,))
+        
+        idx_sum = TERNARY.ternary_add(idx_zero, idx_x)
+        assert torch.equal(idx_sum, idx_x)
+
+    def test_ternary_mul_basic(self):
+        """Basic checks for ternary multiplication."""
+        # Multiplicative identity: all 1s (Index 19682)
+        idx_one = torch.tensor([19682])
+        idx_x = torch.randint(0, TERNARY.N_OPERATIONS, (10,))
+        
+        idx_prod = TERNARY.ternary_mul(idx_one, idx_x)
+        assert torch.equal(idx_prod, idx_x)
+        
+        # Zero element: all 0s (Index 9841)
+        idx_zero = torch.tensor([9841])
+        idx_prod_zero = TERNARY.ternary_mul(idx_zero, idx_x)
+        assert torch.all(idx_prod_zero == 9841)
+
+    def test_algebraic_signature(self):
+        """Verify algebraic signature computation."""
+        # Index 9841 is all 0s (constant 0 operation)
+        idx_zero = torch.tensor([9841])
+        sig = TERNARY.algebraic_signature(idx_zero)
+        assert sig.item() in range(8)
+        
+        assert TERNARY.is_commutative(idx_zero).item() is True
+        # constant 0 is NOT idempotent (f(1,1)=0 != 1)
+        assert TERNARY.is_idempotent(idx_zero).item() is False
+        assert TERNARY.has_absorbing_element(idx_zero).item() is True
+
+        # Test commutative property on more indices for coverage
+        indices = torch.randint(0, TERNARY.N_OPERATIONS, (100,))
+        comm = TERNARY.is_commutative(indices)
+        assert comm.shape == (100,)
+        assert comm.dtype == torch.bool
+
+
 class TestRoundTripInvertibility:
     """Verify to_ternary and from_ternary are inverses."""
 

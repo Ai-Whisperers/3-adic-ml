@@ -468,6 +468,38 @@ class TernarySpace:
 
         return self.from_ternary(t_sum)
 
+    def ternary_mul(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
+        """Perform 3-adic modular multiplication of two indices.
+
+        Operation-wise multiplication in Z_3.
+        Maps {-1, 0, 1} digits such that:
+            0 * x = 0
+            1 * x = x
+           -1 * -1 = 1
+
+        Args:
+            idx_a: Tensor of indices, shape (N,)
+            idx_b: Tensor of indices, shape (N,)
+
+        Returns:
+            Tensor of indices of the products, shape (N,)
+        """
+        t_a = self.to_ternary(idx_a)
+        t_b = self.to_ternary(idx_b)
+
+        # Standard multiplication in Z_3 {0, 1, 2}
+        # (-1) maps to 2 in % 3
+        d_a = t_a % 3
+        d_b = t_b % 3
+
+        d_prod = (d_a * d_b) % 3
+
+        # Map back to {-1, 0, 1}: 0->0, 1->1, 2->-1
+        t_prod = d_prod.clone()
+        t_prod[d_prod == 2] = -1
+
+        return self.from_ternary(t_prod)
+
     # =========================================================================
     # Convenience Methods
     # =========================================================================
@@ -1053,6 +1085,11 @@ def ternary_add(idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
     return TERNARY.ternary_add(idx_a, idx_b)
 
 
+def ternary_mul(idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
+    """Perform 3-adic modular multiplication. See TernarySpace.ternary_mul."""
+    return TERNARY.ternary_mul(idx_a, idx_b)
+
+
 def is_commutative(indices: torch.Tensor) -> torch.Tensor:
     """Check commutativity. See TernarySpace.is_commutative."""
     return TERNARY.is_commutative(indices)
@@ -1111,6 +1148,7 @@ __all__ = [
     "to_ternary",
     "from_ternary",
     "ternary_add",
+    "ternary_mul",
     "target_radius",
     # Property accessors (Option B)
     "digit_count",

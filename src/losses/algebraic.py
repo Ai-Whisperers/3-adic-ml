@@ -289,3 +289,68 @@ class AlgebraicAdditionLoss(nn.Module):
             metrics["alg_addition_sim"] = cos_sim.item()
 
         return loss, metrics
+
+
+class AlgebraicMultiplicationLoss(nn.Module):
+    r"""Enforce multiplicative consistency in tangent space (Mu space).
+    
+    Objective: z(a ⊗ b) ≈ z(a) ⊙ z(b) where ⊙ is element-wise product.
+    """
+
+    def __init__(
+        self,
+        weight: float = 1.0,
+        n_pairs: int = 512,
+        phase_start_epoch: int = 0,
+        valuation_fn=None,
+    ):
+        super().__init__()
+        self.weight = weight
+        self.n_pairs = n_pairs
+        self.phase_start_epoch = phase_start_epoch
+        self.generator = torch.Generator()
+        self.generator.manual_seed(42)
+
+    def forward(
+        self,
+        mu_A: torch.Tensor,
+        indices: torch.Tensor,
+        model: nn.Module,
+        epoch: int = 0,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
+        metrics: MetricsDict = {}
+        zero = torch.tensor(0.0, device=mu_A.device, dtype=mu_A.dtype)
+
+        if epoch < self.phase_start_epoch or self.weight <= 0:
+            metrics["alg_multiplication_loss"] = 0.0
+            return zero, metrics
+
+        B = mu_A.shape[0]
+        if B < 2:
+            metrics["alg_multiplication_loss"] = 0.0
+            return zero, metrics
+
+        n_triplets = min(self.n_pairs, B // 2)
+        if n_triplets < 1:
+            metrics["alg_multiplication_loss"] = 0.0
+            return zero, metrics
+
+        perm = torch.randperm(B, generator=self.generator).to(mu_A.device)
+        idx_a_local = perm[:n_triplets]
+        idx_b_local = perm[n_triplets : 2 * n_triplets]
+
+        idx_prod = TERNARY.ternary_mul(indices[idx_a_local], indices[idx_b_local])
+        mu_prod = model.get_mu_representations(idx_prod, mu_A.device)
+
+        # Multiplicative homomorphism: mu(a*b) ≈ mu(a) * mu(b) (element-wise)
+        mu_target = mu_A[idx_a_local] * mu_A[idx_b_local]
+        loss_val = F.smooth_l1_loss(mu_prod, mu_target)
+
+        loss = self.weight * loss_val
+        metrics["alg_multiplication_loss"] = loss.item()
+
+        with torch.no_grad():
+            cos_sim = F.cosine_similarity(mu_prod, mu_target).mean()
+            metrics["alg_multiplication_sim"] = cos_sim.item()
+
+        return loss, metrics

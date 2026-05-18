@@ -43,6 +43,7 @@ from src.core.ternary import get_valuation_fn
 from .algebraic import (
     AlgebraicAdditionLoss,
     AlgebraicCoherenceLoss,
+    AlgebraicMultiplicationLoss,
     AngularCoherenceLoss,
 )
 from .geodesic import PAdicGeodesicLoss
@@ -105,6 +106,7 @@ class CombinedLoss(nn.Module):
     angular_coherence: Optional[AngularCoherenceLoss]
     algebraic_coherence_loss: Optional[AlgebraicCoherenceLoss]
     algebraic_addition_loss: Optional[AlgebraicAdditionLoss]
+    algebraic_multiplication_loss: Optional[AlgebraicMultiplicationLoss]
 
     def __init__(
         self,
@@ -362,12 +364,23 @@ class CombinedLoss(nn.Module):
         else:
             self.algebraic_addition_loss = None
 
+        # Algebraic Multiplication Loss (z(a) * z(b) \approx z(a*b))
+        am_cfg = self.config.get('algebraic_multiplication', {})
+        if am_cfg.get('enabled', False):
+            self.algebraic_multiplication_loss = AlgebraicMultiplicationLoss(
+                weight=am_cfg.get('weight', 1.0),
+                n_pairs=am_cfg.get('n_pairs', 512),
+                phase_start_epoch=am_cfg.get('phase_start_epoch', 0),
+            )
+        else:
+            self.algebraic_multiplication_loss = None
+
         # Guard: at least one loss must be enabled, or training will be gradient-free
         active = [
             self.rich_hierarchy, self.radial_loss, self.geodesic_loss,
             self.rank_loss, self.monotonic_loss, self.kl_loss, self.valuation_prior,
             self.wlc_loss, self.angular_coherence, self.algebraic_coherence_loss,
-            self.algebraic_addition_loss,
+            self.algebraic_addition_loss, self.algebraic_multiplication_loss,
         ]
         if not any(x is not None for x in active):
             raise ValueError(
@@ -728,7 +741,14 @@ class CombinedLoss(nn.Module):
             losses['alg_addition_metrics'] = aa_metrics
             total = total + aa_out
 
-        # 13. Fallback: Basic coverage loss if no rich_hierarchy
+        # 13. AlgebraicMultiplicationLoss (requires mu and model)
+        if self.algebraic_multiplication_loss is not None and mu is not None and model is not None:
+            am_out, am_metrics = self.algebraic_multiplication_loss(mu, indices, model, epoch)
+            losses['algebraic_multiplication'] = am_out
+            losses['alg_multiplication_metrics'] = am_metrics
+            total = total + am_out
+
+        # 14. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:
             # Respect coverage_weight from config even if rich_hierarchy is disabled
             coverage_weight = self.config.get('rich_hierarchy', {}).get('coverage_weight', 1.0)

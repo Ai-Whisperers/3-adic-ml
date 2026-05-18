@@ -1,6 +1,7 @@
 from .algebraic import (
     AlgebraicAdditionLoss,
     AlgebraicCoherenceLoss,
+    AlgebraicMultiplicationLoss,
     AngularCoherenceLoss,
 )
 from .base import CombinedLossOutput, HierarchyLossBase, MetricsDict, RichHierarchyLossBase
@@ -26,6 +27,7 @@ __all__ = [
     # Loss implementations
     "AngularCoherenceLoss",
     "AlgebraicAdditionLoss",
+    "AlgebraicMultiplicationLoss",
     "AlgebraicCoherenceLoss",
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",

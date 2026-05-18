@@ -40,7 +40,16 @@ The training controller (StateNet) manages component trainability via learning r
 | `train_threshold` | 0.45 | Unfreeze encoder_A if above (+ stall detection) |
 | `floor` | 0.30 | Minimum threshold for annealing |
 
-### YAML Configuration
+## Algebraic Consistency (Phase 10 & 11)
+
+The V6.2 architecture supports high-level algebraic consistency objectives:
+- **Additive Consistency**: Enforces $z(a \oplus b) \approx z(a) + z(b)$ in tangent space.
+- **Multiplicative Consistency**: Enforces $z(a \otimes b) \approx z(a) \odot z(b)$ in tangent space (element-wise product).
+- **Valuation Alignment**: Poincaré distances correspond to p-adic distances.
+
+These objectives transform the latent space into a continuous approximation of the algebraic ring structure of ternary operations.
+
+## Data Flow (True Hyperbolic)
 
 ```yaml
 statenet:

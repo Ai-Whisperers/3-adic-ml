@@ -1,0 +1,7 @@
+{
+  "epochs_trained": 100,
+  "best_Q": 1.898384846985265,
+  "best_hierarchy": 0.8372287676925115,
+  "best_coverage": 0.9679877758026123,
+  "grokking_events": []
+}

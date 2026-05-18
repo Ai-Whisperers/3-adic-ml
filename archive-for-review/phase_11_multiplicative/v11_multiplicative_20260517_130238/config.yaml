@@ -1,0 +1,242 @@
+anchor_checkpoint: null
+data:
+  valuation_type: index
+device:
+  cuda_device: 0
+  use_amp: false
+logging:
+  enhanced_metrics:
+    effective_rank: true
+    enabled: true
+    gradient_flow_analysis: true
+    log_activations: false
+    log_gradients: true
+    log_weights: true
+  histogram_every: 10
+  verbose: false
+loss:
+  algebraic_addition:
+    enabled: true
+    n_pairs: 1024
+    phase_start_epoch: 30
+    weight: 10.0
+  algebraic_coherence:
+    enabled: true
+    min_class_size: 3
+    n_pairs: 2000
+    phase_start_epoch: 20
+    target_sim: 0.8
+    weight: 2.0
+  algebraic_multiplication:
+    enabled: true
+    n_pairs: 1024
+    phase_start_epoch: 50
+    weight: 10.0
+  angular_coherence:
+    enabled: true
+    level_prefix_k:
+    - 5
+    - 4
+    - 3
+    - 2
+    - 2
+    - 1
+    - 0
+    - 0
+    - 0
+    - 0
+    n_pairs: 3000
+    phase_start_epoch: 15
+    prefix_k: 2
+    target_sim:
+    - 1.0
+    - 0.95
+    - 0.9
+    - 0.85
+    - 0.8
+    - 0.7
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    weight: 2.0
+  geodesic:
+    curvature: 1.0
+    enabled: true
+    max_target_distance: 3.0
+    n_pairs: 2000
+    phase_start_epoch: 10
+    use_individual_valuation: true
+    use_smooth_l1: true
+    valuation_scale: 3.0
+    weight: 3.0
+  hyperbolic_kl:
+    beta: 0.1
+    enabled: true
+    free_bits: 0.0
+    variance_only: false
+    weight: 0.01
+  lagrangian:
+    enabled: true
+    lr: 0.1
+    max_lambda: 5.0
+    n_levels: 10
+    warmup_epochs: 20
+  learnable_weights: false
+  monotonic:
+    enabled: true
+    inner_radius: 0.08
+    margin_scale: 1.0
+    min_margin: 0.02
+    outer_radius: 0.9
+    target_loss_weight: 0.5
+    temperature: 0.05
+    use_soft_margin: true
+    weight: 1.0
+  radial:
+    enabled: true
+    inner_radius: 0.08
+    margin_step_factor: 0.01
+    margin_weight: 1.0
+    outer_radius: 0.9
+    valuation_weight_exponent: 0.3
+    weight: 2.0
+  rank:
+    enabled: true
+    n_pairs: 2000
+    scatter_weight: 0.5
+    temperature: 0.1
+    use_all_pairs: false
+    weight: 1.0
+  rich_hierarchy:
+    coverage_weight: 5.0
+    enabled: true
+    hierarchy_weight: 4.0
+    inner_radius: 0.08
+    min_richness_ratio: null
+    outer_radius: 0.85
+    richness_weight: null
+    separation_margin: 0.1
+    separation_weight: 5.0
+    variance_weight: 2.0
+  valuation_prior:
+    enabled: false
+    inner_radius: null
+    outer_radius: null
+    scale: 3.0
+    sigma_base: 0.5
+    sigma_scale: 0.1
+    weight: 1.0
+  within_level_contrastive:
+    enabled: false
+    max_pairs_per_level: 500
+    weight: 1.0
+  zero_structure: null
+memory:
+  cudnn_benchmark: true
+  empty_cache: true
+  empty_cache_freq: 25
+  gradient_checkpointing: false
+model:
+  curvature: 1.0
+  decoder_type: improved
+  detach_radial: false
+  encoder_type: improved
+  factored: true
+  hidden_dim: 128
+  init_identity: true
+  latent_dim: 64
+  learnable_curvature: true
+  max_radius: 0.99
+  name: TernaryVAEV6Controllable
+  positional_encoding: true
+  projection_dropout: 0.1
+  projection_layers: 2
+  radial_dims: 8
+  tangent_scale: 0.1
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.2
+  encoder_b_lr_scale: 0.1
+  projections_lr_scale: 1.0
+resume_checkpoint: null
+riemannian:
+  enabled: true
+  optimizer: adam
+  stabilize: 10
+statenet:
+  controller:
+    grad_patience: 5
+    grad_threshold: 0.005
+    patience_ceiling: 20
+    spike_multiplier: 2.0
+  coverage:
+    fix_threshold: 0.35
+    floor: 0.3
+    train_threshold: 0.45
+  enabled: true
+  hierarchy:
+    patience_ceiling: 25
+    plateau_patience: 15
+    plateau_threshold: 0.0005
+    stall_patience: 5
+  initial:
+    encoder_a_trainable: true
+    encoder_b_trainable: true
+    projections_trainable: true
+  lr_scales:
+    decoders: 1.0
+    encoder_a: 0.05
+    encoder_b: 0.1
+    projections: 1.0
+  timing:
+    hysteresis_epochs: 5
+    warmup_epochs: 100
+    window_size: 10
+training:
+  batch_size: 4096
+  epochs: 100
+  eval_every: 10
+  grokking_detection:
+    accuracy_jump_threshold: 0.02
+    enabled: false
+    gradient_norm_track: true
+    monitor_window: 20
+    plateau_patience: 15
+    plateau_threshold: 0.0001
+    representation_analysis: true
+  hierarchy_threshold: -0.75
+  high_v_budget_ratio: 0.25
+  lr: 0.001
+  max_grad_norm: 1.0
+  min_epochs: 100
+  num_workers: 4
+  patience: 50
+  print_every: 10
+  save_every: 25
+  scheduler:
+    T_0: 100
+    T_mult: 2
+    phases: []
+    type: cosine_warmup_restart
+  use_adaptive: false
+  use_stratified: false
+  val_frac: 0.1
+  weight_decay: 0.0001
+version:
+  changes:
+  - 'V11.0: Multiplicative Consistency'
+  - Switch to Index valuation for algebraic naturalness
+  - Aggressive AlgebraicAddition weight (10.0)
+  - Increased radial_dims (8) for result space
+  config: v11_multiplicative
+  date: null
+  model: '11.0'
+  version: null
+visualization:
+  curvature: 1.0
+  html_dir: visualizations
+  max_per_level: 500
+  persist_every: 50
+  save_html: true
+  umap_neighbors: 15

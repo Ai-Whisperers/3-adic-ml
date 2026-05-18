@@ -406,6 +406,18 @@ class AlgebraicAdditionLossConfig(StrictConfigModel):
     phase_start_epoch: int = Field(default=0, ge=0)
 
 
+class AlgebraicMultiplicationLossConfig(StrictConfigModel):
+    r"""AlgebraicMultiplicationLoss configuration.
+    
+    Encourages z(a ⊗ b) \approx z(a) ⊙ z(b) in latent tangent space.
+    """
+
+    enabled: bool = False
+    weight: float = Field(default=1.0, ge=0)
+    n_pairs: int = Field(default=512, ge=1)
+    phase_start_epoch: int = Field(default=0, ge=0)
+
+
 class LossConfig(StrictConfigModel):
     """Complete loss configuration."""
 
@@ -423,6 +435,9 @@ class LossConfig(StrictConfigModel):
     )
     algebraic_addition: AlgebraicAdditionLossConfig = Field(
         default_factory=AlgebraicAdditionLossConfig
+    )
+    algebraic_multiplication: AlgebraicMultiplicationLossConfig = Field(
+        default_factory=AlgebraicMultiplicationLossConfig
     )
     hyperbolic_kl: HyperbolicKLConfig = Field(default_factory=HyperbolicKLConfig)
     within_level_contrastive: WithinLevelContrastiveConfig = Field(

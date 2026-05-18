@@ -102,6 +102,7 @@ def test_representation_probe_suite_reports_tangent_and_hyperbolic_views() -> No
         z_tangent=all_ops * 1.5,
         raw_inputs=all_ops,
         indices=all_indices,
+        valuation_fn=TERNARY.valuation,
         sample_budget=60,
         max_level=2,
         min_per_class=3,

@@ -26,12 +26,12 @@ class TestNumericalStability:
         model.projections = MagicMock()
         model.projections.get_curvature.return_value = 1.0
         
-        # Mock loss function to return NaN in losses_A
+        # Mock loss function to return dict in losses_A
         loss_fn = MagicMock()
-        loss_fn.return_value = ({"total": torch.tensor(float('nan')), "recon": torch.tensor(0.1)}, {})
+        loss_fn.return_value = {"total": torch.tensor(float('nan')), "recon": torch.tensor(0.1)}
         
         loss_fn_b = MagicMock()
-        loss_fn_b.return_value = ({"total": torch.tensor(0.5)}, {})
+        loss_fn_b.return_value = {"total": torch.tensor(0.5)}
         
         # Setup minimal inputs for train_epoch
         loader = [(torch.randn(1, 9), torch.tensor([0]))]
@@ -56,10 +56,10 @@ class TestNumericalStability:
         model.projections.get_curvature.return_value = 1.0
         
         loss_fn = MagicMock()
-        loss_fn.return_value = ({"total": torch.tensor(0.5)}, {})
+        loss_fn.return_value = {"total": torch.tensor(0.5)}
         
         loss_fn_b = MagicMock()
-        loss_fn_b.return_value = ({"total": torch.tensor(float('inf'))}, {})
+        loss_fn_b.return_value = {"total": torch.tensor(float('inf'))}
         
         loader = [(torch.randn(1, 9), torch.tensor([0]))]
         optimizer = MagicMock()
