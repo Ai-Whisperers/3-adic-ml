@@ -193,7 +193,7 @@ src/
 | `src/models/vae.py` | TernaryVAEV6, TernaryVAEV6Controllable, EncoderHead |
 | `src/models/lr_controller.py` | MetricBasedLR, TrainingMetrics, LR scale control |
 | `src/models/hyperbolic_projection.py` | expmap0/logmap0 projections |
-| `src/config/statenet_config.py" | StateNetConfig dataclass |
+| `src/config/statenet_config.py` | StateNetConfig dataclass |
 | `src/geometry/poincare.py` | Riemannian backend (geoopt) |
 | `src/core/ternary.py` | Immutable 3-adic field logic |
 | `src/losses/combined.py` | Config-driven loss composition |

@@ -188,6 +188,7 @@ class ModelAuditor:
             radial_dims=model_cfg.get("radial_dims", 4),
             detach_radial=model_cfg.get("detach_radial", False),
             positional_encoding=model_cfg.get("positional_encoding", False),
+            pos_weight_base=model_cfg.get("pos_weight_base", 3.0),
             encoder_a_trainable=encoder_a_trainable,
             encoder_b_trainable=encoder_b_trainable,
             projections_trainable=projections_trainable,

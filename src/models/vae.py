@@ -281,6 +281,7 @@ class TernaryVAEV6(nn.Module):
         radial_dims: int = 4,
         detach_radial: bool = False,
         positional_encoding: bool = False,
+        pos_weight_base: float = 3.0,
         ):
         super().__init__()
         self.latent_dim = latent_dim
@@ -293,14 +294,15 @@ class TernaryVAEV6(nn.Module):
         self.radial_dims = radial_dims
         self.detach_radial = detach_radial
         self.positional_encoding = positional_encoding
+        self.pos_weight_base = pos_weight_base
 
-        # Positional significance weights: pos_weights[k] = 1/3^k.
+        # Positional significance weights: pos_weights[k] = 1/base^k.
         # Position 0 is most predictive of v_3(n) (determines v_3=0 vs >0 for
         # 66% of the dataset), so it receives weight 1.0.
         if positional_encoding:
             self.register_buffer(
                 "pos_weights",
-                torch.tensor([1.0 / (3 ** k) for k in range(9)], dtype=torch.float64),
+                torch.tensor([1.0 / (pos_weight_base ** k) for k in range(9)], dtype=torch.float64),
                 persistent=False,
             )
 

@@ -34,6 +34,7 @@ def probe_lsb_accuracy(checkpoint_path):
         factored=model_cfg.get("factored", True),
         radial_dims=model_cfg.get("radial_dims", 4),
         positional_encoding=pos_enc,
+        pos_weight_base=model_cfg.get("pos_weight_base", 3.0),
         n_projection_layers=model_cfg.get("projection_layers", 1),
         projection_dropout=model_cfg.get("projection_dropout", 0.0)
     ).to(torch.float64)
@@ -70,14 +71,26 @@ def probe_lsb_accuracy(checkpoint_path):
             print("  v=" + str(v) + ": " + "{:.4%}".format(val_acc) + " (n=" + str(mask.sum()) + ")")
 
 if __name__ == "__main__":
-    runs = sorted(Path("runs").glob("v11_multiplicative_*"))
-    if not runs:
-        print("No V11 runs found.")
-        sys.exit(1)
-    
-    ckpt_path = runs[-1] / "checkpoints" / "final.pt"
-    if not ckpt_path.exists():
-        print(f"Checkpoint not found: {ckpt_path}")
-        sys.exit(1)
+    if len(sys.argv) > 1:
+        ckpt_path = Path(sys.argv[1])
+    else:
+        # Auto-find latest run
+        runs = sorted(Path("runs").glob("v13*"))
+        if not runs:
+            runs = sorted(Path("runs").glob("v11*"))
+        
+        if not runs:
+            print("No V11/V13 runs found.")
+            sys.exit(1)
+        
+        ckpt_path = runs[-1] / "checkpoints" / "final.pt"
+        if not ckpt_path.exists():
+            # Try any checkpoint
+            pts = sorted((runs[-1] / "checkpoints").glob("*.pt"))
+            if pts:
+                ckpt_path = pts[-1]
+            else:
+                print(f"No checkpoints found in {runs[-1]}")
+                sys.exit(1)
     
     probe_lsb_accuracy(ckpt_path)

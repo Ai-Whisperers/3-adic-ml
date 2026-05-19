@@ -67,6 +67,9 @@ class ModelConfig(StrictConfigModel):
     decoder_type: Literal["standard", "improved"] = "improved"
     learnable_curvature: bool = True
     positional_encoding: bool = False
+    pos_weight_base: float = Field(
+        default=3.0, gt=1.0, le=10.0, description="Base for positional weights (1/base^k)"
+    )
 
     @model_validator(mode="after")
     def validate_radial_dims(self) -> ModelConfig:

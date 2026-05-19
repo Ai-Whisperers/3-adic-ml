@@ -1,12 +1,4 @@
-#XR|# Next Steps Roadmap
-YB|**Date:** 2026-03-23
-PJ|**Status:** V7.2+ complete. Direction geometry optimization yields composite ARI 0.912→0.955. Q=2.163 ceiling confirmed data-derived.
-WT|
-HS|See `docs/audits/23-03-2026-LEVEL-PREFIX-AUDIT.md` for full experimental trajectory.
-YB|**Date:** 2026-03-23
-JR|**Status:** V7.2+ complete. Direction geometry optimization (level_prefix_k, target_sim) yields composite ARI 0.912→0.955. Q=2.163 ceiling confirmed data-derived, not architecture.
-RW|
-SJ|See `docs/audits/23-03-2026-LEVEL-PREFIX-AUDIT.md` for full experimental trajectory.
+# Next Steps Roadmap
 **Date:** 2026-03-22
 **Status:** Q=2.163 confirmed as structural ceiling — survives V7 factored latent architecture. Ceiling is from 3-adic group size distribution (66% at v=0 → tied Spearman ranks), not architecture.
 
@@ -360,7 +352,7 @@ These have been exhausted and will not improve Q:
 - encoder_a LR tuning (coverage was dead, now fixed; Q formula doesn't include coverage)
 - More training epochs from current checkpoint (convergence confirmed)
 
-HR|- More training epochs from current checkpoint (convergence confirmed)
+- More training epochs from current checkpoint (convergence confirmed)
 
 ---
 
@@ -386,4 +378,4 @@ epochs: 1500
 
 ### Pydantic Validation (in progress)
 
-Review `src/config/` for schema-based YAML validation. See `docs/PLANNING/PYDANTIC_VALIDATION.md` for analysis.
+Review `src/config/` for schema-based YAML validation. See `docs/planning/PYDANTIC_VALIDATION.md` for analysis.
