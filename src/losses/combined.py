@@ -43,6 +43,7 @@ from src.core.ternary import get_valuation_fn
 from .algebraic import (
     AlgebraicAdditionLoss,
     AlgebraicCoherenceLoss,
+    AlgebraicDistributiveLoss,
     AlgebraicMultiplicationLoss,
     AngularCoherenceLoss,
 )
@@ -107,6 +108,7 @@ class CombinedLoss(nn.Module):
     algebraic_coherence_loss: Optional[AlgebraicCoherenceLoss]
     algebraic_addition_loss: Optional[AlgebraicAdditionLoss]
     algebraic_multiplication_loss: Optional[AlgebraicMultiplicationLoss]
+    algebraic_distributive_loss: Optional[AlgebraicDistributiveLoss]
 
     def __init__(
         self,
@@ -375,12 +377,24 @@ class CombinedLoss(nn.Module):
         else:
             self.algebraic_multiplication_loss = None
 
+        # Algebraic Distributive Loss (z(a * (b + c)) \approx z(a) * (z(b) + z(c)))
+        ad_cfg = self.config.get('algebraic_distributive', {})
+        if ad_cfg.get('enabled', False):
+            self.algebraic_distributive_loss = AlgebraicDistributiveLoss(
+                weight=ad_cfg.get('weight', 1.0),
+                n_triplets=ad_cfg.get('n_triplets', 512),
+                phase_start_epoch=ad_cfg.get('phase_start_epoch', 0),
+            )
+        else:
+            self.algebraic_distributive_loss = None
+
         # Guard: at least one loss must be enabled, or training will be gradient-free
         active = [
             self.rich_hierarchy, self.radial_loss, self.geodesic_loss,
             self.rank_loss, self.monotonic_loss, self.kl_loss, self.valuation_prior,
             self.wlc_loss, self.angular_coherence, self.algebraic_coherence_loss,
             self.algebraic_addition_loss, self.algebraic_multiplication_loss,
+            self.algebraic_distributive_loss,
         ]
         if not any(x is not None for x in active):
             raise ValueError(
@@ -748,7 +762,14 @@ class CombinedLoss(nn.Module):
             losses['alg_multiplication_metrics'] = am_metrics
             total = total + am_out
 
-        # 14. Fallback: Basic coverage loss if no rich_hierarchy
+        # 14. AlgebraicDistributiveLoss (requires mu and model)
+        if self.algebraic_distributive_loss is not None and mu is not None and model is not None:
+            ad_out, ad_metrics = self.algebraic_distributive_loss(mu, indices, model, epoch)
+            losses['algebraic_distributive'] = ad_out
+            losses['alg_distributive_metrics'] = ad_metrics
+            total = total + ad_out
+
+        # 15. Fallback: Basic coverage loss if no rich_hierarchy
         if self.rich_hierarchy is None:
             # Respect coverage_weight from config even if rich_hierarchy is disabled
             coverage_weight = self.config.get('rich_hierarchy', {}).get('coverage_weight', 1.0)

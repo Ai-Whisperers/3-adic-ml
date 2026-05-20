@@ -354,3 +354,72 @@ class AlgebraicMultiplicationLoss(nn.Module):
             metrics["alg_multiplication_sim"] = cos_sim.item()
 
         return loss, metrics
+
+
+class AlgebraicDistributiveLoss(nn.Module):
+    r"""Enforce the distributive law in tangent space (Mu space).
+    
+    Objective: z(a ⊗ (b ⊕ c)) ≈ z(a) ⊙ (z(b) + z(c))
+    """
+
+    def __init__(
+        self,
+        weight: float = 1.0,
+        n_triplets: int = 512,
+        phase_start_epoch: int = 0,
+    ):
+        super().__init__()
+        self.weight = weight
+        self.n_triplets = n_triplets
+        self.phase_start_epoch = phase_start_epoch
+        self.generator = torch.Generator()
+        self.generator.manual_seed(42)
+
+    def forward(
+        self,
+        mu_A: torch.Tensor,
+        indices: torch.Tensor,
+        model: nn.Module,
+        epoch: int = 0,
+    ) -> Tuple[torch.Tensor, MetricsDict]:
+        metrics: MetricsDict = {}
+        zero = torch.tensor(0.0, device=mu_A.device, dtype=mu_A.dtype)
+
+        if epoch < self.phase_start_epoch or self.weight <= 0:
+            metrics["alg_distributive_loss"] = 0.0
+            return zero, metrics
+
+        B = mu_A.shape[0]
+        if B < 3:
+            metrics["alg_distributive_loss"] = 0.0
+            return zero, metrics
+
+        n_samples = min(self.n_triplets, B // 3)
+        if n_samples < 1:
+            metrics["alg_distributive_loss"] = 0.0
+            return zero, metrics
+
+        perm = torch.randperm(B, generator=self.generator).to(mu_A.device)
+        idx_a = perm[:n_samples]
+        idx_b = perm[n_samples : 2 * n_samples]
+        idx_c = perm[2 * n_samples : 3 * n_samples]
+
+        # Ground truth: a * (b + c)
+        idx_sum_bc = TERNARY.ternary_add(indices[idx_b], indices[idx_c])
+        idx_dist_gt = TERNARY.ternary_mul(indices[idx_a], idx_sum_bc)
+        
+        # Representations
+        mu_res = model.get_mu_representations(idx_dist_gt, mu_A.device)
+        
+        # Distributive target: mu(a) * (mu(b) + mu(c))
+        mu_target = mu_A[idx_a] * (mu_A[idx_b] + mu_A[idx_c])
+        
+        loss_val = F.smooth_l1_loss(mu_res, mu_target)
+        loss = self.weight * loss_val
+        metrics["alg_distributive_loss"] = loss.item()
+
+        with torch.no_grad():
+            cos_sim = F.cosine_similarity(mu_res, mu_target).mean()
+            metrics["alg_distributive_sim"] = cos_sim.item()
+
+        return loss, metrics

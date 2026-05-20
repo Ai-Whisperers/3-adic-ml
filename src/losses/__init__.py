@@ -1,6 +1,7 @@
 from .algebraic import (
     AlgebraicAdditionLoss,
     AlgebraicCoherenceLoss,
+    AlgebraicDistributiveLoss,
     AlgebraicMultiplicationLoss,
     AngularCoherenceLoss,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "AngularCoherenceLoss",
     "AlgebraicAdditionLoss",
     "AlgebraicMultiplicationLoss",
+    "AlgebraicDistributiveLoss",
     "AlgebraicCoherenceLoss",
     "PAdicGeodesicLoss",
     "RadialHierarchyLoss",

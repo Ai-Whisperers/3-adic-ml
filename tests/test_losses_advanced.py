@@ -19,6 +19,7 @@ import torch
 from src.losses.algebraic import (
     AlgebraicAdditionLoss,
     AlgebraicCoherenceLoss,
+    AlgebraicDistributiveLoss,
     AlgebraicMultiplicationLoss,
     AngularCoherenceLoss,
 )
@@ -229,6 +230,32 @@ class TestAlgebraicMultiplicationLoss:
         loss, metrics = loss_fn(mu, indices, model, epoch=10)
         assert loss.item() == 0.0
         assert metrics["alg_multiplication_loss"] == 0.0
+
+
+class TestAlgebraicDistributiveLoss:
+    def test_forward_with_model_mock(self, sample_data):
+        mu, _, indices, _, _ = sample_data
+
+        # Mock model with get_mu_representations
+        model = MagicMock()
+        def mock_get_mu(idx, device):
+            return torch.randn(len(idx), 16, dtype=torch.float64, device=device)
+        model.get_mu_representations.side_effect = mock_get_mu
+
+        loss_fn = AlgebraicDistributiveLoss()
+        loss, metrics = loss_fn(mu, indices, model, epoch=0)
+
+        assert isinstance(loss, torch.Tensor)
+        assert "alg_distributive_loss" in metrics
+        assert "alg_distributive_sim" in metrics
+
+    def test_phase_gate(self, sample_data):
+        mu, _, indices, _, _ = sample_data
+        model = MagicMock()
+        loss_fn = AlgebraicDistributiveLoss(phase_start_epoch=50)
+        loss, metrics = loss_fn(mu, indices, model, epoch=10)
+        assert loss.item() == 0.0
+        assert metrics["alg_distributive_loss"] == 0.0
 
 
 # =============================================================================
