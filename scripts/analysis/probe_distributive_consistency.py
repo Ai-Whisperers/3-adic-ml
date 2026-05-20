@@ -89,15 +89,26 @@ def probe_distributive_consistency(checkpoint_path, n_samples=1000):
     print(f"  Final Digit Accuracy:       {acc:.4%}")
 
 if __name__ == "__main__":
-    runs = sorted(Path("runs").glob("v13*"))
-    if not runs:
-        runs = sorted(Path("runs").glob("v11*"))
-    if not runs:
-        print("No valid runs found.")
-        sys.exit(1)
-    
-    ckpt_path = runs[-1] / "checkpoints" / "final.pt"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ckpt", type=str, help="Path to checkpoint")
+    args = parser.parse_args()
+
+    if args.ckpt:
+        ckpt_path = Path(args.ckpt)
+    else:
+        # Auto-detect latest run
+        runs = sorted(Path("runs").glob("v*"))
+        if not runs:
+            print("No valid runs found in 'runs/'.")
+            sys.exit(1)
+        
+        latest_run = runs[-1]
+        ckpt_path = latest_run / "checkpoints" / "final.pt"
+        if not ckpt_path.exists():
+            ckpt_path = latest_run / "checkpoints" / "best_Q.pt"
+            
     if not ckpt_path.exists():
-        ckpt_path = runs[-1] / "checkpoints" / "best_Q.pt"
+        print(f"Checkpoint not found: {ckpt_path}")
+        sys.exit(1)
         
     probe_distributive_consistency(ckpt_path)
