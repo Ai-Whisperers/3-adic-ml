@@ -32,6 +32,7 @@ from .metrics import (
     compute_accuracy,
     compute_coverage,
     compute_hierarchy_metrics,
+    plot_algebraic_consistency,
 )
 from .reporting import ReportingManager, _build_checkpoint_payload
 
@@ -111,7 +112,7 @@ def train_model(
         # 2. Validation & Reporting Phase
         if epoch % eval_every == 0 or epoch == epochs - 1:
             val_metrics = validate_epoch(
-                epoch, model, val_loader, device, valuation_fn, config
+                epoch, model, val_loader, device, valuation_fn, config, loss_fn=loss_fn
             )
 
             # Extract hierarchy metrics (using VAE-A as primary)
@@ -188,7 +189,25 @@ def train_model(
                 "Radius/mean_VAE_A": hier_metrics_A["mean_radius"],
                 "Radius/mean_VAE_B": hier_metrics_B["mean_radius"],
             }
+
+            # Add per-level radii
+            for v, r_val in hier_metrics_A.get("level_radii", {}).items():
+                if not np.isnan(r_val):
+                    log_dict[f"Radius/level_v{v}"] = r_val
+
+            # Add algebraic metrics
+            for name, val in val_metrics.get("alg_metrics", {}).items():
+                log_dict[f"Algebraic/{name}"] = val
+
             reporting.log_metrics(log_dict, epoch)
+
+            # Algebraic Consistency Figure
+            if reporting.tb_logger and "mu_A_cat" in val_metrics and val_metrics["mu_A_cat"] is not None:
+                fig = plot_algebraic_consistency(
+                    model, val_metrics["idx_cat"], val_metrics["mu_A_cat"], device
+                )
+                if fig is not None:
+                    reporting.tb_logger.add_figure("Algebraic/AdditionConsistency", fig, global_step=epoch)
 
             # Visualization
             if vis_pipeline and epoch > 0:
@@ -344,6 +363,7 @@ def validate_epoch(
     device: torch.device,
     valuation_fn: Any,
     config: Dict[str, Any],
+    loss_fn: Optional[nn.Module] = None,
 ) -> Dict[str, Any]:
     """Validate for one epoch."""
     model.eval()
@@ -351,6 +371,7 @@ def validate_epoch(
     cov_sum = 0.0
     n_batches = 0
     z_A_all, z_B_all, idx_all = [], [], []
+    mu_A_all = []
 
     with torch.no_grad():
         for batch_ops, batch_idx in loader:
@@ -364,12 +385,40 @@ def validate_epoch(
             z_A_all.append(out["z_A_hyp"].detach())
             z_B_all.append(out["z_B_hyp"].detach())
             idx_all.append(batch_idx.detach())
+            if "mu_A" in out:
+                mu_A_all.append(out["mu_A"].detach())
 
     z_A_cat, z_B_cat, idx_cat = torch.cat(z_A_all), torch.cat(z_B_all), torch.cat(idx_all)
+    mu_A_cat = torch.cat(mu_A_all) if mu_A_all else None
     curr_c = model.projections.get_curvature()
 
     hier_A = compute_hierarchy_metrics(z_A_cat, idx_cat, curr_c, seed=42+epoch, valuation_fn=valuation_fn)
     hier_B = compute_hierarchy_metrics(z_B_cat, idx_cat, curr_c, seed=1042+epoch, valuation_fn=valuation_fn)
+
+    # Compute algebraic metrics if loss_fn is provided
+    alg_metrics = {}
+    if loss_fn is not None and mu_A_cat is not None:
+        # We sample a subset for algebraic metrics to avoid OOM or slow computation
+        n_alg = min(mu_A_cat.size(0), 1024)
+        perm = torch.randperm(mu_A_cat.size(0), device=device)[:n_alg]
+        mu_sub = mu_A_cat[perm]
+        idx_sub = idx_cat[perm]
+        
+        # We can call individual algebraic losses directly or through CombinedLoss if it exposed them
+        # CombinedLoss doesn't expose them directly in a clean way for evaluation without targets
+        # But we can call its forward and just look at the metrics dict.
+        # However, forward expects targets and logits.
+        
+        # Alternatively, we can use the sub-modules directly if they are available
+        if hasattr(loss_fn, 'algebraic_addition_loss') and loss_fn.algebraic_addition_loss:
+            _, m = loss_fn.algebraic_addition_loss(mu_sub, idx_sub, model, epoch)
+            alg_metrics.update(m)
+        if hasattr(loss_fn, 'algebraic_multiplication_loss') and loss_fn.algebraic_multiplication_loss:
+            _, m = loss_fn.algebraic_multiplication_loss(mu_sub, idx_sub, model, epoch)
+            alg_metrics.update(m)
+        if hasattr(loss_fn, 'algebraic_distributive_loss') and loss_fn.algebraic_distributive_loss:
+            _, m = loss_fn.algebraic_distributive_loss(mu_sub, idx_sub, model, epoch)
+            alg_metrics.update(m)
 
     return {
         "avg_val_acc": acc_sum / n_batches,
@@ -377,5 +426,7 @@ def validate_epoch(
         "hier_metrics_A": hier_A,
         "hier_metrics_B": hier_B,
         "z_A_cat": z_A_cat,
+        "mu_A_cat": mu_A_cat,
         "idx_cat": idx_cat,
+        "alg_metrics": alg_metrics,
     }

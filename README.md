@@ -1,4 +1,6 @@
-# 3-Adic ML
+# 3-Adic ML 🌌
+
+> **New here?** Read our [Welcome Guide](docs/WELCOME.md) | **¿Nuevo aquí?** Lee nuestra [Guía de Bienvenida](docs/BIENVENIDO.md)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
@@ -7,7 +9,7 @@
 
 **Deep learning training pipelines and mathematical foundations for p-adic variational autoencoders.**
 
-Train dual VAEs whose latent spaces live in a Poincare ball, with radial position determined by 3-adic valuation and direction determined by digit prefix structure. Hierarchy emerges from geometry, not memorization.
+This project explores the hypothesis that **"Meaning = Geometry"**. We train dual VAEs whose latent spaces live in a Poincaré ball, with radial position determined by 3-adic valuation and direction determined by digit prefix structure. In this framework, hierarchy is not just learned; it emerges structurally from the geometry of the space.
 
 ## Results (V7.2)
 
@@ -170,6 +172,17 @@ visualization:
   html_dir: runs/visualizations/v7_large
   save_html: true
 ```
+
+## Documentation 📚
+
+For a deeper dive into the mathematics, architecture, and research status, please explore our **[Documentation Index](docs/README.md)**.
+
+Key documents include:
+- **[Welcome Guide](docs/WELCOME.md)** / **[Guía de Bienvenida](docs/BIENVENIDO.md)**
+- **[Visualization Guide](docs/VISUALIZATION.md)** / **[Guía de Visualización](docs/VISUALIZACION.md)**
+- **[Project Summary](docs/SUMMARY.md)**: Executive overview and results.
+- **[Technical Specs](docs/SPECS.md)**: Detailed engineering specifications.
+- **[FAQ](docs/FAQ.md)**: Common questions about p-adic ML.
 
 ## Project Structure
 

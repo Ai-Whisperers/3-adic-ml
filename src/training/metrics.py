@@ -265,6 +265,15 @@ def compute_hierarchy_metrics(
         level_hier = compute_level_stratified_hierarchy(z_hyp, indices, curvature,
                                                         valuation_fn=_val_fn)
 
+        # Compute per-level mean radii
+        level_radii = {}
+        for level in range(TERNARY.MAX_VALUATION + 1):
+            mask = (valuations == level)
+            if mask.any():
+                level_radii[level] = float(radii[mask].mean())
+            else:
+                level_radii[level] = float("nan")
+
         # Compute worst level (least negative = worst performing)
         valid_levels = {k: v for k, v in level_hier.items() if not np.isnan(v)}
         worst_level = (
@@ -282,11 +291,75 @@ def compute_hierarchy_metrics(
             "std_radius": float(radii.std()),
             "tree_coherence": float(tree_coh),
             "level_hierarchy": level_hier,
+            "level_radii": level_radii,
             "worst_level": int(worst_level),
             "mean_level_hierarchy": float(mean_level_hier),
             "hierarchy_collapsed": bool(hierarchy_collapsed),
             "dist_corr_collapsed": bool(dist_corr_collapsed),
         }
+
+
+def plot_algebraic_consistency(
+    model: torch.nn.Module,
+    indices: torch.Tensor,
+    mu_A: torch.Tensor,
+    device: torch.device,
+    n_samples: int = 100,
+) -> Optional[Any]:
+    """Generate a figure comparing predicted vs actual algebraic results in latent space."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return None
+
+    model.eval()
+    B = indices.size(0)
+    if B < 2:
+        return None
+
+    n_samples = min(n_samples, B // 2)
+    perm = torch.randperm(B, device=device)[: 2 * n_samples]
+    idx_a = indices[perm[:n_samples]]
+    idx_b = indices[perm[n_samples:]]
+
+    with torch.no_grad():
+        mu_a = mu_A[perm[:n_samples]]
+        mu_b = mu_A[perm[n_samples:]]
+        
+        # Predicted mu sum
+        mu_sum_pred = mu_a + mu_b
+        
+        # Actual mu sum
+        idx_sum_gt = TERNARY.ternary_add(idx_a, idx_b)
+        mu_sum_gt = model.get_mu_representations(idx_sum_gt, device)
+        
+        # Project both to Poincaré ball
+        z_pred, _ = model.projections.proj_A(mu_sum_pred)
+        z_gt, _ = model.projections.proj_A(mu_sum_gt)
+        
+        z_pred = z_pred.cpu().numpy()
+        z_gt = z_gt.cpu().numpy()
+
+    # Use first 2 dimensions for simple 2D visualization
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.scatter(z_gt[:, 0], z_gt[:, 1], c='blue', alpha=0.5, label='Actual z(a+b)', s=20)
+    ax.scatter(z_pred[:, 0], z_pred[:, 1], c='red', alpha=0.5, label='Predicted z(a)+z(b)', s=20)
+    
+    # Draw lines between pairs
+    for i in range(n_samples):
+        ax.plot([z_gt[i, 0], z_pred[i, 0]], [z_gt[i, 1], z_pred[i, 1]], 'gray', alpha=0.2, lw=0.5)
+
+    # Draw boundary
+    circle = plt.Circle((0, 0), 1, color='gray', fill=False, linestyle='--', alpha=0.3)
+    ax.add_artist(circle)
+    
+    ax.set_xlim(-1.1, 1.1)
+    ax.set_ylim(-1.1, 1.1)
+    ax.set_aspect('equal')
+    ax.set_title("Algebraic Addition Consistency (Latent Space)")
+    ax.legend(fontsize='small')
+    
+    return fig
 
 
 @dataclass
