@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+*$py.class
+visualizations/
+data/*.html
+*.json
+!data/sequences.fasta
