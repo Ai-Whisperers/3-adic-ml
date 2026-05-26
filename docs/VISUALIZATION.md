@@ -4,10 +4,15 @@ One of the most powerful aspects of this project is the ability to **see** the m
 
 ## 🛰️ The Visualization Pipeline
 
-During training, the `VisualizationPipeline` automatically generates several types of maps. These are saved as interactive HTML files in `runs/visualizations/<run_name>/`.
+During training, the `VisualizationPipeline` automatically generates several types of maps, now organized into subdirectories within `runs/<run_name>/visualizations/epoch_XXXXX/`:
+
+### 📂 Directory Structure
+- **`topology/`**: Contains global structure maps (UMAP 3D, PaCMAP 2D, TriMAP 2D) and Persistent Homology diagrams.
+- **`projections/`**: Contains direct latent space views (Native Poincaré Disk, SVG Latent Tree, Poincaré Ball 3D).
+- **`algebra/`**: (New) Contains algebraic consistency plots and flow animations.
 
 ### 1. Native Poincaré Disk
-This is our "Gold Standard" visualization. 
+This is our "Gold Standard" visualization, located in `projections/`.
 - **What it shows**: The latent space projected directly onto a 2D disk.
 - **Radial Preservation**: The distance from the center represents the **3-adic valuation**. Points at the center are the most "fundamental" (divisible by many powers of 3), while points at the boundary are the most "specific."
 - **Direction**: The angle represents the **prefix structure** (the first few digits of the ternary operation).
@@ -18,14 +23,20 @@ This is our "Gold Standard" visualization.
     - **Tree Edges**: Thin lines connecting "parents" to "children" in the 3-adic tree.
     - **Prefix Shading**: Colored regions showing where different digit-prefix classes live.
 
-### 2. Hyperbolic UMAP & PaCMAP
-Traditional algorithms like UMAP usually use Euclidean distance. We have modified them to use the **Hyperbolic Distance Matrix**.
+### 2. Algebraic Consistency Plots
+Integrated directly into TensorBoard under the `Algebraic/` category.
+- **Addition Consistency**: Visualizes predicted $z(a) + z(b)$ vs. actual $z(a+b)$.
+- **Multiplication Consistency**: Tracks how well the latent space respects the 3-adic ring homomorphism $z(a \otimes b) \approx z(a) \odot z(b)$.
+- **Distributive Law**: Monitors the emergence of the distributive property in latent space.
+
+### 3. Hyperbolic UMAP & PaCMAP
+Located in `topology/`. Traditional algorithms like UMAP usually use Euclidean distance. We have modified them to use the **Hyperbolic Distance Matrix**.
 - **UMAP (Uniform Manifold Approximation and Projection)**: Great for seeing the overall "skeleton" of the data.
 - **PaCMAP**: Better at balancing local clusters with the global tree structure.
 - **Why it matters**: By using hyperbolic distances, we ensure that the "curved" nature of the space is preserved even when we flatten it to 2D or 3D.
 
-### 3. Persistent Homology
-We use topology to check if the AI is learning "holes" or "connected components" in the data.
+### 4. Persistent Homology
+Located in `topology/`. We use topology to check if the AI is learning "holes" or "connected components" in the data.
 - **Betti Numbers**: We track $H_0$ (connected components). Ideally, as the AI learns the tree structure, the number of connected components should align with the 3-adic branching.
 
 ## 🛠️ How to Generate Visualizations

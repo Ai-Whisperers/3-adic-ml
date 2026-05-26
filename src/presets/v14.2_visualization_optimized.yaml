@@ -1,0 +1,183 @@
+# v14.2_visualization_optimized.yaml - Phase 14 Visualization & Monitoring Polish
+#
+# Primary Objective: Validate optimized visualization organization and algebraic consistency monitoring.
+# Strategy: Frequent evaluations (every 10 epochs) with full visualization pipeline.
+
+# =============================================================================
+# Device Configuration
+# =============================================================================
+device:
+  cuda_device: 0
+  use_amp: false
+
+# =============================================================================
+# Model Architecture
+# =============================================================================
+model:
+  name: TernaryVAEV6Controllable
+  latent_dim: 64
+  hidden_dim: 128
+  max_radius: 0.99
+  curvature: 1.0
+  learnable_curvature: true
+
+  factored: true
+  radial_dims: 8
+
+  positional_encoding: true
+  pos_weight_base: 1.2
+
+  projection_layers: 2
+  projection_dropout: 0.1
+  init_identity: true
+  tangent_scale: 0.1
+
+  encoder_type: improved
+  decoder_type: improved
+
+# =============================================================================
+# Visualization Configuration
+# =============================================================================
+visualization:
+  max_per_level: 500
+  persist_every: 20
+  save_html: true
+  html_dir: "visualizations"
+  umap_neighbors: 15
+
+# =============================================================================
+# Differential Learning Rates
+# =============================================================================
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.2
+  encoder_b_lr_scale: 0.1
+  projections_lr_scale: 1.0
+
+# =============================================================================
+# StateNet Controller
+# =============================================================================
+statenet:
+  enabled: true
+  initial:
+    encoder_a_trainable: true
+    encoder_b_trainable: true
+    projections_trainable: true
+
+  coverage:
+    fix_threshold: 0.35
+    train_threshold: 0.45
+  hierarchy:
+    plateau_patience: 30
+  timing:
+    warmup_epochs: 10
+
+# =============================================================================
+# Loss Configuration
+# =============================================================================
+loss:
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 4.0
+    coverage_weight: 5.0
+    separation_weight: 5.0
+    variance_weight: 2.0
+    inner_radius: 0.08
+    outer_radius: 0.85
+
+  radial:
+    enabled: true
+    weight: 2.0
+    margin_weight: 1.0
+
+  geodesic:
+    enabled: true
+    phase_start_epoch: 10
+    curvature: 1.0
+    weight: 3.0
+    use_individual_valuation: true
+
+  rank:
+    enabled: true
+    weight: 1.0
+    temperature: 0.1
+    scatter_weight: 0.5
+
+  monotonic:
+    enabled: true
+    weight: 1.0
+
+  hyperbolic_kl:
+    enabled: true
+    beta: 0.1
+    weight: 0.01
+
+  angular_coherence:
+    enabled: true
+    weight: 2.0
+    phase_start_epoch: 15
+    level_prefix_k: [5, 4, 3, 2, 2, 1, 0, 0, 0, 0]
+    target_sim: [1.0, 0.95, 0.90, 0.85, 0.80, 0.70, 0.0, 0.0, 0.0, 0.0]
+
+  algebraic_coherence:
+    enabled: true
+    weight: 2.0
+    target_sim: 0.80
+    phase_start_epoch: 20
+
+  algebraic_addition:
+    enabled: true
+    weight: 10.0
+    n_pairs: 1024
+    phase_start_epoch: 30
+
+  algebraic_multiplication:
+    enabled: true
+    weight: 10.0
+    n_pairs: 1024
+    phase_start_epoch: 50
+
+  algebraic_distributive:
+    enabled: true
+    weight: 25.0
+    n_triplets: 1024
+    phase_start_epoch: 60
+
+  lagrangian:
+    enabled: true
+    lr: 0.1
+    max_lambda: 5.0
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+training:
+  epochs: 100                   # Reduced for testing the visualization pipeline
+  batch_size: 4096
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+
+  scheduler:
+    type: cosine_warmup_restart
+    T_0: 100
+    T_mult: 2
+
+  eval_every: 10                # More frequent evaluations for visualization
+  save_every: 25
+
+# =============================================================================
+# Data Configuration
+# =============================================================================
+data:
+  valuation_type: index
+
+# =============================================================================
+# Version Tracking
+# =============================================================================
+version:
+  model: "14.2"
+  config: "v14.2_visualization_optimized"
+  changes:
+    - "Added visualization configuration block"
+    - "Reduced epochs to 100 for visualization testing"
+    - "Set eval_every to 10 for more frequent monitoring"

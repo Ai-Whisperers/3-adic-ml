@@ -1,0 +1,1195 @@
+<svg width="800" height="800" xmlns="http://www.w3.org/2000/svg" style="background:#0b0e14; font-family: sans-serif;">
+<rect width="100%" height="100%" fill="#0b0e14"/>
+<circle cx="400.0" cy="400.0" r="350.0" fill="none" stroke="#2a2e37" stroke-dasharray="4,2"/>
+<path d="M155.82,400.05 L154.56,400.76 L153.30,401.46 L152.03,402.15 L150.76,402.83 L149.48,403.51 L148.20,404.18 L146.92,404.84 L145.63,405.50 L144.34,406.15 L143.05,406.79 L141.75,407.43" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M147.85,402.51 L195.54,402.13 L243.23,401.78 L290.92,401.46 L338.61,401.17 L386.30,400.92 L433.99,400.69 L481.68,400.50 L529.37,400.34 L577.06,400.21 L624.75,400.11 L672.44,400.04" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M683.97,400.29 L682.71,401.25 L681.45,402.22 L680.21,403.21 L678.99,404.22 L677.77,405.24 L676.57,406.27 L675.38,407.32 L674.21,408.39 L673.05,409.47 L671.90,410.57 L670.77,411.68" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M153.35,399.76 L152.46,399.53 L151.57,399.29 L150.68,399.06 L149.79,398.83 L148.90,398.60 L148.01,398.38 L147.12,398.15 L146.23,397.93 L145.34,397.71 L144.44,397.49 L143.55,397.27" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M144.75,475.39 L155.20,482.08 L164.99,489.71 L174.02,498.22 L182.23,507.52 L189.55,517.54 L195.91,528.20 L201.25,539.40 L205.53,551.05 L208.72,563.04 L210.78,575.28 L211.70,587.65" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M139.14,393.70 L188.46,394.82 L237.77,395.91 L287.09,396.98 L336.41,398.01 L385.73,399.02 L435.04,400.01 L484.36,400.96 L533.68,401.88 L583.00,402.78 L632.32,403.65 L681.65,404.49" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M148.23,367.35 L147.43,370.56 L146.53,373.74 L145.55,376.89 L144.47,380.01 L143.31,383.10 L142.06,386.16 L140.72,389.18 L139.30,392.16 L137.79,395.10 L136.19,397.99 L134.51,400.84" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M683.40,399.22 L682.21,399.23 L681.02,399.24 L679.83,399.24 L678.64,399.25 L677.45,399.26 L676.26,399.27 L675.07,399.27 L673.88,399.28 L672.69,399.29 L671.50,399.30 L670.31,399.31" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M139.20,369.17 L188.17,373.66 L237.18,377.65 L286.23,381.15 L335.31,384.14 L384.42,386.64 L433.55,388.63 L482.70,390.13 L531.86,391.12 L581.03,391.61 L630.21,391.61 L679.38,391.10" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M679.86,395.35 L630.54,396.54 L581.23,397.91 L531.93,399.47 L482.63,401.20 L433.34,403.11 L384.05,405.19 L334.78,407.46 L285.51,409.90 L236.25,412.52 L187.00,415.32 L137.76,418.30" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M666.77,426.48 L667.15,424.48 L667.58,422.48 L668.05,420.50 L668.56,418.53 L669.11,416.57 L669.71,414.62 L670.35,412.69 L671.03,410.76 L671.75,408.86 L672.51,406.97 L673.31,405.10" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M148.31,425.17 L172.34,409.47 L194.63,391.39 L214.94,371.11 L233.07,348.85 L248.80,324.85 L261.99,299.35 L272.49,272.64 L280.19,244.99 L285.01,216.69 L286.89,188.05 L285.82,159.37" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M161.15,401.12 L160.03,401.38 L158.91,401.64 L157.79,401.89 L156.67,402.15 L155.55,402.40 L154.42,402.65 L153.30,402.90 L152.18,403.15 L151.06,403.39 L149.93,403.63 L148.81,403.87" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M665.50,361.74 L618.52,370.28 L571.67,379.52 L524.95,389.45 L478.40,400.08 L432.00,411.39 L385.78,423.39 L339.74,436.08 L293.89,449.45 L248.25,463.50 L202.82,478.22 L157.62,493.62" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M138.82,390.16 L187.80,391.66 L236.79,393.03 L285.78,394.27 L334.77,395.37 L383.77,396.35 L432.77,397.19 L481.77,397.90 L530.77,398.48 L579.77,398.92 L628.77,399.24 L677.78,399.42" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M151.54,400.87 L150.81,400.84 L150.08,400.82 L149.36,400.79 L148.63,400.76 L147.90,400.73 L147.18,400.71 L146.45,400.68 L145.72,400.65 L145.00,400.63 L144.27,400.60 L143.54,400.58" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M161.21,407.02 L161.89,399.54 L162.15,392.03 L162.01,384.52 L161.46,377.03 L160.51,369.58 L159.16,362.19 L157.40,354.89 L155.25,347.69 L152.72,340.62 L149.80,333.70 L146.52,326.95" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M136.26,360.20 L185.22,366.52 L234.24,372.41 L283.31,377.87 L332.43,382.90 L381.59,387.51 L430.79,391.68 L480.02,395.42 L529.28,398.74 L578.57,401.62 L627.88,404.07 L677.21,406.08" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M148.86,400.94 L148.20,400.37 L147.53,399.81 L146.85,399.26 L146.18,398.71 L145.50,398.16 L144.82,397.61 L144.14,397.07 L143.45,396.53 L142.76,395.99 L142.07,395.46 L141.38,394.93" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M683.19,393.76 L633.75,394.87 L584.18,395.90 L534.73,397.01 L485.29,398.12 L435.72,399.32 L386.28,400.34 L336.71,401.45 L287.27,402.56 L237.83,403.67 L188.26,404.79 L138.82,405.90" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M670.12,400.67 L670.64,401.83 L671.18,402.99 L671.73,404.13 L672.29,405.28 L672.87,406.41 L673.47,407.54 L674.08,408.66 L674.70,409.77 L675.34,410.87 L675.99,411.97 L676.66,413.05" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M139.36,387.66 L187.65,389.64 L235.94,391.51 L284.23,393.26 L332.53,394.90 L380.83,396.42 L429.13,397.83 L477.44,399.12 L525.75,400.30 L574.06,401.37 L622.38,402.32 L670.70,403.15" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M674.47,400.29 L626.33,397.93 L578.26,394.57 L530.26,390.19 L482.36,384.81 L434.59,378.43 L386.96,371.05 L339.50,362.67 L292.23,353.30 L245.16,342.93 L198.32,331.59 L151.72,319.26" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M140.74,401.52 L189.09,401.41 L237.44,401.36 L285.78,401.38 L334.13,401.46 L382.47,401.60 L430.82,401.81 L479.17,402.08 L527.52,402.41 L575.86,402.81 L624.20,403.27 L672.55,403.80" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M140.76,387.67 L189.66,389.71 L238.58,391.66 L287.49,393.49 L336.41,395.22 L385.33,396.85 L434.26,398.37 L483.19,399.79 L532.12,401.10 L581.05,402.31 L629.99,403.41 L678.93,404.41" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M140.78,406.55 L141.00,406.94 L141.21,407.33 L141.43,407.72 L141.64,408.11 L141.85,408.50 L142.07,408.90 L142.28,409.29 L142.48,409.68 L142.69,410.08 L142.90,410.48 L143.10,410.87" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M686.78,394.63 L638.18,395.22 L589.58,395.64 L540.98,395.91 L492.37,396.00 L443.77,395.94 L395.16,395.70 L346.56,395.31 L297.96,394.75 L249.36,394.02 L200.77,393.13 L152.17,392.08" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M172.00,401.35 L171.02,401.32 L170.03,401.30 L169.04,401.28 L168.06,401.26 L167.07,401.24 L166.08,401.22 L165.10,401.20 L164.11,401.18 L163.12,401.16 L162.14,401.14 L161.15,401.12" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M679.67,392.67 L630.74,393.63 L581.81,394.44 L532.88,395.10 L483.94,395.61 L435.00,395.97 L386.07,396.17 L337.13,396.23 L288.19,396.13 L239.25,395.88 L190.32,395.48 L141.38,394.93" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M683.70,395.44 L637.84,401.68 L592.40,410.51 L547.53,421.90 L503.39,435.81 L460.10,452.21 L417.81,471.03 L376.66,492.22 L336.77,515.71 L298.28,541.42 L261.31,569.27 L225.97,599.17" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M146.46,400.18 L145.52,399.57 L144.58,398.97 L143.63,398.37 L142.68,397.78 L141.73,397.20 L140.77,396.62 L139.81,396.04 L138.84,395.47 L137.88,394.90 L136.91,394.34 L135.94,393.79" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M679.44,392.02 L631.51,392.98 L583.58,393.75 L535.64,394.32 L487.71,394.71 L439.77,394.91 L391.84,394.91 L343.90,394.72 L295.96,394.35 L248.03,393.78 L200.10,393.03 L152.17,392.08" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M675.78,394.49 L676.53,394.55 L677.28,394.61 L678.03,394.66 L678.78,394.72 L679.53,394.78 L680.28,394.83 L681.03,394.89 L681.78,394.94 L682.52,394.99 L683.27,395.05 L684.02,395.10" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M137.19,403.71 L185.97,403.28 L234.76,402.97 L283.55,402.76 L332.34,402.64 L381.13,402.64 L429.92,402.73 L478.71,402.93 L527.49,403.24 L576.28,403.64 L625.07,404.15 L673.85,404.77" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M176.66,535.47 L218.75,513.42 L261.34,492.36 L304.41,472.30 L347.94,453.25 L391.90,435.22 L436.27,418.22 L481.02,402.26 L526.13,387.35 L571.58,373.49 L617.34,360.70 L663.39,348.98" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M671.47,390.69 L624.32,392.96 L577.17,395.50 L530.05,398.31 L482.93,401.39 L435.84,404.74 L388.77,408.36 L341.72,412.26 L294.69,416.42 L247.69,420.85 L200.71,425.56 L153.76,430.53" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M680.64,406.01 L633.97,403.57 L587.34,400.46 L540.75,396.70 L494.22,392.27 L447.77,387.17 L401.38,381.42 L355.09,375.01 L308.89,367.93 L262.80,360.21 L216.82,351.82 L170.96,342.78" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M682.61,401.91 L682.70,401.84 L682.79,401.77 L682.88,401.71 L682.97,401.64 L683.06,401.57 L683.15,401.50 L683.24,401.44 L683.33,401.37 L683.42,401.30 L683.51,401.24 L683.60,401.17" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M676.46,396.50 L677.32,396.54 L678.19,396.58 L679.05,396.62 L679.92,396.65 L680.78,396.69 L681.64,396.73 L682.51,396.76 L683.37,396.80 L684.24,396.83 L685.10,396.86 L685.96,396.90" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M141.47,345.24 L189.76,353.68 L238.17,361.44 L286.68,368.52 L335.29,374.92 L383.98,380.63 L432.75,385.66 L481.59,390.00 L530.48,393.65 L579.42,396.62 L628.39,398.89 L677.39,400.48" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M154.22,382.79 L154.67,388.53 L154.86,394.29 L154.79,400.05 L154.46,405.80 L153.87,411.53 L153.02,417.23 L151.92,422.88 L150.56,428.48 L148.95,434.00 L147.09,439.46 L144.98,444.82" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M682.56,397.17 L682.77,397.25 L682.98,397.34 L683.19,397.42 L683.39,397.51 L683.60,397.60 L683.81,397.68 L684.02,397.77 L684.23,397.85 L684.43,397.93 L684.64,398.02 L684.85,398.10" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M354.05,136.24 L371.16,172.70 L391.58,207.42 L415.13,240.10 L441.59,270.46 L470.76,298.25 L502.37,323.21 L536.16,345.14 L571.83,363.85 L609.08,379.18 L647.58,391.00 L687.02,399.20" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M149.89,469.56 L196.22,459.93 L242.76,451.42 L289.50,444.04 L336.40,437.79 L383.44,432.68 L430.59,428.70 L477.82,425.87 L525.11,424.18 L572.42,423.63 L619.74,424.22 L667.02,425.96" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M142.86,400.60 L190.55,400.02 L238.24,399.26 L285.93,398.34 L333.61,397.25 L381.29,396.00 L428.97,394.57 L476.64,392.97 L524.30,391.21 L571.96,389.28 L619.61,387.18 L667.26,384.91" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M669.72,402.31 L670.34,401.26 L670.98,400.23 L671.62,399.20 L672.28,398.18 L672.95,397.16 L673.63,396.16 L674.32,395.16 L675.03,394.17 L675.74,393.19 L676.47,392.21 L677.20,391.25" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M148.86,315.50 L195.80,328.17 L243.03,339.70 L290.53,350.09 L338.27,359.33 L386.21,367.41 L434.33,374.34 L482.61,380.11 L531.01,384.71 L579.51,388.14 L628.08,390.40 L676.69,391.49" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M678.05,405.29 L677.74,404.49 L677.45,403.70 L677.16,402.89 L676.88,402.09 L676.61,401.28 L676.35,400.47 L676.09,399.66 L675.84,398.85 L675.60,398.03 L675.37,397.21 L675.15,396.39" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M673.17,406.66 L625.51,405.62 L577.85,404.63 L530.19,403.69 L482.53,402.80 L434.87,401.97 L387.20,401.18 L339.54,400.45 L291.88,399.77 L244.21,399.13 L196.55,398.56 L148.88,398.03" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M655.18,313.04 L654.76,321.22 L655.00,329.42 L655.90,337.56 L657.46,345.61 L659.66,353.50 L662.50,361.19 L665.94,368.63 L669.98,375.76 L674.58,382.54 L679.72,388.93 L685.36,394.88" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M672.75,388.37 L673.64,389.04 L674.53,389.71 L675.43,390.37 L676.33,391.02 L677.24,391.67 L678.15,392.30 L679.07,392.94 L680.00,393.56 L680.93,394.17 L681.86,394.78 L682.80,395.38" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M137.86,393.63 L186.57,394.90 L235.28,396.20 L283.99,397.54 L332.70,398.91 L381.41,400.31 L430.12,401.75 L478.83,403.22 L527.54,404.72 L576.24,406.25 L624.95,407.81 L673.65,409.42" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M675.83,406.00 L626.77,405.32 L577.71,404.82 L528.64,404.50 L479.58,404.35 L430.51,404.38 L381.45,404.58 L332.39,404.97 L283.33,405.52 L234.27,406.26 L185.21,407.17 L136.16,408.25" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M169.63,420.38 L168.18,418.26 L166.69,416.15 L165.16,414.07 L163.61,412.01 L162.02,409.98 L160.41,407.97 L158.76,405.98 L157.09,404.02 L155.38,402.09 L153.65,400.18 L151.89,398.29" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M644.67,509.74 L643.48,499.51 L643.21,489.22 L643.89,478.95 L645.50,468.78 L648.02,458.80 L651.44,449.10 L655.73,439.74 L660.86,430.81 L666.77,422.39 L673.43,414.54 L680.77,407.32" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M673.80,406.26 L674.51,406.09 L675.22,405.92 L675.93,405.76 L676.65,405.59 L677.36,405.43 L678.07,405.27 L678.79,405.11 L679.50,404.95 L680.22,404.80 L680.93,404.64 L681.65,404.49" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M678.82,398.41 L629.91,400.64 L581.05,403.78 L532.26,407.83 L483.55,412.79 L434.94,418.65 L386.45,425.42 L338.09,433.10 L289.89,441.67 L241.85,451.14 L194.00,461.50 L146.35,472.75" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M672.90,385.65 L673.47,387.06 L674.08,388.46 L674.70,389.85 L675.35,391.24 L676.02,392.61 L676.71,393.97 L677.43,395.32 L678.16,396.65 L678.92,397.98 L679.70,399.29 L680.51,400.59" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M142.94,460.13 L146.66,457.56 L150.35,454.94 L154.00,452.25 L157.60,449.51 L161.15,446.71 L164.66,443.85 L168.12,440.94 L171.54,437.97 L174.91,434.95 L178.23,431.87 L181.49,428.74" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M672.97,401.21 L673.81,400.70 L674.66,400.19 L675.51,399.68 L676.36,399.18 L677.21,398.69 L678.07,398.20 L678.93,397.71 L679.80,397.23 L680.66,396.76 L681.53,396.29 L682.40,395.82" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M152.88,480.77 L154.25,473.87 L155.23,466.90 L155.80,459.89 L155.98,452.86 L155.75,445.83 L155.12,438.82 L154.10,431.86 L152.67,424.97 L150.86,418.17 L148.66,411.49 L146.08,404.94" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M683.27,404.24 L682.90,403.43 L682.54,402.61 L682.18,401.78 L681.84,400.96 L681.51,400.12 L681.18,399.29 L680.87,398.45 L680.56,397.61 L680.26,396.77 L679.97,395.92 L679.69,395.07" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M174.48,403.99 L176.82,411.80 L178.77,419.71 L180.33,427.71 L181.50,435.78 L182.27,443.90 L182.64,452.04 L182.61,460.19 L182.18,468.34 L181.35,476.45 L180.13,484.50 L178.51,492.49" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M680.11,398.81 L632.68,399.63 L585.25,400.75 L537.82,402.15 L490.41,403.84 L443.01,405.83 L395.62,408.10 L348.25,410.66 L300.89,413.50 L253.55,416.64 L206.23,420.07 L158.94,423.78" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M590.21,210.92 L587.45,230.71 L587.05,250.68 L589.00,270.57 L593.29,290.08 L599.84,308.95 L608.57,326.92 L619.36,343.73 L632.06,359.16 L646.48,372.98 L662.44,385.01 L679.69,395.07" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<path d="M672.09,409.41 L672.86,408.23 L673.65,407.07 L674.45,405.92 L675.27,404.78 L676.10,403.65 L676.95,402.53 L677.82,401.42 L678.69,400.33 L679.59,399.24 L680.50,398.17 L681.42,397.11" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>
+<polygon points="218.27,522.10 211.13,293.47 165.97,345.55 163.07,350.30 158.94,423.78 165.20,450.89 178.51,492.49" fill="#0c0786" fill-opacity="0.05" stroke="none"/>
+<polygon points="147.86,442.04 159.98,473.88 163.32,465.95 165.87,441.88 172.19,284.57 151.29,338.18 148.87,354.18 147.08,380.77 147.58,421.64" fill="#45039e" fill-opacity="0.05" stroke="none"/>
+<polygon points="168.21,470.45 163.08,292.38 147.13,366.19 145.25,402.88 147.31,438.24 148.25,447.81 160.76,479.10" fill="#7200a8" fill-opacity="0.05" stroke="none"/>
+<polygon points="148.52,319.09 140.98,339.16 136.08,386.52 135.52,395.34 137.96,431.05 148.36,473.02 164.78,514.16 183.52,556.28 192.72,567.80 211.70,587.65 245.39,616.82 267.83,631.43 326.60,657.36 482.11,655.31 599.15,583.89 624.30,554.56 673.12,430.91 668.72,353.88 638.07,266.31 624.52,245.91 483.23,143.61 406.21,132.49 354.05,136.24" fill="#9b179e" fill-opacity="0.05" stroke="none"/>
+<polygon points="668.10,352.96 230.18,195.44 143.16,329.74 136.76,371.86 137.10,387.70 138.32,411.47 144.46,458.47 162.20,518.96 180.73,546.64 216.19,592.13 218.90,594.68 644.67,509.74 667.86,382.17" fill="#bc3685" fill-opacity="0.05" stroke="none"/>
+<polygon points="227.11,603.27 447.37,663.92 473.03,658.18 568.58,610.33 666.52,442.64 668.02,405.49 667.72,376.02 655.18,313.04 541.25,171.60 496.11,149.67 243.02,185.18 162.16,284.47 145.19,328.33 142.94,340.31 135.18,391.95 135.78,410.63 147.11,458.98 154.62,490.62 174.41,532.15 193.76,569.08" fill="#d7576b" fill-opacity="0.05" stroke="none"/>
+<polygon points="323.05,655.90 659.57,490.14 672.37,422.12 673.35,380.42 663.71,339.62 631.17,259.99 285.82,159.37 193.46,234.42 169.30,269.80 148.86,315.50 145.46,335.11 135.72,391.36 135.17,407.23 154.36,483.25 171.85,533.63 184.70,556.51 197.83,573.60" fill="#ec7853" fill-opacity="0.05" stroke="none"/>
+<polygon points="190.45,562.37 494.42,650.50 669.23,427.53 670.02,398.70 669.67,366.50 590.21,210.92 416.23,132.76 159.14,289.27 145.87,335.82 136.35,371.60 137.77,405.60 138.64,415.76 140.42,435.89 155.79,503.37 170.61,529.42" fill="#fa9f3a" fill-opacity="0.05" stroke="none"/>
+<polygon points="168.87,526.20 444.04,664.15 657.38,479.12 668.26,425.44 670.20,374.09 497.77,150.62 487.28,146.94 309.57,148.74 294.07,154.93 205.95,218.19 198.56,226.57 162.83,281.79 148.76,314.31 148.12,317.37 141.26,352.29 137.40,405.18 137.24,411.86 138.36,431.08 140.12,447.01 145.00,473.13 153.41,495.38 159.64,510.72" fill="#fcc926" fill-opacity="0.05" stroke="none"/>
+<polygon points="139.83,407.87 142.94,460.13 669.00,429.17 684.71,410.13 687.17,402.63 687.93,399.76 688.85,394.63 681.38,383.71 143.88,405.46" fill="#eff821" fill-opacity="0.05" stroke="none"/>
+<polygon points="137.71,403.30 668.74,427.98 686.84,398.74 688.13,396.29 679.00,384.50" fill="#0c0786" fill-opacity="0.05" stroke="none"/>
+<polygon points="665.50,361.74 673.08,408.69 688.71,408.34 687.95,393.93" fill="#45039e" fill-opacity="0.05" stroke="none"/>
+<polygon points="653.58,486.63 687.20,399.55 660.76,334.36" fill="#7200a8" fill-opacity="0.05" stroke="none"/>
+<polygon points="133.80,412.95 567.00,608.18 675.24,417.99 681.03,405.21 683.64,397.60 684.37,395.46 680.26,386.70 669.74,379.29" fill="#9b179e" fill-opacity="0.05" stroke="none"/>
+<polygon points="370.23,134.83 138.61,390.67 664.55,449.53 684.36,408.81 685.82,402.12 686.47,392.83 638.69,280.13" fill="#bc3685" fill-opacity="0.05" stroke="none"/>
+<polygon points="665.68,354.08 134.51,406.30 138.56,415.91 670.62,415.59 683.99,409.10 686.07,399.16 686.27,395.42" fill="#d7576b" fill-opacity="0.05" stroke="none"/>
+<polygon points="136.53,434.80 260.86,627.45 671.36,419.75 683.27,404.24 684.87,397.67 684.84,397.42 682.22,385.90 670.69,377.85 142.57,403.03 140.78,406.55" fill="#ec7853" fill-opacity="0.05" stroke="none"/>
+<polygon points="675.68,378.52 138.89,389.76 137.83,391.48 135.69,430.82 670.13,421.10 684.73,407.40 685.51,399.72 684.98,396.36 681.98,389.41" fill="#fa9f3a" fill-opacity="0.05" stroke="none"/>
+<polygon points="457.74,139.40 168.69,267.47 138.25,355.15 135.72,384.57 134.23,409.81 134.39,415.26 242.62,615.19 444.01,663.23 646.22,506.14 683.21,401.30 681.17,395.27 679.44,392.02 675.19,386.59" fill="#fcc926" fill-opacity="0.05" stroke="none"/>
+<polygon points="135.34,418.71 144.75,475.39 666.94,432.28 683.40,399.22 662.42,340.98 622.81,251.59 136.11,372.40" fill="#eff821" fill-opacity="0.05" stroke="none"/>
+<polygon points="134.51,400.84 148.14,485.13 667.38,425.59 679.60,405.28 681.22,399.58 681.70,393.86 677.49,387.32 669.53,380.48 144.25,326.50" fill="#0c0786" fill-opacity="0.05" stroke="none"/>
+<polygon points="170.94,536.58 661.08,458.25 681.30,399.47 681.42,397.11 680.62,395.28 670.20,380.44 136.60,365.53 134.14,384.88 136.12,427.51" fill="#45039e" fill-opacity="0.05" stroke="none"/>
+<polygon points="135.82,416.11 143.30,469.87 536.99,629.10 666.84,435.63 682.56,397.17 674.49,383.64 139.71,342.27 136.06,400.28" fill="#7200a8" fill-opacity="0.05" stroke="none"/>
+<polygon points="683.48,396.17 636.17,275.37 136.67,376.52 136.07,387.26 137.23,418.05 654.11,482.67 658.76,470.24" fill="#9b179e" fill-opacity="0.05" stroke="none"/>
+<polygon points="136.95,365.60 136.94,417.80 137.76,418.30 659.72,466.23 671.55,417.80 673.34,398.51 673.15,384.62 652.22,309.54 636.75,275.56" fill="#bc3685" fill-opacity="0.05" stroke="none"/>
+<polygon points="159.21,513.55 454.51,661.23 665.89,427.61 669.14,420.01 673.20,407.54 673.55,404.96 673.05,396.80 671.48,392.41 667.85,384.28 158.30,288.00 136.26,360.20 135.94,393.79 135.96,403.15 136.16,408.25 136.91,418.06" fill="#d7576b" fill-opacity="0.05" stroke="none"/>
+<polygon points="137.58,440.48 173.64,401.63 172.56,400.50 137.38,383.33 136.25,384.52 134.87,395.55 136.23,427.53" fill="#ec7853" fill-opacity="0.05" stroke="none"/>
+<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#00f2ff" /></marker></defs>
+<circle cx="680.30" cy="400.66" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13063 | Val: 0</title></circle>
+<circle cx="142.07" cy="396.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8891 | Val: 0</title></circle>
+<circle cx="682.55" cy="399.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1663 | Val: 0</title></circle>
+<circle cx="148.76" cy="402.52" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9101 | Val: 0</title></circle>
+<circle cx="155.82" cy="400.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10106 | Val: 0</title></circle>
+<circle cx="679.12" cy="398.37" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1210 | Val: 0</title></circle>
+<circle cx="678.93" cy="404.41" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6274 | Val: 0</title></circle>
+<circle cx="671.21" cy="389.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7781 | Val: 0</title></circle>
+<circle cx="687.17" cy="402.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4564 | Val: 0</title></circle>
+<circle cx="142.03" cy="405.54" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5489 | Val: 0</title></circle>
+<circle cx="673.66" cy="399.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9172 | Val: 0</title></circle>
+<circle cx="682.80" cy="395.38" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2419 | Val: 0</title></circle>
+<circle cx="679.68" cy="392.23" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15116 | Val: 0</title></circle>
+<circle cx="681.22" cy="399.58" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2126 | Val: 0</title></circle>
+<circle cx="646.22" cy="506.14" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12233 | Val: 0</title></circle>
+<circle cx="147.85" cy="402.51" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16484 | Val: 0</title></circle>
+<circle cx="678.68" cy="404.46" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16834 | Val: 0</title></circle>
+<circle cx="143.76" cy="398.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7619 | Val: 0</title></circle>
+<circle cx="677.12" cy="401.94" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16066 | Val: 0</title></circle>
+<circle cx="683.97" cy="400.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5938 | Val: 0</title></circle>
+<circle cx="677.99" cy="392.07" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6458 | Val: 0</title></circle>
+<circle cx="676.42" cy="401.87" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13039 | Val: 0</title></circle>
+<circle cx="677.84" cy="400.11" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11350 | Val: 0</title></circle>
+<circle cx="138.56" cy="415.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9943 | Val: 0</title></circle>
+<circle cx="680.13" cy="398.00" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13453 | Val: 0</title></circle>
+<circle cx="682.92" cy="404.23" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17545 | Val: 0</title></circle>
+<circle cx="677.57" cy="392.44" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15028 | Val: 0</title></circle>
+<circle cx="681.41" cy="396.69" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 230 | Val: 0</title></circle>
+<circle cx="675.83" cy="392.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19399 | Val: 0</title></circle>
+<circle cx="687.40" cy="403.18" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19459 | Val: 0</title></circle>
+<circle cx="676.90" cy="409.65" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5737 | Val: 0</title></circle>
+<circle cx="677.81" cy="395.95" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15580 | Val: 0</title></circle>
+<circle cx="674.45" cy="396.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5828 | Val: 0</title></circle>
+<circle cx="666.72" cy="431.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17870 | Val: 0</title></circle>
+<circle cx="674.57" cy="408.93" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17606 | Val: 0</title></circle>
+<circle cx="672.55" cy="403.80" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 770 | Val: 0</title></circle>
+<circle cx="674.82" cy="406.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15734 | Val: 0</title></circle>
+<circle cx="677.36" cy="392.18" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11480 | Val: 0</title></circle>
+<circle cx="680.21" cy="391.12" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13540 | Val: 0</title></circle>
+<circle cx="683.44" cy="399.79" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18970 | Val: 0</title></circle>
+<circle cx="680.39" cy="396.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15529 | Val: 0</title></circle>
+<circle cx="684.98" cy="396.36" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4696 | Val: 0</title></circle>
+<circle cx="683.93" cy="401.85" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5779 | Val: 0</title></circle>
+<circle cx="672.65" cy="405.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6179 | Val: 0</title></circle>
+<circle cx="677.52" cy="398.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18640 | Val: 0</title></circle>
+<circle cx="141.42" cy="412.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16385 | Val: 0</title></circle>
+<circle cx="153.35" cy="399.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17009 | Val: 0</title></circle>
+<circle cx="681.04" cy="389.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18772 | Val: 0</title></circle>
+<circle cx="138.62" cy="415.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5384 | Val: 0</title></circle>
+<circle cx="680.69" cy="395.44" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2149 | Val: 0</title></circle>
+<circle cx="678.55" cy="399.02" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17038 | Val: 0</title></circle>
+<circle cx="678.26" cy="395.95" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2668 | Val: 0</title></circle>
+<circle cx="679.00" cy="384.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14968 | Val: 0</title></circle>
+<circle cx="670.40" cy="418.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11483 | Val: 0</title></circle>
+<circle cx="684.02" cy="395.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5104 | Val: 0</title></circle>
+<circle cx="669.88" cy="390.08" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9364 | Val: 0</title></circle>
+<circle cx="144.75" cy="475.39" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6896 | Val: 0</title></circle>
+<circle cx="681.19" cy="394.30" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14657 | Val: 0</title></circle>
+<circle cx="678.95" cy="399.64" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14863 | Val: 0</title></circle>
+<circle cx="683.21" cy="401.30" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14582 | Val: 0</title></circle>
+<circle cx="145.14" cy="392.41" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12239 | Val: 0</title></circle>
+<circle cx="682.40" cy="395.82" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 277 | Val: 0</title></circle>
+<circle cx="677.62" cy="398.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4676 | Val: 0</title></circle>
+<circle cx="669.77" cy="382.81" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16763 | Val: 0</title></circle>
+<circle cx="158.30" cy="288.00" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1286 | Val: 0</title></circle>
+<circle cx="672.49" cy="416.15" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7184 | Val: 0</title></circle>
+<circle cx="685.96" cy="396.90" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1270 | Val: 0</title></circle>
+<circle cx="139.17" cy="413.39" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1007 | Val: 0</title></circle>
+<circle cx="677.87" cy="399.68" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11120 | Val: 0</title></circle>
+<circle cx="137.83" cy="391.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9124 | Val: 0</title></circle>
+<circle cx="139.24" cy="395.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16619 | Val: 0</title></circle>
+<circle cx="671.68" cy="396.31" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8480 | Val: 0</title></circle>
+<circle cx="680.39" cy="392.80" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11635 | Val: 0</title></circle>
+<circle cx="676.90" cy="410.11" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15775 | Val: 0</title></circle>
+<circle cx="148.76" cy="400.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8828 | Val: 0</title></circle>
+<circle cx="143.88" cy="405.46" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9856 | Val: 0</title></circle>
+<circle cx="677.49" cy="401.64" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18281 | Val: 0</title></circle>
+<circle cx="675.30" cy="400.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16732 | Val: 0</title></circle>
+<circle cx="678.92" cy="402.62" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19661 | Val: 0</title></circle>
+<circle cx="675.83" cy="391.36" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2644 | Val: 0</title></circle>
+<circle cx="679.54" cy="401.00" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6868 | Val: 0</title></circle>
+<circle cx="677.58" cy="401.54" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9262 | Val: 0</title></circle>
+<circle cx="149.90" cy="397.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12716 | Val: 0</title></circle>
+<circle cx="672.92" cy="408.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10748 | Val: 0</title></circle>
+<circle cx="683.45" cy="398.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4636 | Val: 0</title></circle>
+<circle cx="674.29" cy="381.23" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11857 | Val: 0</title></circle>
+<circle cx="683.87" cy="399.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6784 | Val: 0</title></circle>
+<circle cx="670.74" cy="394.52" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11831 | Val: 0</title></circle>
+<circle cx="141.04" cy="407.64" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17864 | Val: 0</title></circle>
+<circle cx="668.85" cy="410.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1418 | Val: 0</title></circle>
+<circle cx="680.50" cy="397.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19013 | Val: 0</title></circle>
+<circle cx="150.60" cy="401.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10313 | Val: 0</title></circle>
+<circle cx="684.85" cy="398.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2020 | Val: 0</title></circle>
+<circle cx="677.67" cy="406.14" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10222 | Val: 0</title></circle>
+<circle cx="680.79" cy="407.43" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18379 | Val: 0</title></circle>
+<circle cx="672.16" cy="393.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8552 | Val: 0</title></circle>
+<circle cx="670.68" cy="397.03" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 665 | Val: 0</title></circle>
+<circle cx="144.25" cy="326.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17111 | Val: 0</title></circle>
+<circle cx="136.23" cy="427.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18089 | Val: 0</title></circle>
+<circle cx="670.43" cy="401.87" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13475 | Val: 0</title></circle>
+<circle cx="671.78" cy="393.97" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9499 | Val: 0</title></circle>
+<circle cx="670.11" cy="380.80" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14105 | Val: 0</title></circle>
+<circle cx="677.98" cy="397.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5512 | Val: 0</title></circle>
+<circle cx="136.53" cy="434.80" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12274 | Val: 0</title></circle>
+<circle cx="670.13" cy="421.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10636 | Val: 0</title></circle>
+<circle cx="679.25" cy="396.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13561 | Val: 0</title></circle>
+<circle cx="676.46" cy="406.57" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15527 | Val: 0</title></circle>
+<circle cx="682.58" cy="397.94" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15547 | Val: 0</title></circle>
+<circle cx="660.76" cy="334.36" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10804 | Val: 0</title></circle>
+<circle cx="669.40" cy="388.68" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14954 | Val: 0</title></circle>
+<circle cx="673.97" cy="395.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 776 | Val: 0</title></circle>
+<circle cx="149.67" cy="399.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10322 | Val: 0</title></circle>
+<circle cx="684.74" cy="404.20" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6802 | Val: 0</title></circle>
+<circle cx="679.73" cy="403.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18361 | Val: 0</title></circle>
+<circle cx="138.36" cy="369.54" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2762 | Val: 0</title></circle>
+<circle cx="680.50" cy="399.92" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11041 | Val: 0</title></circle>
+<circle cx="678.56" cy="401.44" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5632 | Val: 0</title></circle>
+<circle cx="683.40" cy="399.22" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4871 | Val: 0</title></circle>
+<circle cx="157.38" cy="401.40" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12284 | Val: 0</title></circle>
+<circle cx="670.72" cy="396.82" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5738 | Val: 0</title></circle>
+<circle cx="141.09" cy="400.62" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10460 | Val: 0</title></circle>
+<circle cx="678.97" cy="395.27" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18910 | Val: 0</title></circle>
+<circle cx="677.20" cy="391.25" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5123 | Val: 0</title></circle>
+<circle cx="670.62" cy="415.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9376 | Val: 0</title></circle>
+<circle cx="677.55" cy="387.08" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8593 | Val: 0</title></circle>
+<circle cx="676.48" cy="391.46" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15403 | Val: 0</title></circle>
+<circle cx="669.75" cy="412.66" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10033 | Val: 0</title></circle>
+<circle cx="679.86" cy="395.35" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16549 | Val: 0</title></circle>
+<circle cx="669.14" cy="420.01" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14624 | Val: 0</title></circle>
+<circle cx="158.98" cy="403.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10340 | Val: 0</title></circle>
+<circle cx="676.77" cy="399.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14729 | Val: 0</title></circle>
+<circle cx="172.56" cy="400.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9638 | Val: 0</title></circle>
+<circle cx="666.77" cy="426.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7897 | Val: 0</title></circle>
+<circle cx="680.10" cy="399.38" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17546 | Val: 0</title></circle>
+<circle cx="683.16" cy="394.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15226 | Val: 0</title></circle>
+<circle cx="686.31" cy="399.85" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13666 | Val: 0</title></circle>
+<circle cx="678.50" cy="401.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5285 | Val: 0</title></circle>
+<circle cx="158.04" cy="401.19" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16403 | Val: 0</title></circle>
+<circle cx="677.99" cy="393.75" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15818 | Val: 0</title></circle>
+<circle cx="672.80" cy="402.27" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19208 | Val: 0</title></circle>
+<circle cx="673.87" cy="385.89" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17930 | Val: 0</title></circle>
+<circle cx="677.02" cy="398.73" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18896 | Val: 0</title></circle>
+<circle cx="679.53" cy="403.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4714 | Val: 0</title></circle>
+<circle cx="675.35" cy="406.14" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11050 | Val: 0</title></circle>
+<circle cx="671.39" cy="393.37" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14759 | Val: 0</title></circle>
+<circle cx="685.65" cy="394.68" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 508 | Val: 0</title></circle>
+<circle cx="148.65" cy="400.46" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3338 | Val: 0</title></circle>
+<circle cx="670.21" cy="391.82" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18365 | Val: 0</title></circle>
+<circle cx="143.83" cy="395.84" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 809 | Val: 0</title></circle>
+<circle cx="665.36" cy="442.72" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16492 | Val: 0</title></circle>
+<circle cx="673.02" cy="403.94" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9553 | Val: 0</title></circle>
+<circle cx="660.54" cy="463.06" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5396 | Val: 0</title></circle>
+<circle cx="681.76" cy="406.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6097 | Val: 0</title></circle>
+<circle cx="674.68" cy="404.37" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6193 | Val: 0</title></circle>
+<circle cx="681.91" cy="399.44" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13921 | Val: 0</title></circle>
+<circle cx="136.83" cy="385.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15680 | Val: 0</title></circle>
+<circle cx="134.23" cy="409.81" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6995 | Val: 0</title></circle>
+<circle cx="666.94" cy="432.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18857 | Val: 0</title></circle>
+<circle cx="658.76" cy="470.24" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11552 | Val: 0</title></circle>
+<circle cx="147.97" cy="397.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9026 | Val: 0</title></circle>
+<circle cx="677.25" cy="397.89" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11606 | Val: 0</title></circle>
+<circle cx="161.15" cy="401.12" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3563 | Val: 0</title></circle>
+<circle cx="678.43" cy="393.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14965 | Val: 0</title></circle>
+<circle cx="141.32" cy="393.92" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15902 | Val: 0</title></circle>
+<circle cx="673.15" cy="378.18" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9160 | Val: 0</title></circle>
+<circle cx="677.36" cy="392.26" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14953 | Val: 0</title></circle>
+<circle cx="665.50" cy="361.74" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9199 | Val: 0</title></circle>
+<circle cx="139.75" cy="404.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16382 | Val: 0</title></circle>
+<circle cx="672.42" cy="389.77" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8174 | Val: 0</title></circle>
+<circle cx="135.84" cy="417.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3377 | Val: 0</title></circle>
+<circle cx="675.15" cy="396.39" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1769 | Val: 0</title></circle>
+<circle cx="687.06" cy="393.09" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18217 | Val: 0</title></circle>
+<circle cx="678.20" cy="398.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19588 | Val: 0</title></circle>
+<circle cx="673.99" cy="404.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17267 | Val: 0</title></circle>
+<circle cx="150.29" cy="404.33" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10484 | Val: 0</title></circle>
+<circle cx="684.84" cy="397.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17674 | Val: 0</title></circle>
+<circle cx="668.17" cy="372.26" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17963 | Val: 0</title></circle>
+<circle cx="682.53" cy="394.57" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11605 | Val: 0</title></circle>
+<circle cx="151.54" cy="400.87" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15956 | Val: 0</title></circle>
+<circle cx="136.12" cy="427.51" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8888 | Val: 0</title></circle>
+<circle cx="678.48" cy="393.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12538 | Val: 0</title></circle>
+<circle cx="156.41" cy="405.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14255 | Val: 0</title></circle>
+<circle cx="677.21" cy="406.09" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6152 | Val: 0</title></circle>
+<circle cx="687.20" cy="399.55" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4594 | Val: 0</title></circle>
+<circle cx="681.80" cy="401.56" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19177 | Val: 0</title></circle>
+<circle cx="675.94" cy="396.47" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8204 | Val: 0</title></circle>
+<circle cx="149.72" cy="407.65" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15677 | Val: 0</title></circle>
+<circle cx="671.81" cy="389.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12295 | Val: 0</title></circle>
+<circle cx="684.73" cy="398.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18220 | Val: 0</title></circle>
+<circle cx="536.99" cy="629.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9464 | Val: 0</title></circle>
+<circle cx="677.76" cy="394.97" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16858 | Val: 0</title></circle>
+<circle cx="140.66" cy="399.62" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4742 | Val: 0</title></circle>
+<circle cx="681.98" cy="389.41" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17332 | Val: 0</title></circle>
+<circle cx="678.78" cy="399.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1807 | Val: 0</title></circle>
+<circle cx="682.62" cy="401.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14398 | Val: 0</title></circle>
+<circle cx="136.26" cy="360.20" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18458 | Val: 0</title></circle>
+<circle cx="676.71" cy="402.18" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4208 | Val: 0</title></circle>
+<circle cx="676.63" cy="400.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14573 | Val: 0</title></circle>
+<circle cx="148.86" cy="400.94" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1052 | Val: 0</title></circle>
+<circle cx="140.70" cy="390.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16757 | Val: 0</title></circle>
+<circle cx="679.03" cy="397.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3427 | Val: 0</title></circle>
+<circle cx="681.12" cy="390.46" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4318 | Val: 0</title></circle>
+<circle cx="678.73" cy="396.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13057 | Val: 0</title></circle>
+<circle cx="683.09" cy="393.79" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2104 | Val: 0</title></circle>
+<circle cx="675.73" cy="386.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10432 | Val: 0</title></circle>
+<circle cx="673.92" cy="392.04" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6806 | Val: 0</title></circle>
+<circle cx="678.09" cy="393.79" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12661 | Val: 0</title></circle>
+<circle cx="671.70" cy="398.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1805 | Val: 0</title></circle>
+<circle cx="670.12" cy="400.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10931 | Val: 0</title></circle>
+<circle cx="673.99" cy="385.84" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15595 | Val: 0</title></circle>
+<circle cx="682.17" cy="393.11" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3814 | Val: 0</title></circle>
+<circle cx="140.93" cy="396.44" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10709 | Val: 0</title></circle>
+<circle cx="677.78" cy="399.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3946 | Val: 0</title></circle>
+<circle cx="139.36" cy="387.66" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7838 | Val: 0</title></circle>
+<circle cx="681.74" cy="392.19" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7147 | Val: 0</title></circle>
+<circle cx="683.95" cy="396.51" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8722 | Val: 0</title></circle>
+<circle cx="682.37" cy="396.34" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12904 | Val: 0</title></circle>
+<circle cx="673.34" cy="398.51" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1628 | Val: 0</title></circle>
+<circle cx="168.69" cy="267.47" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18659 | Val: 0</title></circle>
+<circle cx="673.05" cy="396.80" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19187 | Val: 0</title></circle>
+<circle cx="683.17" cy="401.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12421 | Val: 0</title></circle>
+<circle cx="669.59" cy="377.04" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11290 | Val: 0</title></circle>
+<circle cx="674.33" cy="393.97" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16357 | Val: 0</title></circle>
+<circle cx="137.38" cy="383.33" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13553 | Val: 0</title></circle>
+<circle cx="666.93" cy="373.24" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19289 | Val: 0</title></circle>
+<circle cx="680.56" cy="395.83" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11002 | Val: 0</title></circle>
+<circle cx="670.13" cy="408.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5458 | Val: 0</title></circle>
+<circle cx="672.44" cy="400.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5494 | Val: 0</title></circle>
+<circle cx="675.55" cy="400.80" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11102 | Val: 0</title></circle>
+<circle cx="151.48" cy="403.79" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18593 | Val: 0</title></circle>
+<circle cx="667.81" cy="413.61" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16859 | Val: 0</title></circle>
+<circle cx="668.51" cy="398.03" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14894 | Val: 0</title></circle>
+<circle cx="678.62" cy="393.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18956 | Val: 0</title></circle>
+<circle cx="674.96" cy="406.66" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13021 | Val: 0</title></circle>
+<circle cx="677.49" cy="387.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11117 | Val: 0</title></circle>
+<circle cx="137.23" cy="418.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9176 | Val: 0</title></circle>
+<circle cx="678.99" cy="404.73" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17035 | Val: 0</title></circle>
+<circle cx="682.63" cy="395.71" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18022 | Val: 0</title></circle>
+<circle cx="686.75" cy="396.94" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13132 | Val: 0</title></circle>
+<circle cx="670.10" cy="406.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13082 | Val: 0</title></circle>
+<circle cx="675.46" cy="414.02" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11551 | Val: 0</title></circle>
+<circle cx="145.73" cy="406.24" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3305 | Val: 0</title></circle>
+<circle cx="677.67" cy="399.69" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15491 | Val: 0</title></circle>
+<circle cx="138.08" cy="410.69" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18863 | Val: 0</title></circle>
+<circle cx="137.87" cy="406.11" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14381 | Val: 0</title></circle>
+<circle cx="148.88" cy="398.03" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1349 | Val: 0</title></circle>
+<circle cx="682.22" cy="385.90" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15109 | Val: 0</title></circle>
+<circle cx="674.47" cy="400.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6949 | Val: 0</title></circle>
+<circle cx="683.48" cy="396.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17681 | Val: 0</title></circle>
+<circle cx="680.34" cy="394.66" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4816 | Val: 0</title></circle>
+<circle cx="685.15" cy="404.49" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5998 | Val: 0</title></circle>
+<circle cx="674.16" cy="396.77" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17615 | Val: 0</title></circle>
+<circle cx="136.49" cy="418.34" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9320 | Val: 0</title></circle>
+<circle cx="682.46" cy="397.93" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 307 | Val: 0</title></circle>
+<circle cx="680.73" cy="401.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 349 | Val: 0</title></circle>
+<circle cx="139.83" cy="407.87" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9100 | Val: 0</title></circle>
+<circle cx="140.74" cy="401.52" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2312 | Val: 0</title></circle>
+<circle cx="136.94" cy="417.80" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17342 | Val: 0</title></circle>
+<circle cx="677.25" cy="410.79" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12658 | Val: 0</title></circle>
+<circle cx="636.17" cy="275.37" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16628 | Val: 0</title></circle>
+<circle cx="146.59" cy="408.95" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3014 | Val: 0</title></circle>
+<circle cx="140.78" cy="406.55" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9115 | Val: 0</title></circle>
+<circle cx="684.22" cy="398.11" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16030 | Val: 0</title></circle>
+<circle cx="674.80" cy="402.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18761 | Val: 0</title></circle>
+<circle cx="686.35" cy="403.18" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11476 | Val: 0</title></circle>
+<circle cx="139.13" cy="413.35" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17210 | Val: 0</title></circle>
+<circle cx="137.58" cy="440.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15119 | Val: 0</title></circle>
+<circle cx="674.92" cy="393.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7378 | Val: 0</title></circle>
+<circle cx="686.78" cy="394.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 676 | Val: 0</title></circle>
+<circle cx="676.82" cy="393.27" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19418 | Val: 0</title></circle>
+<circle cx="136.57" cy="395.92" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1067 | Val: 0</title></circle>
+<circle cx="668.64" cy="415.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 953 | Val: 0</title></circle>
+<circle cx="686.84" cy="398.74" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2116 | Val: 0</title></circle>
+<circle cx="674.42" cy="405.64" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18470 | Val: 0</title></circle>
+<circle cx="671.17" cy="404.69" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12787 | Val: 0</title></circle>
+<circle cx="135.96" cy="403.15" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13733 | Val: 0</title></circle>
+<circle cx="143.52" cy="395.12" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17378 | Val: 0</title></circle>
+<circle cx="682.73" cy="396.57" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13631 | Val: 0</title></circle>
+<circle cx="654.11" cy="482.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8474 | Val: 0</title></circle>
+<circle cx="136.91" cy="418.06" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16973 | Val: 0</title></circle>
+<circle cx="678.35" cy="399.08" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17921 | Val: 0</title></circle>
+<circle cx="673.82" cy="390.84" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2641 | Val: 0</title></circle>
+<circle cx="136.67" cy="376.52" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5504 | Val: 0</title></circle>
+<circle cx="675.08" cy="405.82" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5500 | Val: 0</title></circle>
+<circle cx="684.34" cy="396.77" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4678 | Val: 0</title></circle>
+<circle cx="172.00" cy="401.35" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10691 | Val: 0</title></circle>
+<circle cx="673.40" cy="381.65" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5485 | Val: 0</title></circle>
+<circle cx="135.94" cy="393.79" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6119 | Val: 0</title></circle>
+<circle cx="675.42" cy="405.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12199 | Val: 0</title></circle>
+<circle cx="148.15" cy="399.35" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18584 | Val: 0</title></circle>
+<circle cx="684.37" cy="395.46" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13675 | Val: 0</title></circle>
+<circle cx="679.67" cy="392.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1051 | Val: 0</title></circle>
+<circle cx="682.21" cy="398.47" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18394 | Val: 0</title></circle>
+<circle cx="679.50" cy="387.14" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7045 | Val: 0</title></circle>
+<circle cx="683.70" cy="395.44" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19666 | Val: 0</title></circle>
+<circle cx="679.60" cy="405.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4475 | Val: 0</title></circle>
+<circle cx="670.20" cy="380.44" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2597 | Val: 0</title></circle>
+<circle cx="681.05" cy="387.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11665 | Val: 0</title></circle>
+<circle cx="678.61" cy="403.61" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18634 | Val: 0</title></circle>
+<circle cx="139.51" cy="389.61" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7385 | Val: 0</title></circle>
+<circle cx="146.46" cy="400.18" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18359 | Val: 0</title></circle>
+<circle cx="680.41" cy="392.96" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1282 | Val: 0</title></circle>
+<circle cx="685.36" cy="394.88" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6487 | Val: 0</title></circle>
+<circle cx="671.49" cy="395.75" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2273 | Val: 0</title></circle>
+<circle cx="686.47" cy="392.83" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15088 | Val: 0</title></circle>
+<circle cx="674.41" cy="400.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1028 | Val: 0</title></circle>
+<circle cx="680.38" cy="391.22" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4309 | Val: 0</title></circle>
+<circle cx="138.15" cy="403.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16724 | Val: 0</title></circle>
+<circle cx="152.20" cy="402.75" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9911 | Val: 0</title></circle>
+<circle cx="670.56" cy="400.24" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8860 | Val: 0</title></circle>
+<circle cx="677.41" cy="412.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16585 | Val: 0</title></circle>
+<circle cx="666.71" cy="424.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18605 | Val: 0</title></circle>
+<circle cx="683.10" cy="394.21" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7291 | Val: 0</title></circle>
+<circle cx="681.50" cy="397.31" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12580 | Val: 0</title></circle>
+<circle cx="678.86" cy="398.56" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12451 | Val: 0</title></circle>
+<circle cx="673.20" cy="407.54" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4607 | Val: 0</title></circle>
+<circle cx="672.27" cy="395.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10877 | Val: 0</title></circle>
+<circle cx="134.87" cy="395.55" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18035 | Val: 0</title></circle>
+<circle cx="679.44" cy="392.02" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 677 | Val: 0</title></circle>
+<circle cx="683.46" cy="398.99" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4906 | Val: 0</title></circle>
+<circle cx="673.47" cy="403.04" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8347 | Val: 0</title></circle>
+<circle cx="680.21" cy="392.07" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13408 | Val: 0</title></circle>
+<circle cx="676.66" cy="413.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3643 | Val: 0</title></circle>
+<circle cx="681.03" cy="405.21" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14782 | Val: 0</title></circle>
+<circle cx="675.78" cy="394.49" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15314 | Val: 0</title></circle>
+<circle cx="153.69" cy="401.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9188 | Val: 0</title></circle>
+<circle cx="671.57" cy="393.03" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14531 | Val: 0</title></circle>
+<circle cx="674.48" cy="407.62" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 812 | Val: 0</title></circle>
+<circle cx="137.19" cy="403.71" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17141 | Val: 0</title></circle>
+<circle cx="135.69" cy="430.82" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10609 | Val: 0</title></circle>
+<circle cx="242.62" cy="615.19" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11315 | Val: 0</title></circle>
+<circle cx="683.29" cy="397.75" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16021 | Val: 0</title></circle>
+<circle cx="670.77" cy="411.68" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1979 | Val: 0</title></circle>
+<circle cx="680.45" cy="404.46" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11470 | Val: 0</title></circle>
+<circle cx="684.84" cy="399.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5074 | Val: 0</title></circle>
+<circle cx="676.09" cy="399.55" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11284 | Val: 0</title></circle>
+<circle cx="144.36" cy="397.95" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16481 | Val: 0</title></circle>
+<circle cx="671.66" cy="402.70" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3379 | Val: 0</title></circle>
+<circle cx="138.61" cy="390.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10093 | Val: 0</title></circle>
+<circle cx="672.92" cy="401.20" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2453 | Val: 0</title></circle>
+<circle cx="675.58" cy="409.94" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17092 | Val: 0</title></circle>
+<circle cx="679.05" cy="400.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19372 | Val: 0</title></circle>
+<circle cx="685.02" cy="397.22" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15874 | Val: 0</title></circle>
+<circle cx="135.80" cy="388.00" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9968 | Val: 0</title></circle>
+<circle cx="685.82" cy="402.12" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6340 | Val: 0</title></circle>
+<circle cx="677.90" cy="398.25" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11606 | Val: 0</title></circle>
+<circle cx="687.02" cy="399.20" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5905 | Val: 0</title></circle>
+<circle cx="653.58" cy="486.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16366 | Val: 0</title></circle>
+<circle cx="148.14" cy="485.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10415 | Val: 0</title></circle>
+<circle cx="681.81" cy="396.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4507 | Val: 0</title></circle>
+<circle cx="675.30" cy="392.46" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14783 | Val: 0</title></circle>
+<circle cx="684.73" cy="407.40" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19222 | Val: 0</title></circle>
+<circle cx="676.38" cy="397.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19561 | Val: 0</title></circle>
+<circle cx="679.50" cy="401.89" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7153 | Val: 0</title></circle>
+<circle cx="671.47" cy="390.69" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18416 | Val: 0</title></circle>
+<circle cx="675.75" cy="412.14" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18725 | Val: 0</title></circle>
+<circle cx="677.39" cy="400.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3136 | Val: 0</title></circle>
+<circle cx="679.01" cy="401.06" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13942 | Val: 0</title></circle>
+<circle cx="682.78" cy="402.83" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15154 | Val: 0</title></circle>
+<circle cx="680.64" cy="406.01" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19279 | Val: 0</title></circle>
+<circle cx="667.84" cy="368.79" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8374 | Val: 0</title></circle>
+<circle cx="677.71" cy="393.02" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9247 | Val: 0</title></circle>
+<circle cx="682.61" cy="401.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1237 | Val: 0</title></circle>
+<circle cx="679.47" cy="398.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18173 | Val: 0</title></circle>
+<circle cx="676.46" cy="396.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3812 | Val: 0</title></circle>
+<circle cx="675.91" cy="385.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10882 | Val: 0</title></circle>
+<circle cx="672.05" cy="395.65" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9541 | Val: 0</title></circle>
+<circle cx="681.65" cy="404.49" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4201 | Val: 0</title></circle>
+<circle cx="678.01" cy="393.97" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15190 | Val: 0</title></circle>
+<circle cx="668.54" cy="403.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6959 | Val: 0</title></circle>
+<circle cx="144.14" cy="396.81" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15875 | Val: 0</title></circle>
+<circle cx="682.56" cy="397.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6062 | Val: 0</title></circle>
+<circle cx="674.72" cy="398.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12944 | Val: 0</title></circle>
+<circle cx="680.77" cy="407.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3721 | Val: 0</title></circle>
+<circle cx="143.54" cy="400.58" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5318 | Val: 0</title></circle>
+<circle cx="671.08" cy="411.65" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9439 | Val: 0</title></circle>
+<circle cx="137.60" cy="403.69" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19340 | Val: 0</title></circle>
+<circle cx="136.60" cy="403.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8465 | Val: 0</title></circle>
+<circle cx="567.00" cy="608.18" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10003 | Val: 0</title></circle>
+<circle cx="681.96" cy="401.90" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15832 | Val: 0</title></circle>
+<circle cx="673.47" cy="385.34" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12235 | Val: 0</title></circle>
+<circle cx="672.72" cy="391.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13406 | Val: 0</title></circle>
+<circle cx="680.59" cy="399.68" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6736 | Val: 0</title></circle>
+<circle cx="681.15" cy="402.99" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18760 | Val: 0</title></circle>
+<circle cx="669.82" cy="395.34" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18428 | Val: 0</title></circle>
+<circle cx="678.26" cy="397.40" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10975 | Val: 0</title></circle>
+<circle cx="134.14" cy="384.88" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1058 | Val: 0</title></circle>
+<circle cx="671.53" cy="402.54" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9163 | Val: 0</title></circle>
+<circle cx="673.28" cy="387.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10967 | Val: 0</title></circle>
+<circle cx="672.42" cy="398.78" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19321 | Val: 0</title></circle>
+<circle cx="674.83" cy="406.09" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16555 | Val: 0</title></circle>
+<circle cx="138.89" cy="389.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9610 | Val: 0</title></circle>
+<circle cx="685.16" cy="398.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5059 | Val: 0</title></circle>
+<circle cx="139.75" cy="402.35" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1817 | Val: 0</title></circle>
+<circle cx="676.54" cy="401.72" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11432 | Val: 0</title></circle>
+<circle cx="137.76" cy="418.30" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5516 | Val: 0</title></circle>
+<circle cx="683.47" cy="406.33" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7210 | Val: 0</title></circle>
+<circle cx="677.00" cy="405.40" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15778 | Val: 0</title></circle>
+<circle cx="159.21" cy="513.55" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15002 | Val: 0</title></circle>
+<circle cx="672.26" cy="384.71" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8851 | Val: 0</title></circle>
+<circle cx="139.42" cy="400.39" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8495 | Val: 0</title></circle>
+<circle cx="674.49" cy="383.64" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15269 | Val: 0</title></circle>
+<circle cx="668.40" cy="408.08" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9248 | Val: 0</title></circle>
+<circle cx="141.85" cy="412.92" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12185 | Val: 0</title></circle>
+<circle cx="668.74" cy="427.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10675 | Val: 0</title></circle>
+<circle cx="661.08" cy="458.25" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2300 | Val: 0</title></circle>
+<circle cx="662.42" cy="340.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8327 | Val: 0</title></circle>
+<circle cx="678.44" cy="397.61" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4586 | Val: 0</title></circle>
+<circle cx="149.79" cy="396.62" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1097 | Val: 0</title></circle>
+<circle cx="680.81" cy="399.58" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18523 | Val: 0</title></circle>
+<circle cx="678.61" cy="394.61" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8024 | Val: 0</title></circle>
+<circle cx="142.84" cy="404.30" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1268 | Val: 0</title></circle>
+<circle cx="674.82" cy="403.07" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17951 | Val: 0</title></circle>
+<circle cx="673.65" cy="409.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4178 | Val: 0</title></circle>
+<circle cx="142.80" cy="403.54" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13931 | Val: 0</title></circle>
+<circle cx="673.01" cy="395.49" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17720 | Val: 0</title></circle>
+<circle cx="134.51" cy="406.30" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9565 | Val: 0</title></circle>
+<circle cx="679.40" cy="403.82" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11650 | Val: 0</title></circle>
+<circle cx="138.35" cy="385.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11327 | Val: 0</title></circle>
+<circle cx="680.63" cy="400.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5980 | Val: 0</title></circle>
+<circle cx="683.51" cy="397.68" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6637 | Val: 0</title></circle>
+<circle cx="142.87" cy="391.02" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5465 | Val: 0</title></circle>
+<circle cx="679.37" cy="405.85" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5743 | Val: 0</title></circle>
+<circle cx="679.38" cy="391.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2392 | Val: 0</title></circle>
+<circle cx="667.85" cy="384.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6740 | Val: 0</title></circle>
+<circle cx="683.52" cy="397.35" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13267 | Val: 0</title></circle>
+<circle cx="135.82" cy="416.11" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1823 | Val: 0</title></circle>
+<circle cx="149.08" cy="400.88" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14210 | Val: 0</title></circle>
+<circle cx="670.24" cy="397.43" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16243 | Val: 0</title></circle>
+<circle cx="667.38" cy="425.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18353 | Val: 0</title></circle>
+<circle cx="677.47" cy="386.78" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19555 | Val: 0</title></circle>
+<circle cx="672.21" cy="395.77" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8950 | Val: 0</title></circle>
+<circle cx="677.19" cy="403.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11890 | Val: 0</title></circle>
+<circle cx="142.86" cy="400.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4832 | Val: 0</title></circle>
+<circle cx="672.77" cy="402.40" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6755 | Val: 0</title></circle>
+<circle cx="674.22" cy="404.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12620 | Val: 0</title></circle>
+<circle cx="139.55" cy="406.24" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15587 | Val: 0</title></circle>
+<circle cx="683.39" cy="395.79" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14020 | Val: 0</title></circle>
+<circle cx="669.72" cy="402.31" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15371 | Val: 0</title></circle>
+<circle cx="678.00" cy="400.84" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13874 | Val: 0</title></circle>
+<circle cx="678.05" cy="405.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5308 | Val: 0</title></circle>
+<circle cx="684.88" cy="401.35" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18784 | Val: 0</title></circle>
+<circle cx="673.17" cy="406.66" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4048 | Val: 0</title></circle>
+<circle cx="673.04" cy="405.64" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12980 | Val: 0</title></circle>
+<circle cx="135.72" cy="384.57" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3323 | Val: 0</title></circle>
+<circle cx="670.76" cy="403.20" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10973 | Val: 0</title></circle>
+<circle cx="145.77" cy="406.86" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7643 | Val: 0</title></circle>
+<circle cx="137.24" cy="396.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7544 | Val: 0</title></circle>
+<circle cx="673.08" cy="408.69" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10792 | Val: 0</title></circle>
+<circle cx="687.94" cy="398.85" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17677 | Val: 0</title></circle>
+<circle cx="137.71" cy="403.30" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9568 | Val: 0</title></circle>
+<circle cx="135.34" cy="418.71" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3926 | Val: 0</title></circle>
+<circle cx="673.85" cy="404.77" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5713 | Val: 0</title></circle>
+<circle cx="676.31" cy="395.85" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15436 | Val: 0</title></circle>
+<circle cx="674.06" cy="405.24" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14027 | Val: 0</title></circle>
+<circle cx="673.60" cy="403.64" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15950 | Val: 0</title></circle>
+<circle cx="142.57" cy="403.03" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7657 | Val: 0</title></circle>
+<circle cx="686.07" cy="399.16" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17503 | Val: 0</title></circle>
+<circle cx="671.14" cy="405.21" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7762 | Val: 0</title></circle>
+<circle cx="136.11" cy="372.40" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8300 | Val: 0</title></circle>
+<circle cx="173.64" cy="401.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10610 | Val: 0</title></circle>
+<circle cx="136.25" cy="384.52" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 53 | Val: 0</title></circle>
+<circle cx="681.42" cy="397.11" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1625 | Val: 0</title></circle>
+<circle cx="670.99" cy="390.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8699 | Val: 0</title></circle>
+<circle cx="677.39" cy="401.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16861 | Val: 0</title></circle>
+<circle cx="677.15" cy="404.96" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13586 | Val: 0</title></circle>
+<circle cx="682.53" cy="396.22" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6151 | Val: 0</title></circle>
+<circle cx="683.34" cy="398.35" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6148 | Val: 0</title></circle>
+<circle cx="681.78" cy="393.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7075 | Val: 0</title></circle>
+<circle cx="679.38" cy="398.35" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14473 | Val: 0</title></circle>
+<circle cx="675.20" cy="404.07" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13081 | Val: 0</title></circle>
+<circle cx="678.86" cy="396.16" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18788 | Val: 0</title></circle>
+<circle cx="676.70" cy="398.07" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1204 | Val: 0</title></circle>
+<circle cx="137.69" cy="424.93" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2954 | Val: 0</title></circle>
+<circle cx="681.38" cy="383.71" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18307 | Val: 0</title></circle>
+<circle cx="665.68" cy="354.08" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9349 | Val: 0</title></circle>
+<circle cx="444.01" cy="663.23" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16445 | Val: 0</title></circle>
+<circle cx="679.59" cy="401.47" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2386 | Val: 0</title></circle>
+<circle cx="672.75" cy="388.37" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7259 | Val: 0</title></circle>
+<circle cx="676.65" cy="408.38" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16972 | Val: 0</title></circle>
+<circle cx="680.06" cy="391.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2872 | Val: 0</title></circle>
+<circle cx="673.07" cy="398.88" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11576 | Val: 0</title></circle>
+<circle cx="671.07" cy="408.88" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8969 | Val: 0</title></circle>
+<circle cx="141.38" cy="394.93" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 350 | Val: 0</title></circle>
+<circle cx="680.63" cy="397.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17564 | Val: 0</title></circle>
+<circle cx="680.51" cy="400.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5335 | Val: 0</title></circle>
+<circle cx="137.85" cy="393.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12536 | Val: 0</title></circle>
+<circle cx="677.99" cy="402.26" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7052 | Val: 0</title></circle>
+<circle cx="137.71" cy="410.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7037 | Val: 0</title></circle>
+<circle cx="678.69" cy="400.64" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5591 | Val: 0</title></circle>
+<circle cx="670.85" cy="390.18" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8404 | Val: 0</title></circle>
+<circle cx="143.67" cy="401.03" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10535 | Val: 0</title></circle>
+<circle cx="679.69" cy="395.07" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 32 | Val: 0</title></circle>
+<circle cx="679.84" cy="399.77" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11683 | Val: 0</title></circle>
+<circle cx="676.39" cy="393.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19577 | Val: 0</title></circle>
+<circle cx="169.18" cy="402.65" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9719 | Val: 0</title></circle>
+<circle cx="680.18" cy="399.90" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5818 | Val: 0</title></circle>
+<circle cx="140.31" cy="394.09" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6677 | Val: 0</title></circle>
+<circle cx="670.85" cy="402.99" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1154 | Val: 0</title></circle>
+<circle cx="665.89" cy="427.61" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17783 | Val: 0</title></circle>
+<circle cx="678.33" cy="394.56" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 587 | Val: 0</title></circle>
+<circle cx="675.19" cy="386.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 272 | Val: 0</title></circle>
+<circle cx="138.25" cy="355.15" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14231 | Val: 0</title></circle>
+<circle cx="679.52" cy="407.55" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18865 | Val: 0</title></circle>
+<circle cx="675.83" cy="406.00" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14146 | Val: 0</title></circle>
+<circle cx="457.74" cy="139.40" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8615 | Val: 0</title></circle>
+<circle cx="682.93" cy="396.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7219 | Val: 0</title></circle>
+<circle cx="668.77" cy="398.31" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17399 | Val: 0</title></circle>
+<circle cx="672.97" cy="404.78" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17426 | Val: 0</title></circle>
+<circle cx="688.13" cy="396.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18208 | Val: 0</title></circle>
+<circle cx="136.95" cy="365.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19232 | Val: 0</title></circle>
+<circle cx="673.87" cy="412.54" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11198 | Val: 0</title></circle>
+<circle cx="141.06" cy="401.50" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10319 | Val: 0</title></circle>
+<circle cx="622.81" cy="251.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17237 | Val: 0</title></circle>
+<circle cx="680.64" cy="392.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8746 | Val: 0</title></circle>
+<circle cx="676.69" cy="391.49" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 38 | Val: 0</title></circle>
+<circle cx="675.83" cy="395.64" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14305 | Val: 0</title></circle>
+<circle cx="681.98" cy="392.70" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3670 | Val: 0</title></circle>
+<circle cx="673.45" cy="390.08" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10288 | Val: 0</title></circle>
+<circle cx="678.42" cy="401.07" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1582 | Val: 0</title></circle>
+<circle cx="133.80" cy="412.95" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9193 | Val: 0</title></circle>
+<circle cx="140.92" cy="393.44" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14273 | Val: 0</title></circle>
+<circle cx="684.36" cy="408.81" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13657 | Val: 0</title></circle>
+<circle cx="667.95" cy="396.02" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2897 | Val: 0</title></circle>
+<circle cx="682.42" cy="398.55" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1891 | Val: 0</title></circle>
+<circle cx="669.74" cy="379.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9544 | Val: 0</title></circle>
+<circle cx="677.69" cy="391.04" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 893 | Val: 0</title></circle>
+<circle cx="670.70" cy="403.15" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2612 | Val: 0</title></circle>
+<circle cx="688.85" cy="394.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4591 | Val: 0</title></circle>
+<circle cx="682.45" cy="398.85" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13591 | Val: 0</title></circle>
+<circle cx="137.08" cy="410.83" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6749 | Val: 0</title></circle>
+<circle cx="681.23" cy="395.15" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4576 | Val: 0</title></circle>
+<circle cx="679.33" cy="401.93" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9310 | Val: 0</title></circle>
+<circle cx="677.61" cy="394.58" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14431 | Val: 0</title></circle>
+<circle cx="673.94" cy="405.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16627 | Val: 0</title></circle>
+<circle cx="676.45" cy="398.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3130 | Val: 0</title></circle>
+<circle cx="652.22" cy="309.54" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14993 | Val: 0</title></circle>
+<circle cx="672.48" cy="395.75" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7555 | Val: 0</title></circle>
+<circle cx="671.39" cy="406.20" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15646 | Val: 0</title></circle>
+<circle cx="678.41" cy="398.72" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3745 | Val: 0</title></circle>
+<circle cx="682.71" cy="395.69" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 625 | Val: 0</title></circle>
+<circle cx="136.06" cy="400.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3929 | Val: 0</title></circle>
+<circle cx="685.78" cy="396.30" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6394 | Val: 0</title></circle>
+<circle cx="143.72" cy="401.21" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10487 | Val: 0</title></circle>
+<circle cx="136.16" cy="408.25" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4715 | Val: 0</title></circle>
+<circle cx="672.06" cy="404.26" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12244 | Val: 0</title></circle>
+<circle cx="682.69" cy="399.78" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18076 | Val: 0</title></circle>
+<circle cx="664.55" cy="449.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7744 | Val: 0</title></circle>
+<circle cx="370.23" cy="134.83" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10552 | Val: 0</title></circle>
+<circle cx="667.26" cy="384.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1610 | Val: 0</title></circle>
+<circle cx="675.02" cy="402.97" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19589 | Val: 0</title></circle>
+<circle cx="673.80" cy="406.26" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12605 | Val: 0</title></circle>
+<circle cx="145.16" cy="405.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3359 | Val: 0</title></circle>
+<circle cx="674.79" cy="383.39" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8908 | Val: 0</title></circle>
+<circle cx="155.26" cy="397.88" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14579 | Val: 0</title></circle>
+<circle cx="687.93" cy="399.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13609 | Val: 0</title></circle>
+<circle cx="145.46" cy="404.16" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11993 | Val: 0</title></circle>
+<circle cx="664.97" cy="438.01" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16700 | Val: 0</title></circle>
+<circle cx="673.59" cy="393.26" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11453 | Val: 0</title></circle>
+<circle cx="687.95" cy="393.93" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14761 | Val: 0</title></circle>
+<circle cx="680.26" cy="386.70" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14998 | Val: 0</title></circle>
+<circle cx="681.68" cy="394.27" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6595 | Val: 0</title></circle>
+<circle cx="137.27" cy="424.76" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16076 | Val: 0</title></circle>
+<circle cx="683.25" cy="402.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5239 | Val: 0</title></circle>
+<circle cx="148.81" cy="403.87" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1187 | Val: 0</title></circle>
+<circle cx="659.72" cy="466.23" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15209 | Val: 0</title></circle>
+<circle cx="676.75" cy="395.09" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12319 | Val: 0</title></circle>
+<circle cx="673.55" cy="404.96" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1475 | Val: 0</title></circle>
+<circle cx="681.17" cy="395.27" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1676 | Val: 0</title></circle>
+<circle cx="674.37" cy="397.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7012 | Val: 0</title></circle>
+<circle cx="671.36" cy="419.75" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12247 | Val: 0</title></circle>
+<circle cx="143.92" cy="403.08" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9880 | Val: 0</title></circle>
+<circle cx="673.68" cy="387.90" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15716 | Val: 0</title></circle>
+<circle cx="671.48" cy="392.41" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5849 | Val: 0</title></circle>
+<circle cx="675.05" cy="405.34" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12458 | Val: 0</title></circle>
+<circle cx="148.14" cy="403.24" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10580 | Val: 0</title></circle>
+<circle cx="139.71" cy="342.27" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10868 | Val: 0</title></circle>
+<circle cx="137.44" cy="401.51" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12353 | Val: 0</title></circle>
+<circle cx="143.30" cy="469.87" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16754 | Val: 0</title></circle>
+<circle cx="679.61" cy="398.05" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1138 | Val: 0</title></circle>
+<circle cx="260.86" cy="627.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16648 | Val: 0</title></circle>
+<circle cx="146.16" cy="400.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3359 | Val: 0</title></circle>
+<circle cx="676.25" cy="394.46" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8752 | Val: 0</title></circle>
+<circle cx="674.17" cy="408.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18697 | Val: 0</title></circle>
+<circle cx="688.71" cy="408.34" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18055 | Val: 0</title></circle>
+<circle cx="680.32" cy="392.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9313 | Val: 0</title></circle>
+<circle cx="678.82" cy="398.41" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2827 | Val: 0</title></circle>
+<circle cx="680.56" cy="392.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13813 | Val: 0</title></circle>
+<circle cx="683.44" cy="396.45" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15277 | Val: 0</title></circle>
+<circle cx="680.66" cy="400.23" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17546 | Val: 0</title></circle>
+<circle cx="141.59" cy="405.04" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8603 | Val: 0</title></circle>
+<circle cx="668.14" cy="393.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5759 | Val: 0</title></circle>
+<circle cx="674.49" cy="389.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6572 | Val: 0</title></circle>
+<circle cx="666.84" cy="435.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7520 | Val: 0</title></circle>
+<circle cx="146.15" cy="403.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10001 | Val: 0</title></circle>
+<circle cx="669.39" cy="406.77" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16916 | Val: 0</title></circle>
+<circle cx="683.84" cy="396.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1864 | Val: 0</title></circle>
+<circle cx="685.21" cy="393.61" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15868 | Val: 0</title></circle>
+<circle cx="672.90" cy="385.65" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16007 | Val: 0</title></circle>
+<circle cx="138.74" cy="390.96" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17711 | Val: 0</title></circle>
+<circle cx="674.44" cy="397.47" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18661 | Val: 0</title></circle>
+<circle cx="676.74" cy="398.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19523 | Val: 0</title></circle>
+<circle cx="138.23" cy="401.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13463 | Val: 0</title></circle>
+<circle cx="143.10" cy="410.87" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3038 | Val: 0</title></circle>
+<circle cx="688.07" cy="397.54" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17515 | Val: 0</title></circle>
+<circle cx="677.75" cy="394.40" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15527 | Val: 0</title></circle>
+<circle cx="679.40" cy="394.77" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8065 | Val: 0</title></circle>
+<circle cx="684.71" cy="410.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14392 | Val: 0</title></circle>
+<circle cx="144.26" cy="401.33" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12176 | Val: 0</title></circle>
+<circle cx="663.39" cy="348.98" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1832 | Val: 0</title></circle>
+<circle cx="675.68" cy="378.52" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18709 | Val: 0</title></circle>
+<circle cx="675.27" cy="404.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11212 | Val: 0</title></circle>
+<circle cx="139.20" cy="401.15" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3533 | Val: 0</title></circle>
+<circle cx="142.94" cy="460.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9721 | Val: 0</title></circle>
+<circle cx="679.91" cy="392.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7993 | Val: 0</title></circle>
+<circle cx="140.98" cy="403.33" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10586 | Val: 0</title></circle>
+<circle cx="676.39" cy="393.82" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18499 | Val: 0</title></circle>
+<circle cx="138.82" cy="405.90" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 701 | Val: 0</title></circle>
+<circle cx="137.57" cy="404.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2600 | Val: 0</title></circle>
+<circle cx="672.70" cy="398.85" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18794 | Val: 0</title></circle>
+<circle cx="672.97" cy="401.21" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 833 | Val: 0</title></circle>
+<circle cx="136.60" cy="365.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12722 | Val: 0</title></circle>
+<circle cx="147.12" cy="396.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5462 | Val: 0</title></circle>
+<circle cx="141.89" cy="399.30" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16703 | Val: 0</title></circle>
+<circle cx="150.52" cy="394.32" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12689 | Val: 0</title></circle>
+<circle cx="682.57" cy="400.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1622 | Val: 0</title></circle>
+<circle cx="671.52" cy="392.47" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5306 | Val: 0</title></circle>
+<circle cx="674.67" cy="393.77" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19085 | Val: 0</title></circle>
+<circle cx="680.83" cy="395.97" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13882 | Val: 0</title></circle>
+<circle cx="683.17" cy="403.14" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14773 | Val: 0</title></circle>
+<circle cx="138.78" cy="410.25" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17405 | Val: 0</title></circle>
+<circle cx="681.70" cy="393.86" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6554 | Val: 0</title></circle>
+<circle cx="143.55" cy="397.27" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5669 | Val: 0</title></circle>
+<circle cx="673.15" cy="384.62" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6488 | Val: 0</title></circle>
+<circle cx="672.40" cy="393.12" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5729 | Val: 0</title></circle>
+<circle cx="149.38" cy="397.14" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9785 | Val: 0</title></circle>
+<circle cx="682.53" cy="398.00" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13307 | Val: 0</title></circle>
+<circle cx="677.00" cy="396.37" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13646 | Val: 0</title></circle>
+<circle cx="673.93" cy="417.31" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16231 | Val: 0</title></circle>
+<circle cx="682.46" cy="397.62" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3871 | Val: 0</title></circle>
+<circle cx="681.73" cy="402.41" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15532 | Val: 0</title></circle>
+<circle cx="136.07" cy="387.26" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3182 | Val: 0</title></circle>
+<circle cx="670.69" cy="409.71" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3025 | Val: 0</title></circle>
+<circle cx="670.69" cy="377.85" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5551 | Val: 0</title></circle>
+<circle cx="141.10" cy="400.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6839 | Val: 0</title></circle>
+<circle cx="683.99" cy="409.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4570 | Val: 0</title></circle>
+<circle cx="679.23" cy="402.07" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13442 | Val: 0</title></circle>
+<circle cx="139.82" cy="400.85" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7199 | Val: 0</title></circle>
+<circle cx="676.03" cy="396.22" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2858 | Val: 0</title></circle>
+<circle cx="136.80" cy="399.70" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10298 | Val: 0</title></circle>
+<circle cx="683.31" cy="393.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5815 | Val: 0</title></circle>
+<circle cx="683.64" cy="397.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13837 | Val: 0</title></circle>
+<circle cx="683.27" cy="404.24" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 97 | Val: 0</title></circle>
+<circle cx="638.69" cy="280.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7636 | Val: 0</title></circle>
+<circle cx="454.51" cy="661.23" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2366 | Val: 0</title></circle>
+<circle cx="148.58" cy="401.84" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9494 | Val: 0</title></circle>
+<circle cx="684.12" cy="401.61" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13279 | Val: 0</title></circle>
+<circle cx="670.31" cy="387.16" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19307 | Val: 0</title></circle>
+<circle cx="662.62" cy="352.60" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7448 | Val: 0</title></circle>
+<circle cx="145.44" cy="396.27" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 17954 | Val: 0</title></circle>
+<circle cx="141.75" cy="407.43" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3368 | Val: 0</title></circle>
+<circle cx="683.64" cy="395.86" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5878 | Val: 0</title></circle>
+<circle cx="667.02" cy="425.96" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5450 | Val: 0</title></circle>
+<circle cx="685.82" cy="399.27" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2242 | Val: 0</title></circle>
+<circle cx="684.87" cy="397.67" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 529 | Val: 0</title></circle>
+<circle cx="681.38" cy="399.83" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2009 | Val: 0</title></circle>
+<circle cx="680.61" cy="403.63" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2224 | Val: 0</title></circle>
+<circle cx="679.19" cy="395.89" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2272 | Val: 0</title></circle>
+<circle cx="675.24" cy="417.99" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14161 | Val: 0</title></circle>
+<circle cx="676.53" cy="395.37" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6035 | Val: 0</title></circle>
+<circle cx="669.00" cy="429.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12745 | Val: 0</title></circle>
+<circle cx="680.11" cy="398.81" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13529 | Val: 0</title></circle>
+<circle cx="669.53" cy="380.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14951 | Val: 0</title></circle>
+<circle cx="143.73" cy="410.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 8405 | Val: 0</title></circle>
+<circle cx="674.30" cy="406.99" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1336 | Val: 0</title></circle>
+<circle cx="674.81" cy="387.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1406 | Val: 0</title></circle>
+<circle cx="683.30" cy="399.12" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18070 | Val: 0</title></circle>
+<circle cx="678.26" cy="395.39" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6286 | Val: 0</title></circle>
+<circle cx="134.51" cy="400.84" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2585 | Val: 0</title></circle>
+<circle cx="686.27" cy="395.42" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13615 | Val: 0</title></circle>
+<circle cx="150.60" cy="401.52" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10259 | Val: 0</title></circle>
+<circle cx="676.62" cy="408.01" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 3130 | Val: 0</title></circle>
+<circle cx="677.55" cy="395.33" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7840 | Val: 0</title></circle>
+<circle cx="680.62" cy="395.28" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 19607 | Val: 0</title></circle>
+<circle cx="676.96" cy="401.91" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6359 | Val: 0</title></circle>
+<circle cx="683.60" cy="401.17" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 412 | Val: 0</title></circle>
+<circle cx="683.16" cy="402.56" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18946 | Val: 0</title></circle>
+<circle cx="679.32" cy="385.83" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1252 | Val: 0</title></circle>
+<circle cx="137.16" cy="397.78" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14459 | Val: 0</title></circle>
+<circle cx="672.43" cy="395.43" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1154 | Val: 0</title></circle>
+<circle cx="134.39" cy="415.26" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10181 | Val: 0</title></circle>
+<circle cx="671.55" cy="417.80" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 13859 | Val: 0</title></circle>
+<circle cx="670.85" cy="407.29" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 16729 | Val: 0</title></circle>
+<circle cx="673.31" cy="405.10" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 2632 | Val: 0</title></circle>
+<circle cx="146.11" cy="403.04" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9701 | Val: 0</title></circle>
+<circle cx="678.62" cy="404.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 14701 | Val: 0</title></circle>
+<circle cx="674.98" cy="408.40" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11386 | Val: 0</title></circle>
+<circle cx="676.36" cy="403.71" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9454 | Val: 0</title></circle>
+<circle cx="636.75" cy="275.56" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5813 | Val: 0</title></circle>
+<circle cx="672.09" cy="409.41" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4877 | Val: 0</title></circle>
+<circle cx="147.88" cy="402.59" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12743 | Val: 0</title></circle>
+<circle cx="674.62" cy="399.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10435 | Val: 0</title></circle>
+<circle cx="678.96" cy="396.61" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12916 | Val: 0</title></circle>
+<circle cx="669.49" cy="404.80" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 12784 | Val: 0</title></circle>
+<circle cx="684.74" cy="397.13" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 6622 | Val: 0</title></circle>
+<circle cx="672.29" cy="390.82" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 9257 | Val: 0</title></circle>
+<circle cx="685.51" cy="399.72" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 322 | Val: 0</title></circle>
+<circle cx="674.45" cy="398.48" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18437 | Val: 0</title></circle>
+<circle cx="672.29" cy="396.16" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 10291 | Val: 0</title></circle>
+<circle cx="679.67" cy="395.41" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 5882 | Val: 0</title></circle>
+<circle cx="138.10" cy="378.04" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 11726 | Val: 0</title></circle>
+<circle cx="681.30" cy="399.47" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 18203 | Val: 0</title></circle>
+<circle cx="678.76" cy="401.31" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 1292 | Val: 0</title></circle>
+<circle cx="160.63" cy="402.53" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7532 | Val: 0</title></circle>
+<circle cx="170.94" cy="536.58" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 15746 | Val: 0</title></circle>
+<circle cx="141.18" cy="403.56" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 7889 | Val: 0</title></circle>
+<circle cx="146.08" cy="404.94" r="2.5" fill="#0c0786" fill-opacity="0.8"><title>Index: 4211 | Val: 0</title></circle>
+<circle cx="140.12" cy="447.01" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12849 | Val: 1</title></circle>
+<circle cx="139.42" cy="388.92" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4026 | Val: 1</title></circle>
+<circle cx="146.35" cy="429.72" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11994 | Val: 1</title></circle>
+<circle cx="141.68" cy="406.90" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8409 | Val: 1</title></circle>
+<circle cx="174.41" cy="532.15" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 3072 | Val: 1</title></circle>
+<circle cx="135.17" cy="407.23" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13020 | Val: 1</title></circle>
+<circle cx="168.85" cy="274.21" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11040 | Val: 1</title></circle>
+<circle cx="145.87" cy="335.82" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 15513 | Val: 1</title></circle>
+<circle cx="147.57" cy="454.29" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10743 | Val: 1</title></circle>
+<circle cx="157.62" cy="493.62" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 3066 | Val: 1</title></circle>
+<circle cx="149.56" cy="447.78" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10317 | Val: 1</title></circle>
+<circle cx="138.32" cy="411.47" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14916 | Val: 1</title></circle>
+<circle cx="155.63" cy="395.04" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 9816 | Val: 1</title></circle>
+<circle cx="155.22" cy="422.16" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10560 | Val: 1</title></circle>
+<circle cx="230.18" cy="195.44" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5979 | Val: 1</title></circle>
+<circle cx="161.12" cy="293.62" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8151 | Val: 1</title></circle>
+<circle cx="136.08" cy="386.52" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 3648 | Val: 1</title></circle>
+<circle cx="149.86" cy="445.62" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14451 | Val: 1</title></circle>
+<circle cx="142.44" cy="454.49" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18762 | Val: 1</title></circle>
+<circle cx="152.30" cy="479.92" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 1830 | Val: 1</title></circle>
+<circle cx="670.20" cy="374.09" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 510 | Val: 1</title></circle>
+<circle cx="143.66" cy="397.18" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 3549 | Val: 1</title></circle>
+<circle cx="180.73" cy="546.64" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8220 | Val: 1</title></circle>
+<circle cx="139.14" cy="393.71" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12603 | Val: 1</title></circle>
+<circle cx="153.41" cy="495.38" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12444 | Val: 1</title></circle>
+<circle cx="144.59" cy="444.55" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 1212 | Val: 1</title></circle>
+<circle cx="135.52" cy="395.34" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 15609 | Val: 1</title></circle>
+<circle cx="149.57" cy="436.41" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12000 | Val: 1</title></circle>
+<circle cx="139.55" cy="390.01" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 6879 | Val: 1</title></circle>
+<circle cx="672.37" cy="422.12" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17988 | Val: 1</title></circle>
+<circle cx="141.65" cy="371.04" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12774 | Val: 1</title></circle>
+<circle cx="216.19" cy="592.13" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 6519 | Val: 1</title></circle>
+<circle cx="139.86" cy="368.60" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17970 | Val: 1</title></circle>
+<circle cx="148.52" cy="319.09" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8562 | Val: 1</title></circle>
+<circle cx="243.02" cy="185.18" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 7473 | Val: 1</title></circle>
+<circle cx="148.23" cy="367.35" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 7755 | Val: 1</title></circle>
+<circle cx="145.87" cy="364.21" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8421 | Val: 1</title></circle>
+<circle cx="143.99" cy="403.31" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11067 | Val: 1</title></circle>
+<circle cx="139.20" cy="369.17" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 7176 | Val: 1</title></circle>
+<circle cx="661.38" cy="462.37" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13695 | Val: 1</title></circle>
+<circle cx="218.90" cy="594.68" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14430 | Val: 1</title></circle>
+<circle cx="670.31" cy="399.30" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 1623 | Val: 1</title></circle>
+<circle cx="149.50" cy="328.93" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14250 | Val: 1</title></circle>
+<circle cx="197.81" cy="571.95" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 16842 | Val: 1</title></circle>
+<circle cx="142.94" cy="340.31" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8607 | Val: 1</title></circle>
+<circle cx="147.11" cy="458.98" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8148 | Val: 1</title></circle>
+<circle cx="137.40" cy="405.18" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 807 | Val: 1</title></circle>
+<circle cx="625.70" cy="251.02" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14880 | Val: 1</title></circle>
+<circle cx="143.93" cy="446.21" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 6045 | Val: 1</title></circle>
+<circle cx="190.45" cy="562.37" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18132 | Val: 1</title></circle>
+<circle cx="140.42" cy="435.89" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 6603 | Val: 1</title></circle>
+<circle cx="193.46" cy="234.42" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11184 | Val: 1</title></circle>
+<circle cx="138.36" cy="431.08" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4155 | Val: 1</title></circle>
+<circle cx="631.17" cy="259.99" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 654 | Val: 1</title></circle>
+<circle cx="267.83" cy="631.43" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17877 | Val: 1</title></circle>
+<circle cx="143.35" cy="428.29" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4281 | Val: 1</title></circle>
+<circle cx="138.82" cy="390.16" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11838 | Val: 1</title></circle>
+<circle cx="154.36" cy="483.25" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10887 | Val: 1</title></circle>
+<circle cx="183.52" cy="556.28" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 435 | Val: 1</title></circle>
+<circle cx="146.40" cy="396.59" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 9798 | Val: 1</title></circle>
+<circle cx="160.07" cy="300.26" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11901 | Val: 1</title></circle>
+<circle cx="141.13" cy="400.94" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 1842 | Val: 1</title></circle>
+<circle cx="657.38" cy="479.12" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13362 | Val: 1</title></circle>
+<circle cx="171.85" cy="533.63" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12453 | Val: 1</title></circle>
+<circle cx="143.17" cy="340.64" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17022 | Val: 1</title></circle>
+<circle cx="141.26" cy="352.29" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13551 | Val: 1</title></circle>
+<circle cx="145.66" cy="382.88" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 3930 | Val: 1</title></circle>
+<circle cx="164.78" cy="514.16" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12207 | Val: 1</title></circle>
+<circle cx="137.25" cy="373.12" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5682 | Val: 1</title></circle>
+<circle cx="143.83" cy="423.11" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 16887 | Val: 1</title></circle>
+<circle cx="140.76" cy="387.67" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18822 | Val: 1</title></circle>
+<circle cx="147.04" cy="447.44" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18267 | Val: 1</title></circle>
+<circle cx="141.41" cy="344.03" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5403 | Val: 1</title></circle>
+<circle cx="416.23" cy="132.76" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 204 | Val: 1</title></circle>
+<circle cx="161.16" cy="508.78" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14622 | Val: 1</title></circle>
+<circle cx="136.40" cy="403.52" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13938 | Val: 1</title></circle>
+<circle cx="158.02" cy="484.84" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11310 | Val: 1</title></circle>
+<circle cx="145.37" cy="339.04" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14160 | Val: 1</title></circle>
+<circle cx="144.26" cy="443.73" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 7989 | Val: 1</title></circle>
+<circle cx="145.36" cy="430.34" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 7764 | Val: 1</title></circle>
+<circle cx="139.65" cy="399.13" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 16224 | Val: 1</title></circle>
+<circle cx="667.86" cy="382.17" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10947 | Val: 1</title></circle>
+<circle cx="139.09" cy="425.78" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14577 | Val: 1</title></circle>
+<circle cx="599.15" cy="583.89" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 15339 | Val: 1</title></circle>
+<circle cx="148.76" cy="314.31" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13227 | Val: 1</title></circle>
+<circle cx="663.71" cy="339.62" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18150 | Val: 1</title></circle>
+<circle cx="144.10" cy="429.15" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10275 | Val: 1</title></circle>
+<circle cx="496.11" cy="149.67" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 804 | Val: 1</title></circle>
+<circle cx="147.23" cy="400.43" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11946 | Val: 1</title></circle>
+<circle cx="169.30" cy="269.80" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11643 | Val: 1</title></circle>
+<circle cx="628.71" cy="256.51" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10938 | Val: 1</title></circle>
+<circle cx="145.35" cy="404.54" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18591 | Val: 1</title></circle>
+<circle cx="147.18" cy="334.03" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 19551 | Val: 1</title></circle>
+<circle cx="159.64" cy="510.72" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8205 | Val: 1</title></circle>
+<circle cx="151.71" cy="346.18" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10065 | Val: 1</title></circle>
+<circle cx="193.76" cy="569.08" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4908 | Val: 1</title></circle>
+<circle cx="137.24" cy="411.86" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18384 | Val: 1</title></circle>
+<circle cx="145.00" cy="473.13" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 19410 | Val: 1</title></circle>
+<circle cx="624.52" cy="245.91" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 2109 | Val: 1</title></circle>
+<circle cx="153.06" cy="491.46" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 19140 | Val: 1</title></circle>
+<circle cx="155.79" cy="503.37" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 2013 | Val: 1</title></circle>
+<circle cx="136.76" cy="371.86" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14484 | Val: 1</title></circle>
+<circle cx="137.77" cy="405.60" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 16539 | Val: 1</title></circle>
+<circle cx="176.66" cy="535.47" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5496 | Val: 1</title></circle>
+<circle cx="146.35" cy="472.75" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 942 | Val: 1</title></circle>
+<circle cx="145.53" cy="341.04" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 19326 | Val: 1</title></circle>
+<circle cx="482.11" cy="655.31" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17283 | Val: 1</title></circle>
+<circle cx="140.76" cy="398.94" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 9336 | Val: 1</title></circle>
+<circle cx="148.36" cy="473.02" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 2487 | Val: 1</title></circle>
+<circle cx="141.47" cy="345.23" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 9408 | Val: 1</title></circle>
+<circle cx="141.45" cy="360.53" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8484 | Val: 1</title></circle>
+<circle cx="197.83" cy="573.60" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14370 | Val: 1</title></circle>
+<circle cx="668.32" cy="385.26" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11508 | Val: 1</title></circle>
+<circle cx="138.70" cy="400.65" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8277 | Val: 1</title></circle>
+<circle cx="473.03" cy="658.18" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8202 | Val: 1</title></circle>
+<circle cx="212.82" cy="585.97" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13278 | Val: 1</title></circle>
+<circle cx="150.85" cy="392.52" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 9507 | Val: 1</title></circle>
+<circle cx="153.99" cy="473.57" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12846 | Val: 1</title></circle>
+<circle cx="137.10" cy="387.70" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18102 | Val: 1</title></circle>
+<circle cx="145.65" cy="391.38" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 7680 | Val: 1</title></circle>
+<circle cx="137.92" cy="419.00" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 19677 | Val: 1</title></circle>
+<circle cx="285.82" cy="159.37" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 1464 | Val: 1</title></circle>
+<circle cx="146.52" cy="326.95" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 453 | Val: 1</title></circle>
+<circle cx="137.96" cy="431.05" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 19632 | Val: 1</title></circle>
+<circle cx="354.05" cy="136.24" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17715 | Val: 1</title></circle>
+<circle cx="149.89" cy="469.56" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 16350 | Val: 1</title></circle>
+<circle cx="150.53" cy="476.86" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4227 | Val: 1</title></circle>
+<circle cx="149.26" cy="444.26" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8391 | Val: 1</title></circle>
+<circle cx="143.55" cy="338.11" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5565 | Val: 1</title></circle>
+<circle cx="638.07" cy="266.31" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4620 | Val: 1</title></circle>
+<circle cx="225.97" cy="599.17" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 6555 | Val: 1</title></circle>
+<circle cx="140.98" cy="339.16" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14799 | Val: 1</title></circle>
+<circle cx="447.37" cy="663.92" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 6798 | Val: 1</title></circle>
+<circle cx="146.33" cy="399.01" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 9735 | Val: 1</title></circle>
+<circle cx="144.80" cy="436.88" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 9132 | Val: 1</title></circle>
+<circle cx="148.86" cy="315.50" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 114 | Val: 1</title></circle>
+<circle cx="655.18" cy="313.04" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 19461 | Val: 1</title></circle>
+<circle cx="144.46" cy="458.47" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8760 | Val: 1</title></circle>
+<circle cx="135.18" cy="391.95" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4773 | Val: 1</title></circle>
+<circle cx="668.26" cy="425.44" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 15252 | Val: 1</title></circle>
+<circle cx="487.28" cy="146.94" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11121 | Val: 1</title></circle>
+<circle cx="205.95" cy="218.19" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5883 | Val: 1</title></circle>
+<circle cx="143.38" cy="405.95" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 1176 | Val: 1</title></circle>
+<circle cx="138.64" cy="415.76" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 6981 | Val: 1</title></circle>
+<circle cx="143.59" cy="371.50" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 16194 | Val: 1</title></circle>
+<circle cx="245.39" cy="616.82" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11343 | Val: 1</title></circle>
+<circle cx="148.12" cy="317.37" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 1293 | Val: 1</title></circle>
+<circle cx="145.19" cy="328.33" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8850 | Val: 1</title></circle>
+<circle cx="406.21" cy="132.49" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17607 | Val: 1</title></circle>
+<circle cx="151.72" cy="319.26" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 2316 | Val: 1</title></circle>
+<circle cx="151.95" cy="478.96" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4080 | Val: 1</title></circle>
+<circle cx="666.52" cy="442.64" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14628 | Val: 1</title></circle>
+<circle cx="670.02" cy="398.70" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 231 | Val: 1</title></circle>
+<circle cx="144.98" cy="444.82" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5793 | Val: 1</title></circle>
+<circle cx="162.83" cy="281.79" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13335 | Val: 1</title></circle>
+<circle cx="146.81" cy="418.80" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 7662 | Val: 1</title></circle>
+<circle cx="170.55" cy="528.47" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4062 | Val: 1</title></circle>
+<circle cx="673.12" cy="430.91" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 543 | Val: 1</title></circle>
+<circle cx="326.60" cy="657.36" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8535 | Val: 1</title></circle>
+<circle cx="146.87" cy="414.38" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14253 | Val: 1</title></circle>
+<circle cx="483.23" cy="143.61" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10209 | Val: 1</title></circle>
+<circle cx="294.07" cy="154.93" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13389 | Val: 1</title></circle>
+<circle cx="192.72" cy="567.80" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 1785 | Val: 1</title></circle>
+<circle cx="149.31" cy="333.37" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 15729 | Val: 1</title></circle>
+<circle cx="541.25" cy="171.60" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8526 | Val: 1</title></circle>
+<circle cx="141.93" cy="386.77" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17349 | Val: 1</title></circle>
+<circle cx="669.67" cy="366.50" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17916 | Val: 1</title></circle>
+<circle cx="444.04" cy="664.15" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 6639 | Val: 1</title></circle>
+<circle cx="148.71" cy="433.71" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10158 | Val: 1</title></circle>
+<circle cx="644.67" cy="509.74" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 11163 | Val: 1</title></circle>
+<circle cx="151.96" cy="464.49" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 9429 | Val: 1</title></circle>
+<circle cx="568.58" cy="610.33" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12900 | Val: 1</title></circle>
+<circle cx="673.35" cy="380.42" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 168 | Val: 1</title></circle>
+<circle cx="170.61" cy="529.42" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17808 | Val: 1</title></circle>
+<circle cx="668.72" cy="353.88" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17742 | Val: 1</title></circle>
+<circle cx="184.70" cy="556.51" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 2976 | Val: 1</title></circle>
+<circle cx="143.30" cy="352.03" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17475 | Val: 1</title></circle>
+<circle cx="162.16" cy="284.47" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 16113 | Val: 1</title></circle>
+<circle cx="139.22" cy="368.79" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 2931 | Val: 1</title></circle>
+<circle cx="494.42" cy="650.50" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18051 | Val: 1</title></circle>
+<circle cx="323.05" cy="655.90" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5865 | Val: 1</title></circle>
+<circle cx="159.14" cy="289.27" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18078 | Val: 1</title></circle>
+<circle cx="198.56" cy="226.57" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 618 | Val: 1</title></circle>
+<circle cx="168.87" cy="526.20" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5262 | Val: 1</title></circle>
+<circle cx="497.77" cy="150.62" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13875 | Val: 1</title></circle>
+<circle cx="622.71" cy="249.67" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 15204 | Val: 1</title></circle>
+<circle cx="659.57" cy="490.14" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 17502 | Val: 1</title></circle>
+<circle cx="144.62" cy="462.81" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18438 | Val: 1</title></circle>
+<circle cx="150.57" cy="347.43" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10626 | Val: 1</title></circle>
+<circle cx="135.72" cy="391.36" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 2193 | Val: 1</title></circle>
+<circle cx="140.44" cy="377.62" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13083 | Val: 1</title></circle>
+<circle cx="668.10" cy="352.96" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14592 | Val: 1</title></circle>
+<circle cx="154.62" cy="490.62" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10767 | Val: 1</title></circle>
+<circle cx="309.57" cy="148.74" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 1698 | Val: 1</title></circle>
+<circle cx="137.57" cy="390.44" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14439 | Val: 1</title></circle>
+<circle cx="143.73" cy="386.56" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 18366 | Val: 1</title></circle>
+<circle cx="140.97" cy="421.32" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14457 | Val: 1</title></circle>
+<circle cx="143.16" cy="329.74" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 15213 | Val: 1</title></circle>
+<circle cx="144.82" cy="438.25" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 16563 | Val: 1</title></circle>
+<circle cx="142.46" cy="405.73" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 6951 | Val: 1</title></circle>
+<circle cx="152.88" cy="480.77" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12633 | Val: 1</title></circle>
+<circle cx="142.86" cy="410.28" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 12651 | Val: 1</title></circle>
+<circle cx="136.35" cy="371.60" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5334 | Val: 1</title></circle>
+<circle cx="140.86" cy="428.32" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 16608 | Val: 1</title></circle>
+<circle cx="668.02" cy="405.49" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 4692 | Val: 1</title></circle>
+<circle cx="667.72" cy="376.02" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 13170 | Val: 1</title></circle>
+<circle cx="145.99" cy="407.44" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14205 | Val: 1</title></circle>
+<circle cx="162.20" cy="518.96" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 5061 | Val: 1</title></circle>
+<circle cx="227.11" cy="603.27" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 14844 | Val: 1</title></circle>
+<circle cx="565.41" cy="611.17" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 19002 | Val: 1</title></circle>
+<circle cx="147.17" cy="375.51" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10119 | Val: 1</title></circle>
+<circle cx="624.30" cy="554.56" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 57 | Val: 1</title></circle>
+<circle cx="135.78" cy="410.63" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10875 | Val: 1</title></circle>
+<circle cx="142.21" cy="431.38" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 7554 | Val: 1</title></circle>
+<circle cx="669.23" cy="427.53" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 177 | Val: 1</title></circle>
+<circle cx="590.21" cy="210.92" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 96 | Val: 1</title></circle>
+<circle cx="180.54" cy="548.98" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 10509 | Val: 1</title></circle>
+<circle cx="145.46" cy="335.11" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 8538 | Val: 1</title></circle>
+<circle cx="142.58" cy="424.04" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 9165 | Val: 1</title></circle>
+<circle cx="211.70" cy="587.65" r="2.5" fill="#45039e" fill-opacity="0.8"><title>Index: 2298 | Val: 1</title></circle>
+<circle cx="153.76" cy="430.53" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 6138 | Val: 2</title></circle>
+<circle cx="153.82" cy="371.34" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 3717 | Val: 2</title></circle>
+<circle cx="150.02" cy="411.59" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 13914 | Val: 2</title></circle>
+<circle cx="152.72" cy="389.26" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 7065 | Val: 2</title></circle>
+<circle cx="161.77" cy="434.13" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 16434 | Val: 2</title></circle>
+<circle cx="156.81" cy="405.75" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 10404 | Val: 2</title></circle>
+<circle cx="160.64" cy="410.79" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 2232 | Val: 2</title></circle>
+<circle cx="163.08" cy="292.38" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 13869 | Val: 2</title></circle>
+<circle cx="151.91" cy="418.67" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 1233 | Val: 2</title></circle>
+<circle cx="156.71" cy="453.44" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 12618 | Val: 2</title></circle>
+<circle cx="157.37" cy="419.25" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 11844 | Val: 2</title></circle>
+<circle cx="148.25" cy="447.81" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17676 | Val: 2</title></circle>
+<circle cx="158.98" cy="353.97" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 6228 | Val: 2</title></circle>
+<circle cx="161.26" cy="332.12" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17451 | Val: 2</title></circle>
+<circle cx="156.13" cy="356.84" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 3492 | Val: 2</title></circle>
+<circle cx="157.40" cy="410.11" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 19341 | Val: 2</title></circle>
+<circle cx="151.87" cy="402.30" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 11223 | Val: 2</title></circle>
+<circle cx="149.14" cy="393.41" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 9414 | Val: 2</title></circle>
+<circle cx="153.54" cy="412.65" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 2574 | Val: 2</title></circle>
+<circle cx="148.31" cy="425.17" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 4392 | Val: 2</title></circle>
+<circle cx="157.75" cy="410.86" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 10269 | Val: 2</title></circle>
+<circle cx="152.17" cy="392.08" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 225 | Val: 2</title></circle>
+<circle cx="146.14" cy="387.51" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 8091 | Val: 2</title></circle>
+<circle cx="163.32" cy="465.95" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 5004 | Val: 2</title></circle>
+<circle cx="155.50" cy="365.36" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 16965 | Val: 2</title></circle>
+<circle cx="151.02" cy="401.42" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 13977 | Val: 2</title></circle>
+<circle cx="147.86" cy="442.04" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 495 | Val: 2</title></circle>
+<circle cx="151.71" cy="416.29" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 4122 | Val: 2</title></circle>
+<circle cx="148.30" cy="417.90" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 4410 | Val: 2</title></circle>
+<circle cx="155.34" cy="407.83" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17001 | Val: 2</title></circle>
+<circle cx="152.32" cy="398.82" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 14328 | Val: 2</title></circle>
+<circle cx="161.21" cy="407.02" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 1359 | Val: 2</title></circle>
+<circle cx="154.74" cy="407.29" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 8946 | Val: 2</title></circle>
+<circle cx="153.68" cy="428.44" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 15543 | Val: 2</title></circle>
+<circle cx="160.77" cy="340.48" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 9441 | Val: 2</title></circle>
+<circle cx="157.13" cy="452.81" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 18432 | Val: 2</title></circle>
+<circle cx="151.05" cy="434.92" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 8676 | Val: 2</title></circle>
+<circle cx="156.18" cy="346.76" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 792 | Val: 2</title></circle>
+<circle cx="152.64" cy="405.78" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 10872 | Val: 2</title></circle>
+<circle cx="159.27" cy="332.20" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 15291 | Val: 2</title></circle>
+<circle cx="145.25" cy="402.88" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17514 | Val: 2</title></circle>
+<circle cx="158.76" cy="333.73" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 19188 | Val: 2</title></circle>
+<circle cx="148.87" cy="354.18" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17991 | Val: 2</title></circle>
+<circle cx="152.40" cy="379.26" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 9081 | Val: 2</title></circle>
+<circle cx="147.13" cy="366.19" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 13707 | Val: 2</title></circle>
+<circle cx="172.19" cy="284.57" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 5166 | Val: 2</title></circle>
+<circle cx="168.21" cy="470.45" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 14220 | Val: 2</title></circle>
+<circle cx="153.41" cy="381.08" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 4275 | Val: 2</title></circle>
+<circle cx="154.96" cy="368.42" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 1935 | Val: 2</title></circle>
+<circle cx="154.41" cy="443.75" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 11214 | Val: 2</title></circle>
+<circle cx="154.76" cy="362.70" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 6066 | Val: 2</title></circle>
+<circle cx="154.41" cy="401.75" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 10845 | Val: 2</title></circle>
+<circle cx="153.63" cy="424.22" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 13374 | Val: 2</title></circle>
+<circle cx="159.98" cy="473.88" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 13725 | Val: 2</title></circle>
+<circle cx="156.08" cy="396.30" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 18621 | Val: 2</title></circle>
+<circle cx="154.22" cy="382.79" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17379 | Val: 2</title></circle>
+<circle cx="157.36" cy="381.46" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 7605 | Val: 2</title></circle>
+<circle cx="160.00" cy="348.68" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 10521 | Val: 2</title></circle>
+<circle cx="160.76" cy="479.10" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 18945 | Val: 2</title></circle>
+<circle cx="161.23" cy="326.14" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 9171 | Val: 2</title></circle>
+<circle cx="160.37" cy="377.34" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 8865 | Val: 2</title></circle>
+<circle cx="160.28" cy="432.83" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 7686 | Val: 2</title></circle>
+<circle cx="152.91" cy="395.59" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 10917 | Val: 2</title></circle>
+<circle cx="159.78" cy="444.45" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17028 | Val: 2</title></circle>
+<circle cx="152.02" cy="442.50" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 12627 | Val: 2</title></circle>
+<circle cx="151.29" cy="338.18" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 13671 | Val: 2</title></circle>
+<circle cx="161.16" cy="467.87" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 8280 | Val: 2</title></circle>
+<circle cx="151.89" cy="398.29" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 5544 | Val: 2</title></circle>
+<circle cx="149.06" cy="381.81" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 6876 | Val: 2</title></circle>
+<circle cx="157.19" cy="411.03" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 9549 | Val: 2</title></circle>
+<circle cx="157.30" cy="411.86" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 7578 | Val: 2</title></circle>
+<circle cx="165.87" cy="441.88" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 9567 | Val: 2</title></circle>
+<circle cx="156.25" cy="432.78" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 15354 | Val: 2</title></circle>
+<circle cx="153.27" cy="373.75" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 7524 | Val: 2</title></circle>
+<circle cx="148.23" cy="411.32" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17424 | Val: 2</title></circle>
+<circle cx="155.70" cy="378.58" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 10620 | Val: 2</title></circle>
+<circle cx="158.64" cy="313.01" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17757 | Val: 2</title></circle>
+<circle cx="148.94" cy="423.92" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 14679 | Val: 2</title></circle>
+<circle cx="147.08" cy="380.77" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 2898 | Val: 2</title></circle>
+<circle cx="151.19" cy="395.42" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 4716 | Val: 2</title></circle>
+<circle cx="147.40" cy="388.31" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 1035 | Val: 2</title></circle>
+<circle cx="155.26" cy="386.44" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 9540 | Val: 2</title></circle>
+<circle cx="156.52" cy="361.14" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 12600 | Val: 2</title></circle>
+<circle cx="151.15" cy="376.67" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 18666 | Val: 2</title></circle>
+<circle cx="158.56" cy="448.65" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 10035 | Val: 2</title></circle>
+<circle cx="153.91" cy="376.87" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 5733 | Val: 2</title></circle>
+<circle cx="156.12" cy="369.62" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 6255 | Val: 2</title></circle>
+<circle cx="153.48" cy="401.43" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 15453 | Val: 2</title></circle>
+<circle cx="155.10" cy="372.19" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 16074 | Val: 2</title></circle>
+<circle cx="150.84" cy="367.96" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 8325 | Val: 2</title></circle>
+<circle cx="152.89" cy="442.22" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 14706 | Val: 2</title></circle>
+<circle cx="158.31" cy="410.90" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17154 | Val: 2</title></circle>
+<circle cx="156.25" cy="354.04" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 12456 | Val: 2</title></circle>
+<circle cx="147.31" cy="438.24" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 18027 | Val: 2</title></circle>
+<circle cx="158.53" cy="389.83" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 16236 | Val: 2</title></circle>
+<circle cx="153.93" cy="382.39" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 10701 | Val: 2</title></circle>
+<circle cx="147.58" cy="421.64" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 2466 | Val: 2</title></circle>
+<circle cx="156.57" cy="466.75" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 17838 | Val: 2</title></circle>
+<circle cx="157.08" cy="378.46" r="2.5" fill="#7200a8" fill-opacity="0.8"><title>Index: 450 | Val: 2</title></circle>
+<circle cx="165.20" cy="450.89" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 1890 | Val: 3</title></circle>
+<circle cx="174.64" cy="355.53" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 9450 | Val: 3</title></circle>
+<circle cx="162.41" cy="434.29" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 17685 | Val: 3</title></circle>
+<circle cx="168.23" cy="430.49" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 16956 | Val: 3</title></circle>
+<circle cx="166.84" cy="450.36" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 10962 | Val: 3</title></circle>
+<circle cx="170.90" cy="435.68" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 16389 | Val: 3</title></circle>
+<circle cx="162.22" cy="378.03" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 15849 | Val: 3</title></circle>
+<circle cx="165.97" cy="345.55" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 2160 | Val: 3</title></circle>
+<circle cx="172.99" cy="356.82" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 11853 | Val: 3</title></circle>
+<circle cx="162.36" cy="365.60" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 108 | Val: 3</title></circle>
+<circle cx="166.11" cy="376.68" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 7182 | Val: 3</title></circle>
+<circle cx="173.69" cy="427.39" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 10746 | Val: 3</title></circle>
+<circle cx="162.50" cy="399.62" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 9045 | Val: 3</title></circle>
+<circle cx="164.83" cy="351.23" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 12582 | Val: 3</title></circle>
+<circle cx="164.22" cy="393.71" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 3861 | Val: 3</title></circle>
+<circle cx="178.51" cy="492.49" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 1890 | Val: 3</title></circle>
+<circle cx="166.16" cy="397.88" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 16470 | Val: 3</title></circle>
+<circle cx="166.82" cy="356.24" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 17037 | Val: 3</title></circle>
+<circle cx="169.63" cy="420.38" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 16632 | Val: 3</title></circle>
+<circle cx="162.68" cy="390.26" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 2214 | Val: 3</title></circle>
+<circle cx="158.94" cy="423.78" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 4509 | Val: 3</title></circle>
+<circle cx="175.56" cy="335.65" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 9504 | Val: 3</title></circle>
+<circle cx="163.07" cy="350.30" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 432 | Val: 3</title></circle>
+<circle cx="174.06" cy="384.78" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 11799 | Val: 3</title></circle>
+<circle cx="167.71" cy="423.01" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 13743 | Val: 3</title></circle>
+<circle cx="170.01" cy="402.40" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 7641 | Val: 3</title></circle>
+<circle cx="164.10" cy="409.46" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 11070 | Val: 3</title></circle>
+<circle cx="170.96" cy="342.78" r="2.5" fill="#9b179e" fill-opacity="0.8"><title>Index: 6426 | Val: 3</title></circle>
+<circle cx="181.49" cy="428.74" r="2.5" fill="#bc3685" fill-opacity="0.8"><title>Index: 3240 | Val: 4</title></circle>
+<circle cx="171.31" cy="371.87" r="2.5" fill="#bc3685" fill-opacity="0.8"><title>Index: 13689 | Val: 4</title></circle>
+<circle cx="179.12" cy="429.52" r="2.5" fill="#bc3685" fill-opacity="0.8"><title>Index: 16686 | Val: 4</title></circle>
+<circle cx="180.39" cy="383.41" r="2.5" fill="#bc3685" fill-opacity="0.8"><title>Index: 4050 | Val: 4</title></circle>
+<circle cx="170.40" cy="414.34" r="2.5" fill="#bc3685" fill-opacity="0.8"><title>Index: 11826 | Val: 4</title></circle>
+<circle cx="179.07" cy="359.16" r="2.5" fill="#bc3685" fill-opacity="0.8"><title>Index: 4212 | Val: 4</title></circle>
+<circle cx="176.14" cy="405.11" r="2.5" fill="#bc3685" fill-opacity="0.8"><title>Index: 14256 | Val: 4</title></circle>
+<circle cx="174.48" cy="403.99" r="2.5" fill="#bc3685" fill-opacity="0.8"><title>Index: 5670 | Val: 4</title></circle>
+<circle cx="175.74" cy="423.17" r="2.5" fill="#d7576b" fill-opacity="0.8"><title>Index: 13608 | Val: 5</title></circle>
+<circle cx="218.27" cy="522.10" r="2.5" fill="#d7576b" fill-opacity="0.8"><title>Index: 3159 | Val: 5</title></circle>
+<circle cx="190.10" cy="340.89" r="2.5" fill="#d7576b" fill-opacity="0.8"><title>Index: 18468 | Val: 5</title></circle>
+<circle cx="211.13" cy="293.47" r="2.5" fill="#ec7853" fill-opacity="0.8"><title>Index: 18954 | Val: 6</title></circle>
+<text x="20" y="30" fill="#8b949e" font-size="14" font-weight="bold">3-Adic Latent Tree (Epoch 4275)</text>
+<circle cx="20" cy="50" r="4" fill="#0c0786"/>
+<text x="35" y="54" fill="#8b949e" font-size="10">v=0</text>
+<circle cx="20" cy="65" r="4" fill="#45039e"/>
+<text x="35" y="69" fill="#8b949e" font-size="10">v=1</text>
+<circle cx="20" cy="80" r="4" fill="#7200a8"/>
+<text x="35" y="84" fill="#8b949e" font-size="10">v=2</text>
+<circle cx="20" cy="95" r="4" fill="#9b179e"/>
+<text x="35" y="99" fill="#8b949e" font-size="10">v=3</text>
+<circle cx="20" cy="110" r="4" fill="#bc3685"/>
+<text x="35" y="114" fill="#8b949e" font-size="10">v=4</text>
+<circle cx="20" cy="125" r="4" fill="#d7576b"/>
+<text x="35" y="129" fill="#8b949e" font-size="10">v=5</text>
+<circle cx="20" cy="140" r="4" fill="#ec7853"/>
+<text x="35" y="144" fill="#8b949e" font-size="10">v=6</text>
+<circle cx="20" cy="155" r="4" fill="#fa9f3a"/>
+<text x="35" y="159" fill="#8b949e" font-size="10">v=7</text>
+<circle cx="20" cy="170" r="4" fill="#fcc926"/>
+<text x="35" y="174" fill="#8b949e" font-size="10">v=8</text>
+<circle cx="20" cy="185" r="4" fill="#eff821"/>
+<text x="35" y="189" fill="#8b949e" font-size="10">v=9</text>
+</svg>

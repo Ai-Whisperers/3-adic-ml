@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3-Adic VUS Classifier</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+    <div class="glass-card">
+        <h1>VUS Classifier</h1>
+        <div class="tabs">
+            <button onclick="showTab('single')">Single</button>
+            <button onclick="showTab('batch')">Batch</button>
+        </div>
+        
+        <div id="single-tab">
+            <input type="text" id="seq" placeholder="Enter 9-nt sequence">
+            <button onclick="analyze()">Analyze</button>
+        </div>
+        
+        <div id="batch-tab" style="display:none;">
+            <input type="file" id="fastaFile">
+            <button onclick="analyzeBatch()">Analyze FASTA</button>
+        </div>
+        
+        <div id="result"></div>
+        <div id="attribution"></div>
+        <div id="plot"></div>
+    </div>
+    <script src="/static/main.js"></script>
+</body>
+</html>

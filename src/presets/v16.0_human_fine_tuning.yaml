@@ -1,0 +1,183 @@
+# v15.0_long_term_stability.yaml - Phase 15 Long-Term Analysis
+#
+# Primary Objective: Analyze model stability and hierarchy convergence over long-duration training.
+# Strategy: 2000 epochs, reduced learning rate, and infrequent evaluations to manage disk I/O.
+
+# =============================================================================
+# Device Configuration
+# =============================================================================
+device:
+  cuda_device: 0
+  use_amp: false
+
+# =============================================================================
+# Model Architecture
+# =============================================================================
+model:
+  name: TernaryVAEV6Controllable
+  latent_dim: 64
+  hidden_dim: 128
+  max_radius: 0.99
+  curvature: 1.0
+  learnable_curvature: true
+
+  factored: true
+  radial_dims: 8
+
+  positional_encoding: true
+  pos_weight_base: 1.2
+
+  projection_layers: 2
+  projection_dropout: 0.1
+  init_identity: true
+  tangent_scale: 0.1
+
+  encoder_type: improved
+  decoder_type: improved
+
+# =============================================================================
+# Visualization Configuration
+# =============================================================================
+visualization:
+  max_per_level: 500
+  persist_every: 100       # Reduced persistence frequency for long runs
+  save_html: true
+  html_dir: "visualizations"
+  umap_neighbors: 15
+
+# =============================================================================
+# Differential Learning Rates
+# =============================================================================
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.2
+  encoder_b_lr_scale: 0.1
+  projections_lr_scale: 1.0
+
+# =============================================================================
+# StateNet Controller
+# =============================================================================
+statenet:
+  enabled: true
+  initial:
+    encoder_a_trainable: true
+    encoder_b_trainable: true
+    projections_trainable: true
+
+  coverage:
+    fix_threshold: 0.35
+    train_threshold: 0.45
+  hierarchy:
+    plateau_patience: 100    # Increased for long-term stability
+  timing:
+    warmup_epochs: 20
+
+# =============================================================================
+# Loss Configuration (Maintained from V14.2)
+# =============================================================================
+loss:
+  rich_hierarchy:
+    enabled: true
+    hierarchy_weight: 4.0
+    coverage_weight: 5.0
+    separation_weight: 5.0
+    variance_weight: 2.0
+    inner_radius: 0.08
+    outer_radius: 0.85
+
+  radial:
+    enabled: true
+    weight: 2.0
+    margin_weight: 1.0
+
+  geodesic:
+    enabled: true
+    phase_start_epoch: 10
+    curvature: 1.0
+    weight: 3.0
+    use_individual_valuation: true
+
+  rank:
+    enabled: true
+    weight: 1.0
+    temperature: 0.1
+    scatter_weight: 0.5
+
+  monotonic:
+    enabled: true
+    weight: 1.0
+
+  hyperbolic_kl:
+    enabled: true
+    beta: 0.1
+    weight: 0.01
+
+  angular_coherence:
+    enabled: true
+    weight: 2.0
+    phase_start_epoch: 15
+    level_prefix_k: [5, 4, 3, 2, 2, 1, 0, 0, 0, 0]
+    target_sim: [1.0, 0.95, 0.90, 0.85, 0.80, 0.70, 0.0, 0.0, 0.0, 0.0]
+
+  algebraic_coherence:
+    enabled: true
+    weight: 2.0
+    target_sim: 0.80
+    phase_start_epoch: 20
+
+  algebraic_addition:
+    enabled: true
+    weight: 10.0
+    n_pairs: 1024
+    phase_start_epoch: 30
+
+  algebraic_multiplication:
+    enabled: true
+    weight: 10.0
+    n_pairs: 1024
+    phase_start_epoch: 50
+
+  algebraic_distributive:
+    enabled: true
+    weight: 25.0
+    n_triplets: 1024
+    phase_start_epoch: 60
+
+  lagrangian:
+    enabled: true
+    lr: 0.1
+    max_lambda: 5.0
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+training:
+  epochs: 2000                  # Extended for long-term stability analysis
+  batch_size: 4096
+  lr: 5.0e-4                    # Reduced LR for stability
+  weight_decay: 1.0e-4
+
+  scheduler:
+    type: cosine_warmup_restart
+    T_0: 500                    # Longer cycles
+    T_mult: 2
+
+  eval_every: 50                # Less frequent to save disk space
+  save_every: 100
+
+# =============================================================================
+# Data Configuration
+# =============================================================================
+data:
+  valuation_type: index
+
+# =============================================================================
+# Version Tracking
+# =============================================================================
+version:
+  model: "15.0"
+  config: "v15.0_long_term_stability"
+  changes:
+    - "Extended training to 2000 epochs"
+    - "Reduced base LR to 5.0e-4"
+    - "Increased eval_every to 50"

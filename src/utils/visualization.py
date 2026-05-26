@@ -658,7 +658,7 @@ class VisualizationPipeline:
         runtime_cfg = VisualizationRuntimeConfig.from_mapping(config)
         self.max_per_level: int = runtime_cfg.max_per_level
         self.persist_every: int = runtime_cfg.persist_every
-        self.html_dir: Path = runtime_cfg.html_dir
+        self.html_dir: Path = Path(runtime_cfg.html_dir)
         self.save_html: bool = runtime_cfg.save_html
         self.umap_neighbors: int = runtime_cfg.umap_neighbors
         self.curvature: float = runtime_cfg.curvature
@@ -714,29 +714,35 @@ class VisualizationPipeline:
 
         html_epoch_dir = self.html_dir / f"epoch_{epoch:05d}"
         if self.save_html and _HAS_PLOTLY:
-            os.makedirs(html_epoch_dir, exist_ok=True)
+            os.makedirs(html_epoch_dir / "topology", exist_ok=True)
+            os.makedirs(html_epoch_dir / "projections", exist_ok=True)
+            os.makedirs(html_epoch_dir / "algebra", exist_ok=True)
 
         # 3. UMAP 3D (precomputed metric = Poincaré)
-        self._run_umap_step(epoch, D, z_np, val_np, html_epoch_dir)
+        self._run_umap_step(epoch, D, z_np, val_np, html_epoch_dir / "topology")
 
         # 4. PaCMAP 2D (Euclidean on raw coords — complementary view)
-        self._run_pacmap_step(epoch, D, z_np, val_np, html_epoch_dir)
+        self._run_pacmap_step(epoch, D, z_np, val_np, html_epoch_dir / "topology")
 
         # 5. TriMAP 2D (precomputed distance matrix)
-        self._run_trimap_step(epoch, D, val_np, html_epoch_dir)
+        self._run_trimap_step(epoch, D, val_np, html_epoch_dir / "topology")
 
         # 6. Poincaré ball 3D (logmap0 → PCA in tangent space)
-        self._run_poincare3d_step(epoch, z_np, val_np, html_epoch_dir)
+        self._run_poincare3d_step(epoch, z_np, val_np, html_epoch_dir / "projections")
 
         # 7. Native Poincaré Disk (r-theta projection)
-        self._run_native_poincare_step(epoch, z_np, val_np, idx_np, html_epoch_dir)
+        self._run_native_poincare_step(epoch, z_np, val_np, idx_np, html_epoch_dir / "projections")
 
         # 8. SVG Native Tree (Zero-dependency vector graphics)
-        self._run_svg_step(epoch, z_np, val_np, idx_np, html_epoch_dir)
+        self._run_svg_step(epoch, z_np, val_np, idx_np, html_epoch_dir / "projections")
 
         # 9. Persistent homology (every persist_every epochs)
         if epoch % self.persist_every == 0 or epoch == 1:
-            self._run_persistence_step(epoch, D, html_epoch_dir)
+            self._run_persistence_step(epoch, D, html_epoch_dir / "topology")
+
+        # 10. Algebraic Consistency (requires model/mu_A)
+        # This is handled separately in engine.py for now as it needs the full model,
+        # but we could add a hook here if we pass the model in.
 
         # Update 'latest' symlink
         if self.save_html and _HAS_PLOTLY:

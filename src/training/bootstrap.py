@@ -72,12 +72,14 @@ class DataAuditor:
         self,
         val_frac: float = 0.1,
         device: Optional[torch.device] = None,
+        custom_indices_path: Optional[str] = None,
     ) -> Tuple[torch.utils.data.TensorDataset, torch.utils.data.TensorDataset, torch.Tensor]:
         """Generate data, split, and validate.
 
         Args:
             val_frac: Fraction of data for validation
             device: Device for data tensors
+            custom_indices_path: Path to a .pt file containing custom indices
 
         Returns:
             Tuple of (train_dataset, val_dataset, all_indices)
@@ -86,10 +88,16 @@ class DataAuditor:
             device = torch.device("cpu")
         print("\n[AUDIT] Data Integrity Check...")
 
-        # Generate all operations (uses cached LUT from TERNARY singleton)
-        all_ops = TERNARY.all_ternary()
+        if custom_indices_path and custom_indices_path != "null":
+            print(f"  [INFO] Loading custom indices from {custom_indices_path}")
+            all_indices = torch.load(custom_indices_path, weights_only=True).long()
+            all_ops = TERNARY.to_ternary(all_indices)
+        else:
+            # Generate all operations (uses cached LUT from TERNARY singleton)
+            all_ops = TERNARY.all_ternary()
+            all_indices = torch.arange(len(all_ops), dtype=torch.long)
+        
         n = len(all_ops)
-        all_indices = torch.arange(n, dtype=torch.long)
 
         # Deterministic split
         rng = np.random.default_rng(self.seed)

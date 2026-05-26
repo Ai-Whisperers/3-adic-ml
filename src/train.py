@@ -34,7 +34,7 @@ from src.training.setup import (
     setup_optimizer,
     setup_scheduler,
 )
-from src.utils import TensorBoardLogger
+from src.utils import TensorBoardLogger, VisualizationPipeline
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -99,6 +99,7 @@ def main():
     train_ds, val_ds, _ = data_auditor.prepare_data(
         val_frac=config.get("training", {}).get("val_frac", 0.1),
         device=device,
+        custom_indices_path=config.get("data", {}).get("indices_path"),
     )
 
     # 4. Component Initialization
@@ -133,6 +134,11 @@ def main():
     tb_logger = TensorBoardLogger(log_dir)
     reporting = ReportingManager(log_dir, config, tb_logger)
 
+    vis_cfg = config.get("visualization", {})
+    if "html_dir" not in vis_cfg:
+        vis_cfg["html_dir"] = log_dir / "visualizations"
+    vis_pipeline = VisualizationPipeline(vis_cfg, tb_logger)
+
     # Save a copy of the validated config
     with open(log_dir / "config.yaml", "w") as f:
         yaml.dump(config, f)
@@ -155,6 +161,7 @@ def main():
         config=config,
         lr_controller=lr_controller,
         dual_state=dual_state,
+        vis_pipeline=vis_pipeline,
         use_amp=config.get("device", {}).get("use_amp", False),
     )
 

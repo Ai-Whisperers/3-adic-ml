@@ -19,12 +19,7 @@ from typing import Any, List, Optional
 
 import numpy as np
 import torch
-
-try:
-    import plotly.graph_objects as go
-    _HAS_PLOTLY = True
-except ImportError:
-    _HAS_PLOTLY = False
+import plotly.graph_objects as go
 
 try:
     import matplotlib.pyplot as plt
@@ -33,7 +28,6 @@ except ImportError:
     _HAS_MPL = False
 
 from src.geometry import log_map_zero
-
 
 def render_poincare_disk_mpl(
     z_hyp: np.ndarray,
@@ -83,7 +77,6 @@ def render_poincare_disk_mpl(
         for i, p_idx in enumerate(parents):
             if p_idx in idx_map:
                 p_i = idx_map[p_idx]
-                # Use true hyperbolic geodesic arc
                 arc = get_geodesic_arc(z_2d[i], z_2d[p_i], n_points=10)
                 ax.plot(
                     arc[:, 0], arc[:, 1],
@@ -106,13 +99,11 @@ def render_poincare_disk_mpl(
     # 3. Draw Prefix Territory Shading
     if indices is not None:
         from src.core import TERNARY
-        # Partition points into 27 level-1 prefix classes
         prefix_classes = TERNARY.digit_prefix_class(torch.from_numpy(indices), k=3).numpy()
         unique_prefixes = np.unique(prefix_classes)
         for p in unique_prefixes:
             mask = prefix_classes == p
             if mask.sum() >= 3:
-                # Calculate convex hull of points in this prefix class
                 from scipy.spatial import ConvexHull
                 try:
                     hull = ConvexHull(z_2d[mask])
@@ -151,110 +142,74 @@ def render_poincare_disk(
     colors: Optional[list] = None,
     show_tree: bool = False,
     walks: Optional[List[np.ndarray]] = None,
+    decision_threshold: Optional[float] = None,
+    query_z: Optional[np.ndarray] = None,
 ) -> Any:
-    """Render embeddings in a 2D Poincaré disk."""
-    if not _HAS_PLOTLY:
-        return None
-
-    # This Plotly implementation currently ignores show_tree and walks for simplicity
+    """Render embeddings in a 2D Poincaré disk with interactive Plotly."""
     _N, _D = z_hyp.shape
-
-    # 1. Calculate Poincaré Radius (r)
-    # Norm in Poincaré ball is NOT Euclidean distance to origin,
-    # but we can use the Euclidean norm ||z|| for the 2D plot
-    # because it maps monotonically to hyperbolic distance.
     r_euclidean = np.linalg.norm(z_hyp, axis=1)
-
-    # 2. Project Directions to 2D
-    # We use logmap0 to get tangent vectors, then PCA to 2D for the direction.
-    # This preserves the "relative orientation" of vectors at the origin.
     z_torch = torch.from_numpy(z_hyp).double()
     with torch.no_grad():
         v_tangent = log_map_zero(z_torch, c=c).float().numpy()
 
-    # Use PCA to get the two most significant direction components
     from sklearn.decomposition import PCA
     pca = PCA(n_components=2)
     v_2d = pca.fit_transform(v_tangent)
 
-    # Normalize v_2d to unit length to get 'pure' direction (theta)
     v_norms = np.linalg.norm(v_2d, axis=1, keepdims=True)
     v_norms = np.clip(v_norms, 1e-10, None)
     v_dir = v_2d / v_norms
-
-    # 3. Reconstruct 2D Poincaré coordinates
-    # (x, y) = r_euclidean * v_dir
     z_2d = r_euclidean[:, np.newaxis] * v_dir
 
-    # 4. Create Plotly Figure
     fig = go.Figure()
-
-    # Draw the boundary circle
     theta = np.linspace(0, 2*np.pi, 100)
+    
+    # Boundary
     fig.add_trace(go.Scatter(
-        x=np.cos(theta).tolist(), y=np.sin(theta).tolist(),
-        mode='lines',
-        line={"color": 'rgba(150,150,150,0.5)', "width": 1, "dash": 'dash'},
-        name='Boundary',
-        showlegend=False
+        x=np.cos(theta), y=np.sin(theta), mode='lines',
+        line={"color": 'rgba(255,255,255,0.6)', "width": 2}, showlegend=False
     ))
 
+    # Decision Boundary
+    if decision_threshold is not None:
+        r_thresh = np.tanh(decision_threshold / 2)
+        fig.add_trace(go.Scatter(
+            x=(r_thresh * np.cos(theta)), y=(r_thresh * np.sin(theta)),
+            mode='lines', line={"color": 'rgba(248, 113, 113, 0.7)', "width": 2, "dash": 'dot'},
+            name='Boundary'
+        ))
+
+    # Geodesic
+    if query_z is not None:
+        # Simplified: linear path to origin is a geodesic in Poincaré projection
+        fig.add_trace(go.Scatter(
+            x=[0, query_z[0, 0]], y=[0, query_z[0, 1]],
+            mode='lines', line={"color": 'rgba(255,255,255,0.4)', "width": 1},
+            name='Geodesic'
+        ))
+
     if colors is None:
-        # Default fallback (HSL)
         colors = [f"hsl({i*36}, 70%, 50%)" for i in range(10)]
 
     for v in range(10):
         mask = valuations == v
-        if not mask.any():
-            continue
-
+        if not mask.any(): continue
         fig.add_trace(go.Scatter(
-            x=z_2d[mask, 0].tolist(),
-            y=z_2d[mask, 1].tolist(),
+            x=z_2d[mask, 0], y=z_2d[mask, 1],
             mode='markers',
-            marker={
-                "size": 6,
-                "color": colors[v],
-                "opacity": 0.8,
-                "line": {"width": 0.5, "color": 'white'}
-            },
-            name=f"v={v}",
-            hoverinfo='name'
+            marker={"size": 6, "color": colors[v], "opacity": 0.8, "line": {"width": 0.5, "color": 'white'}},
+            name=f"v={v}", hoverinfo='name'
         ))
 
     fig.update_layout(
         title=title,
         xaxis={"range": [-1.1, 1.1], "scaleanchor": "y", "scaleratio": 1, "showgrid": False, "zeroline": False},
         yaxis={"range": [-1.1, 1.1], "showgrid": False, "zeroline": False},
-        width=800,
-        height=800,
-        plot_bgcolor='white',
-        legend={"itemsizing": 'constant'},
+        width=800, height=800, plot_bgcolor='white', legend={"itemsizing": 'constant'},
         margin={"l": 20, "r": 20, "t": 60, "b": 20}
     )
-
     return fig
 
-def save_poincare_disk(
-    z_hyp: np.ndarray,
-    valuations: np.ndarray,
-    output_path: str,
-    indices: Optional[np.ndarray] = None,
-    title: str = "Native Poincaré Disk",
-    c: float = 1.0,
-    colors: Optional[list] = None,
-    show_tree: bool = False,
-    walks: Optional[List[np.ndarray]] = None,
-):
-    """Convenience helper to render and save. Supports .html and .png/.pdf."""
-    if output_path.endswith('.html'):
-        if not _HAS_PLOTLY:
-            return
-        fig = render_poincare_disk(z_hyp, valuations, indices, title, c, colors, show_tree, walks)
-        fig.write_html(output_path)
-    else:
-        if not _HAS_MPL:
-            return
-        fig = render_poincare_disk_mpl(z_hyp, valuations, indices, title, c, colors, show_tree, walks)
-        fig.savefig(output_path, bbox_inches='tight')
-        plt.close(fig)
+def save_poincare_disk(z_hyp, valuations, output_path, indices=None, title="Native Poincaré Disk", c=1.0, colors=None, show_tree=False, walks=None):
+    fig = render_poincare_disk(z_hyp, valuations, indices, title, c, colors, show_tree, walks)
+    fig.write_html(output_path)

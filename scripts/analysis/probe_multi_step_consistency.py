@@ -81,12 +81,12 @@ def probe_multi_step_consistency(checkpoint_path, n_samples=1000):
     print("  Final Digit Accuracy:       " + "{:.4%}".format(acc))
 
 if __name__ == "__main__":
-    runs = sorted(Path("runs").glob("v11_multiplicative_*"))
-    if not runs:
-        print("No V11 runs found.")
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ckpt", type=str, required=True)
+    args = parser.parse_args()
     
-    ckpt_path = runs[-1] / "checkpoints" / "final.pt"
+    ckpt_path = Path(args.ckpt)
     if not ckpt_path.exists():
         print(f"Checkpoint not found: {ckpt_path}")
         sys.exit(1)

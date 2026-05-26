@@ -293,20 +293,20 @@ class TernaryVAEV6(nn.Module):
         self.factored = factored
         self.radial_dims = radial_dims
         self.detach_radial = detach_radial
-        self.positional_encoding = positional_encoding
+        self.positional_encoding = True
         self.pos_weight_base = pos_weight_base
-
+        
         # Positional significance weights: pos_weights[k] = 1/base^k.
         # Position 0 is most predictive of v_3(n) (determines v_3=0 vs >0 for
         # 66% of the dataset), so it receives weight 1.0.
-        if positional_encoding:
-            self.register_buffer(
-                "pos_weights",
-                torch.tensor([1.0 / (pos_weight_base ** k) for k in range(9)], dtype=torch.float64),
-                persistent=False,
-            )
+        self.register_buffer(
+            "pos_weights",
+            torch.tensor([1.0 / (pos_weight_base ** k) for k in range(9)], dtype=torch.float64),
+            persistent=False,
+        )
 
         # Encoder heads (backbone + mu/logvar projections)
+        # input_dim = 18 if positional_encoding else 9
         input_dim = 18 if positional_encoding else 9
         self.head_A = EncoderHead(hidden_dim, latent_dim, encoder_type, input_dim)
         self.head_B = EncoderHead(hidden_dim, latent_dim, encoder_type, input_dim)

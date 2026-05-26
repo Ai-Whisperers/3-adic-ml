@@ -204,6 +204,7 @@ class RadialLossConfig(StrictConfigModel):
     """RadialHierarchyLoss configuration."""
 
     enabled: bool = True
+    phase_start_epoch: int = Field(default=0, ge=0)
     weight: float = Field(
         default=1.0,
         ge=0,
@@ -242,6 +243,7 @@ class RankLossConfig(StrictConfigModel):
     """GlobalRankLoss configuration."""
 
     enabled: bool = False
+    phase_start_epoch: int = Field(default=0, ge=0)
     weight: float = Field(default=0.5, ge=0)
     temperature: float = Field(default=0.1, gt=0)
     n_pairs: int = Field(default=2000, ge=100)
@@ -253,6 +255,7 @@ class MonotonicLossConfig(StrictConfigModel):
     """MonotonicRadialLoss configuration."""
 
     enabled: bool = True
+    phase_start_epoch: int = Field(default=0, ge=0)
     weight: float = Field(default=1.0, ge=0)
     target_loss_weight: float = Field(default=0.5, ge=0)
     inner_radius: float = Field(default=0.08, gt=0, lt=1.0)
@@ -552,6 +555,10 @@ class DataConfig(StrictConfigModel):
             "'index': 3-adic v_3(n) (index-derived, Q ceiling 2.163). "
             "'digit_count': zero_count_valuation (content-based, no tied-rank ceiling)."
         ),
+    )
+    indices_path: str | None = Field(
+        default=None,
+        description="Path to custom indices .pt file for the Rosetta dataset.",
     )
 
 class EnhancedMetricsConfig(StrictConfigModel):

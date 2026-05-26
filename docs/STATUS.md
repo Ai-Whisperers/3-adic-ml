@@ -9,6 +9,10 @@
 
 | Area | Status | Key File |
 |------|--------|----------|
+| VUS Classifier | ✅ Finalized | `src/analysis/anomaly_detector.py` |
+| Anomaly Detection | ✅ Modularized (k-NN), Validated | `src/analysis/anomaly_detector.py` |
+| Fine-Tuning | ✅ V16.0 (Human TP53) completed | `src/presets/v16.0_human_fine_tuning.yaml` |
+| Long-term Stability | ✅ V15.0 (2000 epochs) completed | `runs/v15.0_long_term_stability_...` |
 | Model architecture | ✅ V7.2 stable — factored latent z_r⊕z_θ | `src/models/vae.py` |
 | Training loop | ✅ Fixed + validated (280 tests pass) | `src/train.py` |
 | Loss composition | ✅ 9 losses, config-driven | `src/losses/combined.py` |
