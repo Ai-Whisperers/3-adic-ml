@@ -385,9 +385,8 @@ class TernaryVAEV6(nn.Module):
 
         # Positional significance encoding: concatenate position-scaled features.
         # x_aug = [x, x * pos_weights] where pos_weights[k] = 1/3^k.
-        # Gives the encoder explicit signal about which digit positions matter
-        # most for 3-adic valuation without changing any other component.
-        if self.positional_encoding:
+        # Check if already augmented (shape 18).
+        if self.positional_encoding and x.shape[-1] == 9:
             x = torch.cat([x, x * self.pos_weights], dim=-1)
 
         mu_A, logvar_A, mu_B, logvar_B = self.encode(x)
