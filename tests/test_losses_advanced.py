@@ -333,3 +333,51 @@ class TestLagrangianDualState:
         assert dual2.lr == 0.05
         assert dual2.lambda_prior[5] == 0.8
         assert dual2.state_dict() == state
+
+
+# =============================================================================
+# HyperbolicContrastiveLoss & SurrogatePropertyLoss Tests
+# =============================================================================
+
+from src.losses.contrastive import HyperbolicContrastiveLoss
+from src.losses.surrogate import SurrogatePropertyLoss, SurrogateRegressor
+
+class TestHyperbolicContrastiveLoss:
+    def test_contrastive_loss(self, sample_data):
+        _, _, indices, z_hyp, _ = sample_data
+        z_hyp = z_hyp.clone().detach().requires_grad_(True)
+
+        loss_fn = HyperbolicContrastiveLoss(temperature=0.1, prefix_k=3, curvature=1.0)
+        loss, metrics = loss_fn(z_hyp, indices)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.shape == ()
+        assert "contrastive_loss" in metrics
+        assert "n_pairs" in metrics
+
+        # Verify gradient flow
+        loss.backward()
+        assert z_hyp.grad is not None
+
+
+class TestSurrogatePropertyLoss:
+    def test_surrogate_loss(self, sample_data):
+        mu, _, _, _, _ = sample_data
+        mu = mu.clone().detach().requires_grad_(True)
+
+        batch_size = mu.size(0)
+        # Create mock sequence inputs (N, 9) in {-1, 0, 1}
+        x = torch.randint(-1, 2, (batch_size, 9), dtype=torch.float64)
+
+        regressor = SurrogateRegressor(latent_dim=mu.size(1), hidden_dim=64)
+        loss_fn = SurrogatePropertyLoss(regressor)
+        loss, metrics = loss_fn(mu, x)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.shape == ()
+        assert "surrogate_mse_loss" in metrics
+        assert "mean_pred_hydropathy" in metrics
+
+        # Verify gradient flow
+        loss.backward()
+        assert mu.grad is not None

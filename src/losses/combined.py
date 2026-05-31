@@ -61,6 +61,9 @@ from .radius_defaults import (
     compare_radius_configs,
 )
 from .rank import GlobalRankLoss
+from .contrastive import HyperbolicContrastiveLoss
+from .surrogate import SurrogatePropertyLoss, SurrogateRegressor
+
 
 
 class CombinedLoss(nn.Module):
@@ -116,6 +119,7 @@ class CombinedLoss(nn.Module):
         curvature: float = 1.0,
         device: Optional[torch.device] = None,
         valuation_type: str = "index",
+        latent_dim: int = 128,
     ) -> None:
         """Initialize CombinedLoss from config.
 
@@ -125,11 +129,13 @@ class CombinedLoss(nn.Module):
             device: Device to place loss modules on
             valuation_type: "index" for 3-adic v_3(n), "digit_count" for
                 zero_count_valuation (content-based hierarchy — Option B).
+            latent_dim: Latent dimension size.
         """
         super().__init__()
         self.config = loss_config
         self.curvature = curvature
         self.device = device
+        self.latent_dim = latent_dim
         self._valuation_fn = get_valuation_fn(valuation_type)
 
         # Learnable weights configuration
@@ -294,10 +300,17 @@ class CombinedLoss(nn.Module):
         # ValuationPriorLoss (replaces N(0,I) mean term with valuation-conditioned prior)
         vp_cfg = self.config.get('valuation_prior', {})
         if vp_cfg.get('enabled', False):
-            # Share inner/outer radius from rich_hierarchy if available
-            rh_cfg = self.config.get('rich_hierarchy', {})
-            inner_r = vp_cfg.get('inner_radius', rh_cfg.get('inner_radius', 0.08))
-            outer_r = vp_cfg.get('outer_radius', rh_cfg.get('outer_radius', 0.85))
+            # Share inner/outer radius from rich_hierarchy or radius_configs if available
+            inner_r = vp_cfg.get('inner_radius')
+            outer_r = vp_cfg.get('outer_radius')
+            if inner_r is None or outer_r is None:
+                if 'valuation_prior' in radius_configs:
+                    inner_r = inner_r if inner_r is not None else radius_configs['valuation_prior'].inner_radius
+                    outer_r = outer_r if outer_r is not None else radius_configs['valuation_prior'].outer_radius
+                else:
+                    rh_cfg = self.config.get('rich_hierarchy') or {}
+                    inner_r = inner_r if inner_r is not None else rh_cfg.get('inner_radius') or 0.08
+                    outer_r = outer_r if outer_r is not None else rh_cfg.get('outer_radius') or 0.85
             self.valuation_prior = ValuationPriorLoss(
                 curvature=self.curvature,
                 inner_radius=inner_r,
@@ -330,13 +343,16 @@ class CombinedLoss(nn.Module):
         # the loss is silently skipped. A one-time warning is emitted in that case.
         ac_cfg = self.config.get('angular_coherence', {})
         if ac_cfg.get('enabled', False):
+            ac_target_sim = ac_cfg.get('target_sim')
+            if ac_target_sim is None:
+                ac_target_sim = 1.0
             self.angular_coherence = AngularCoherenceLoss(
                 weight=ac_cfg.get('weight', 0.3),
                 n_pairs=ac_cfg.get('n_pairs', 1000),
                 prefix_k=ac_cfg.get('prefix_k', 2),
                 phase_start_epoch=ac_cfg.get('phase_start_epoch', 50),
                 level_prefix_k=ac_cfg.get('level_prefix_k', None),
-                target_sim=ac_cfg.get('target_sim', 1.0),
+                target_sim=ac_target_sim,
                 valuation_fn=self._valuation_fn,
             )
             self._ac_warned_no_r = False  # emit the missing-r warning at most once
@@ -398,7 +414,47 @@ class CombinedLoss(nn.Module):
         else:
             self.algebraic_distributive_loss = None
 
+        # dynamic curriculum setting
+        dc_cfg = self.config.get('dynamic_curriculum', {})
+        self.dynamic_curriculum_enabled = dc_cfg.get('enabled', False)
+        # If enabled, biological losses are locked until explicitly activated by the engine
+        self.biological_losses_active = not self.dynamic_curriculum_enabled
+
+        # HyperbolicContrastiveLoss
+        hc_cfg = self.config.get('hyperbolic_contrastive', {})
+        if hc_cfg.get('enabled', False):
+            self.hyperbolic_contrastive = HyperbolicContrastiveLoss(
+                temperature=hc_cfg.get('temperature', 0.1),
+                prefix_k=hc_cfg.get('prefix_k', 3),
+                curvature=self.curvature,
+                valuation_fn=self._valuation_fn
+            )
+            self.hyperbolic_contrastive_weight = hc_cfg.get('weight', 1.0)
+            self.hyperbolic_contrastive_phase_start = hc_cfg.get('phase_start_epoch', 0)
+        else:
+            self.hyperbolic_contrastive = None
+            self.hyperbolic_contrastive_weight = 0.0
+            self.hyperbolic_contrastive_phase_start = 0
+
+        # SurrogatePropertyLoss
+        sp_cfg = self.config.get('surrogate_property', {})
+        if sp_cfg.get('enabled', False):
+            # Register regressor as submodule of CombinedLoss
+            self.surrogate_regressor = SurrogateRegressor(
+                latent_dim=self.latent_dim,
+                hidden_dim=sp_cfg.get('hidden_dim', 128)
+            )
+            self.surrogate_loss = SurrogatePropertyLoss(self.surrogate_regressor)
+            self.surrogate_weight = sp_cfg.get('weight', 1.0)
+            self.surrogate_phase_start = sp_cfg.get('phase_start_epoch', 0)
+        else:
+            self.surrogate_regressor = None
+            self.surrogate_loss = None
+            self.surrogate_weight = 0.0
+            self.surrogate_phase_start = 0
+
         # Guard: at least one loss must be enabled, or training will be gradient-free
+
         active = [
             self.rich_hierarchy, self.radial_loss, self.geodesic_loss,
             self.rank_loss, self.monotonic_loss, self.kl_loss, self.valuation_prior,
@@ -499,6 +555,17 @@ class CombinedLoss(nn.Module):
                 torch.tensor(weight_to_log_sigma(self.kl_weight), dtype=torch.float64)
             )
 
+        if self.hyperbolic_contrastive is not None:
+            self.log_sigma_contrastive = nn.Parameter(
+                torch.tensor(weight_to_log_sigma(self.hyperbolic_contrastive_weight), dtype=torch.float64)
+            )
+
+        if self.surrogate_loss is not None:
+            self.log_sigma_surrogate = nn.Parameter(
+                torch.tensor(weight_to_log_sigma(self.surrogate_weight), dtype=torch.float64)
+            )
+
+
     def _uncertainty_weight(self, log_sigma: nn.Parameter) -> torch.Tensor:
         """Compute effective weight from log_sigma using uncertainty weighting.
 
@@ -559,7 +626,7 @@ class CombinedLoss(nn.Module):
 
         # 1. RichHierarchyLoss
         cur_c = curvature if curvature is not None else self.curvature
-        if self.rich_hierarchy is not None and epoch >= self.rich_hierarchy_phase_start:
+        if self.rich_hierarchy is not None and epoch >= self.rich_hierarchy_phase_start and self.biological_losses_active:
             _call_logits = (
                 logits if self.rich_hierarchy_weights.get('coverage', 0.0) > 0.0
                 else None
@@ -584,7 +651,7 @@ class CombinedLoss(nn.Module):
             total = total + weighted_rich
 
         # 2. RadialHierarchyLoss
-        if self.radial_loss is not None and epoch >= self.radial_phase_start:
+        if self.radial_loss is not None and epoch >= self.radial_phase_start and self.biological_losses_active:
             radial_out, radial_metrics = self.radial_loss(z_hyp, indices, curvature=cur_c)
             losses['radial'] = radial_out
             losses['radial_metrics'] = radial_metrics
@@ -592,7 +659,7 @@ class CombinedLoss(nn.Module):
                                             self.log_sigma_radial if self.use_learnable_weights else None)
 
         # 3. PAdicGeodesicLoss
-        if self.geodesic_loss is not None and epoch >= self.geodesic_phase_start:
+        if self.geodesic_loss is not None and epoch >= self.geodesic_phase_start and self.biological_losses_active:
             geodesic_out, geodesic_metrics = self.geodesic_loss(z_hyp, indices, curvature=cur_c)
             losses['geodesic'] = geodesic_out
             losses['geodesic_metrics'] = geodesic_metrics
@@ -600,7 +667,7 @@ class CombinedLoss(nn.Module):
                                             self.log_sigma_geodesic if self.use_learnable_weights else None)
 
         # 4. GlobalRankLoss
-        if self.rank_loss is not None and epoch >= self.rank_phase_start:
+        if self.rank_loss is not None and epoch >= self.rank_phase_start and self.biological_losses_active:
             rank_out, rank_metrics = self.rank_loss(z_hyp, indices, curvature=cur_c)
             losses['rank'] = rank_out
             losses['rank_metrics'] = rank_metrics
@@ -608,7 +675,7 @@ class CombinedLoss(nn.Module):
                                             self.log_sigma_rank if self.use_learnable_weights else None)
 
         # 5. MonotonicRadialLoss
-        if self.monotonic_loss is not None and epoch >= self.monotonic_phase_start:
+        if self.monotonic_loss is not None and epoch >= self.monotonic_phase_start and self.biological_losses_active:
             monotonic_out, monotonic_metrics = self.monotonic_loss(z_hyp, indices, curvature=cur_c)
             losses['monotonic'] = monotonic_out
             losses['monotonic_metrics'] = monotonic_metrics
@@ -636,10 +703,11 @@ class CombinedLoss(nn.Module):
         # 7. ValuationPriorLoss (valuation-conditioned μ/σ prior)
         vp_phase_start = self.config.get('valuation_prior', {}).get('phase_start_epoch', 0)
         if self.valuation_prior is not None and mu is not None and epoch >= vp_phase_start:
-            vp_out, vp_metrics = self.valuation_prior(mu, logvar, indices, curvature=cur_c)
+            vp_out, vp_metrics = self.valuation_prior(mu, indices, logvar=logvar, curvature=cur_c)
             losses['valuation_prior'] = vp_out
             losses['valuation_prior_metrics'] = vp_metrics
             total = total + get_weighted_loss(vp_out, self.valuation_prior_weight, None)
+
 
         # 8. Lagrangian dual penalties (optional, from outer-loop dual ascent).
         # Each lambda_v * violation_tensor_v term is additive and in-graph:
@@ -764,6 +832,22 @@ class CombinedLoss(nn.Module):
                 coverage_loss = self._compute_coverage_loss(logits, targets)
                 losses['coverage'] = coverage_loss
                 total = total + coverage_weight * coverage_loss
+
+        # 16. Hyperbolic p-Adic Contrastive Loss
+        if self.hyperbolic_contrastive is not None and epoch >= self.hyperbolic_contrastive_phase_start:
+            hc_out, hc_metrics = self.hyperbolic_contrastive(z_hyp, indices, curvature=cur_c)
+            losses['hyperbolic_contrastive'] = hc_out
+            losses['hyperbolic_contrastive_metrics'] = hc_metrics
+            total = total + get_weighted_loss(hc_out, self.hyperbolic_contrastive_weight,
+                                             self.log_sigma_contrastive if (self.use_learnable_weights and hasattr(self, 'log_sigma_contrastive')) else None)
+
+        # 17. Surrogate Property Loss
+        if self.surrogate_loss is not None and mu is not None and epoch >= self.surrogate_phase_start:
+            sp_out, sp_metrics = self.surrogate_loss(mu, targets)
+            losses['surrogate_property'] = sp_out
+            losses['surrogate_property_metrics'] = sp_metrics
+            total = total + get_weighted_loss(sp_out, self.surrogate_weight,
+                                             self.log_sigma_surrogate if (self.use_learnable_weights and hasattr(self, 'log_sigma_surrogate')) else None)
 
         losses['total'] = total
         return losses

@@ -47,30 +47,47 @@ def load_model(ckpt_path, config_path):
         config = yaml.safe_load(f)
     
     model_cfg = config['model']
-    model = TernaryVAEV6Controllable(
-        latent_dim=model_cfg['latent_dim'],
-        hidden_dim=model_cfg['hidden_dim'],
-        max_radius=model_cfg['max_radius'],
-        curvature=model_cfg.get('curvature', 1.0),
-        encoder_type=model_cfg['encoder_type'],
-        decoder_type=model_cfg['decoder_type'],
-        n_projection_layers=model_cfg['projection_layers'],
-        projection_dropout=model_cfg['projection_dropout'],
-        learnable_curvature=model_cfg['learnable_curvature'],
-        init_identity=model_cfg['init_identity'],
-        factored=model_cfg['factored'],
-        radial_dims=model_cfg['radial_dims'],
-        positional_encoding=model_cfg['positional_encoding']
-    )
+    mapping = {
+        'projection_layers': 'n_projection_layers',
+        'tangent_scale': 'tangent_scale_init',
+        'projection_dropout': 'projection_dropout'
+    }
+    init_cfg = {mapping.get(k, k): v for k, v in model_cfg.items() if k not in ['name']}
+    model = TernaryVAEV6Controllable(**init_cfg)
     
-    checkpoint = torch.load(ckpt_path, map_location='cpu')
+    checkpoint = torch.load(ckpt_path, map_location='cpu', weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     return model
 
+def find_latest_run_paths(run_prefix="v19.1_peptide_retrain"):
+    import glob
+    base_dir = Path(__file__).resolve().parents[2]
+    runs_dir = base_dir / "runs"
+    matching_runs = sorted(glob.glob(str(runs_dir / f"{run_prefix}_*")))
+    if matching_runs:
+        latest_run = Path(matching_runs[-1])
+        ckpt = latest_run / "checkpoints" / "best_Q.pt"
+        cfg = latest_run / "config.yaml"
+        if ckpt.exists() and cfg.exists():
+            return str(ckpt), str(cfg)
+    
+    # Fallback to the archived Phase 11 model if no v19.1 run is found
+    ckpt = base_dir / "archive-for-review/phase_11_multiplicative/v11_multiplicative_20260517_130238/checkpoints/best_Q.pt"
+    cfg = base_dir / "archive-for-review/phase_11_multiplicative/v11_multiplicative_20260517_130238/config.yaml"
+    return str(ckpt), str(cfg)
+
 def main():
-    ckpt = "archive-for-review/phase_11_multiplicative/v11_multiplicative_20260517_130238/checkpoints/best_Q.pt"
-    cfg = "archive-for-review/phase_11_multiplicative/v11_multiplicative_20260517_130238/config.yaml"
+    import argparse
+    parser = argparse.ArgumentParser(description="P-adic Peptide Latent Analysis")
+    parser.add_argument("--ckpt", type=str, default=None, help="Path to checkpoint")
+    parser.add_argument("--cfg", type=str, default=None, help="Path to config YAML")
+    args = parser.parse_args()
+
+    if args.ckpt and args.cfg:
+        ckpt, cfg = args.ckpt, args.cfg
+    else:
+        ckpt, cfg = find_latest_run_paths()
     
     if not os.path.exists(ckpt):
         print(f"Checkpoint not found at {ckpt}")

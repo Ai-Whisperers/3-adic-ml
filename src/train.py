@@ -117,7 +117,9 @@ def main():
     loss_fn, loss_fn_b = setup_losses(config, device)
     loss_params = []
     if hasattr(loss_fn, "parameters"):
-        loss_params = list(loss_fn.parameters())
+        loss_params.extend(list(loss_fn.parameters()))
+    if hasattr(loss_fn_b, "parameters"):
+        loss_params.extend(list(loss_fn_b.parameters()))
 
     model_auditor = ModelAuditor(config, device)
     model = model_auditor.create_and_validate_model()

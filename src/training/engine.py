@@ -112,6 +112,16 @@ def train_model(
                 epoch, model, val_loader, device, valuation_fn, config, loss_fn=loss_fn
             )
 
+            # Check dynamic curriculum threshold
+            dc_cfg = loss_cfg.get("dynamic_curriculum") or {}
+            if dc_cfg.get("enabled", False):
+                threshold = dc_cfg.get("coverage_threshold", 0.90)
+                if val_metrics["avg_val_acc"] >= threshold:
+                    if not getattr(loss_fn, "biological_losses_active", True):
+                        print(f"\n  [CURRICULUM] Validation accuracy {val_metrics['avg_val_acc']:.4f} >= threshold {threshold:.4f}. Activating biological/radial/hierarchy losses!")
+                    loss_fn.biological_losses_active = True
+                    loss_fn_b.biological_losses_active = True
+
             # Extract hierarchy metrics (using VAE-A as primary)
             hier_metrics_A = val_metrics["hier_metrics_A"]
             hier_metrics_B = val_metrics["hier_metrics_B"]
@@ -189,6 +199,19 @@ def train_model(
                 "Radius/mean_VAE_A": hier_metrics_A["mean_radius"],
                 "Radius/mean_VAE_B": hier_metrics_B["mean_radius"],
             }
+
+            # Add new loss metrics to log_dict if available
+            if "avg_train_contrastive_A" in train_metrics:
+                log_dict["Loss/train_contrastive_A"] = train_metrics["avg_train_contrastive_A"]
+            if "avg_train_contrastive_B" in train_metrics:
+                log_dict["Loss/train_contrastive_B"] = train_metrics["avg_train_contrastive_B"]
+            if "avg_train_surrogate_A" in train_metrics:
+                log_dict["Loss/train_surrogate_A"] = train_metrics["avg_train_surrogate_A"]
+            if "avg_train_surrogate_B" in train_metrics:
+                log_dict["Loss/train_surrogate_B"] = train_metrics["avg_train_surrogate_B"]
+            
+            # Log biological losses active status
+            log_dict["Loss/biological_losses_active"] = 1.0 if getattr(loss_fn, "biological_losses_active", True) else 0.0
 
             # Add per-level radii
             for v, r_val in hier_metrics_A.get("level_radii", {}).items():
@@ -297,6 +320,15 @@ def train_epoch(
     acc_sum = 0.0
     n_batches = 0
 
+    contrastive_A_sum = 0.0
+    contrastive_B_sum = 0.0
+    surrogate_A_sum = 0.0
+    surrogate_B_sum = 0.0
+    has_contrastive_A = False
+    has_contrastive_B = False
+    has_surrogate_A = False
+    has_surrogate_B = False
+
     if dual_state:
         dual_state.step_epoch(epoch)
 
@@ -345,15 +377,51 @@ def train_epoch(
         logits_A = out.get("logits_A")
         if logits_A is not None:
             acc_sum += compute_accuracy(logits_A, batch_ops)
+
+        if "hyperbolic_contrastive" in losses_A:
+            contrastive_A_sum += losses_A["hyperbolic_contrastive"].item()
+            has_contrastive_A = True
+        if "hyperbolic_contrastive" in losses_B:
+            contrastive_B_sum += losses_B["hyperbolic_contrastive"].item()
+            has_contrastive_B = True
+        if "surrogate_property" in losses_A:
+            surrogate_A_sum += losses_A["surrogate_property"].item()
+            has_surrogate_A = True
+        if "surrogate_property" in losses_B:
+            surrogate_B_sum += losses_B["surrogate_property"].item()
+            has_surrogate_B = True
+
         n_batches += 1
 
         step = global_step_start + n_batches
-        reporting.log_metrics({"Batch/Loss": loss.item(), "Batch/GradNorm": grad_norm.item()}, step)
+        step_metrics = {
+            "Batch/Loss": loss.item(),
+            "Batch/GradNorm": grad_norm.item(),
+        }
+        if "hyperbolic_contrastive" in losses_A:
+            step_metrics["Batch/Loss_contrastive_A"] = losses_A["hyperbolic_contrastive"].item()
+        if "hyperbolic_contrastive" in losses_B:
+            step_metrics["Batch/Loss_contrastive_B"] = losses_B["hyperbolic_contrastive"].item()
+        if "surrogate_property" in losses_A:
+            step_metrics["Batch/Loss_surrogate_A"] = losses_A["surrogate_property"].item()
+        if "surrogate_property" in losses_B:
+            step_metrics["Batch/Loss_surrogate_B"] = losses_B["surrogate_property"].item()
 
-    return {
+        reporting.log_metrics(step_metrics, step)
+
+    epoch_metrics = {
         "avg_train_loss": loss_sum / n_batches,
         "avg_train_acc": acc_sum / n_batches,
     }
+    if has_contrastive_A:
+        epoch_metrics["avg_train_contrastive_A"] = contrastive_A_sum / n_batches
+    if has_contrastive_B:
+        epoch_metrics["avg_train_contrastive_B"] = contrastive_B_sum / n_batches
+    if has_surrogate_A:
+        epoch_metrics["avg_train_surrogate_A"] = surrogate_A_sum / n_batches
+    if has_surrogate_B:
+        epoch_metrics["avg_train_surrogate_B"] = surrogate_B_sum / n_batches
+    return epoch_metrics
 
 
 def validate_epoch(

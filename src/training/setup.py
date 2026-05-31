@@ -92,8 +92,10 @@ def setup_losses(
     curvature = model_cfg.get("curvature", 1.0)
     valuation_type = (config.get("data") or {}).get("valuation_type", "index")
 
+    latent_dim = model_cfg.get("latent_dim", 128)
+
     loss_fn = CombinedLoss(
-        loss_cfg, curvature=curvature, device=device, valuation_type=valuation_type
+        loss_cfg, curvature=curvature, device=device, valuation_type=valuation_type, latent_dim=latent_dim
     )
 
     # VAE-B loss: hierarchy-only (deep copy to avoid shared nested dict refs)
@@ -102,7 +104,7 @@ def setup_losses(
         loss_cfg_b["rich_hierarchy"]["coverage_weight"] = 0.0
 
     loss_fn_b = CombinedLoss(
-        loss_cfg_b, curvature=curvature, device=device, valuation_type=valuation_type
+        loss_cfg_b, curvature=curvature, device=device, valuation_type=valuation_type, latent_dim=latent_dim
     )
 
     return loss_fn, loss_fn_b

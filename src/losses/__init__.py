@@ -18,6 +18,8 @@ from .hyperbolic_kl import HyperbolicKLDivergence
 from .lagrangian import LagrangianDualState
 from .prior import ValuationPriorLoss
 from .rank import GlobalRankLoss
+from .contrastive import HyperbolicContrastiveLoss
+from .surrogate import SurrogatePropertyLoss, SurrogateRegressor
 
 __all__ = [
     # Abstract bases and type aliases
@@ -38,6 +40,9 @@ __all__ = [
     "RichHierarchyLoss",
     "ValuationPriorLoss",
     "WithinLevelContrastiveLoss",
+    "HyperbolicContrastiveLoss",
+    "SurrogatePropertyLoss",
+    "SurrogateRegressor",
     # Combined loss
     "CombinedLoss",
     # KL divergence

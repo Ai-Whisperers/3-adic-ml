@@ -445,6 +445,32 @@ class AlgebraicDistributiveLossConfig(StrictConfigModel):
     phase_start_epoch: int = Field(default=0, ge=0)
 
 
+class DynamicCurriculumConfig(StrictConfigModel):
+    """Dynamic curriculum config based on validation metrics."""
+
+    enabled: bool = False
+    coverage_threshold: float = Field(default=0.90, ge=0.0, le=1.0)
+
+
+class HyperbolicContrastiveLossConfig(StrictConfigModel):
+    """Hyperbolic p-adic contrastive loss config."""
+
+    enabled: bool = False
+    weight: float = Field(default=1.0, ge=0)
+    temperature: float = Field(default=0.1, gt=0)
+    prefix_k: int = Field(default=3, ge=1, le=9)
+    phase_start_epoch: int = Field(default=0, ge=0)
+
+
+class SurrogatePropertyLossConfig(StrictConfigModel):
+    """QSPR Surrogate property prediction loss config."""
+
+    enabled: bool = False
+    weight: float = Field(default=1.0, ge=0)
+    hidden_dim: int = Field(default=128, ge=1)
+    phase_start_epoch: int = Field(default=0, ge=0)
+
+
 class LossConfig(StrictConfigModel):
     """Complete loss configuration."""
 
@@ -476,6 +502,13 @@ class LossConfig(StrictConfigModel):
     valuation_prior: ValuationPriorConfig = Field(default_factory=ValuationPriorConfig)
     lagrangian: LagrangianConfig = Field(default_factory=LagrangianConfig)
     zero_structure: ZeroStructureConfig | None = None
+    dynamic_curriculum: DynamicCurriculumConfig = Field(default_factory=DynamicCurriculumConfig)
+    hyperbolic_contrastive: HyperbolicContrastiveLossConfig = Field(
+        default_factory=HyperbolicContrastiveLossConfig
+    )
+    surrogate_property: SurrogatePropertyLossConfig = Field(
+        default_factory=SurrogatePropertyLossConfig
+    )
 
 
 # =============================================================================
