@@ -824,8 +824,8 @@ class CombinedLoss(nn.Module):
             losses['alg_distributive_metrics'] = ad_metrics
             total = total + ad_out
 
-        # 15. Fallback: Basic coverage loss if no rich_hierarchy
-        if self.rich_hierarchy is None:
+        # 15. Fallback: Basic coverage loss if no rich_hierarchy, or if rich_hierarchy is gated (inactive)
+        if self.rich_hierarchy is None or not self.biological_losses_active:
             # Respect coverage_weight from config even if rich_hierarchy is disabled
             coverage_weight = self.config.get('rich_hierarchy', {}).get('coverage_weight', 1.0)
             if coverage_weight > 0.0:
