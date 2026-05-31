@@ -17,6 +17,22 @@ logging:
   histogram_every: 50
   verbose: false
 loss:
+  # --- Option B: Curriculum & Representation Enhancements ---
+  dynamic_curriculum:
+    enabled: true
+    coverage_threshold: 0.90
+  hyperbolic_contrastive:
+    enabled: true
+    weight: 1.5
+    temperature: 0.1
+    prefix_k: 3
+    phase_start_epoch: 0
+  surrogate_property:
+    enabled: true
+    weight: 1.0
+    hidden_dim: 128
+    phase_start_epoch: 0
+
   # --- Resuming with all losses active ---
   algebraic_addition:
     enabled: true

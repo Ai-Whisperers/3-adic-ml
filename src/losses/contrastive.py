@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 
 from ..core import TERNARY
-from ..geometry import poincare_distance_matrix
+from ..geometry.poincare import get_manifold
 from .base import HierarchyLossBase, MetricsDict
 
 
@@ -78,8 +78,15 @@ class HyperbolicContrastiveLoss(HierarchyLossBase):
         diag_mask = torch.eye(batch_size, device=device, dtype=torch.double)
         pos_mask = pos_mask * (1.0 - diag_mask)
 
-        # 3. Compute pairwise hyperbolic distance matrix using geoopt stable backend
-        dist_matrix = poincare_distance_matrix(z_hyp, cur_c)
+        # 3. Compute pairwise hyperbolic distance matrix in memory-efficient chunks
+        dist_matrix = torch.zeros((batch_size, batch_size), device=device, dtype=torch.float64)
+        chunk_size = 256
+        manifold = get_manifold(cur_c, device=device)
+        for i in range(0, batch_size, chunk_size):
+            z_i = z_hyp[i:i+chunk_size].unsqueeze(1)  # (chunk_i, 1, dim)
+            for j in range(0, batch_size, chunk_size):
+                z_j = z_hyp[j:j+chunk_size].unsqueeze(0)  # (1, chunk_j, dim)
+                dist_matrix[i:i+chunk_size, j:j+chunk_size] = manifold.dist(z_i, z_j, keepdim=False)
 
         # 4. InfoNCE formulation: sim_ij = -d_ij / temp
         sim = -dist_matrix / self.temperature
