@@ -183,7 +183,7 @@ statenet:
     warmup_epochs: 10
     window_size: 5
 training:
-  batch_size: 4096
+  batch_size: 1024
   epochs: 100
   eval_every: 10
   grokking_detection:
