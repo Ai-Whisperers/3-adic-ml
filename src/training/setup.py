@@ -5,6 +5,7 @@
 
 """Configuration and component setup for p-adic VAE training."""
 
+import copy
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
@@ -75,6 +76,7 @@ def setup_dataloaders(
         batch_size=batch_size,
         shuffle=False,
         pin_memory=torch.cuda.is_available(),
+        num_workers=num_workers,
     )
 
     return train_loader, val_loader
@@ -94,10 +96,9 @@ def setup_losses(
         loss_cfg, curvature=curvature, device=device, valuation_type=valuation_type
     )
 
-    # VAE-B loss: hierarchy-only
-    loss_cfg_b = {k: dict(v) if isinstance(v, dict) else v for k, v in loss_cfg.items()}
+    # VAE-B loss: hierarchy-only (deep copy to avoid shared nested dict refs)
+    loss_cfg_b = copy.deepcopy(loss_cfg)
     if "rich_hierarchy" in loss_cfg_b and isinstance(loss_cfg_b["rich_hierarchy"], dict):
-        loss_cfg_b["rich_hierarchy"] = dict(loss_cfg_b["rich_hierarchy"])
         loss_cfg_b["rich_hierarchy"]["coverage_weight"] = 0.0
 
     loss_fn_b = CombinedLoss(

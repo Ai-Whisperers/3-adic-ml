@@ -279,6 +279,13 @@ class AlgebraicAdditionLoss(nn.Module):
         mu_sum = model.get_mu_representations(idx_sum, mu_A.device)
 
         mu_target = mu_A[idx_a_local] + mu_A[idx_b_local]
+        if mu_sum.shape != mu_target.shape:
+            raise RuntimeError(
+                f"AlgebraicAdditionLoss: shape mismatch — "
+                f"mu_sum {mu_sum.shape} vs mu_target {mu_target.shape}. "
+                f"model.get_mu_representations must return shape "
+                f"(n_pairs, latent_dim) matching the input batch."
+            )
         loss_val = F.smooth_l1_loss(mu_sum, mu_target)
 
         loss = self.weight * loss_val
@@ -344,6 +351,13 @@ class AlgebraicMultiplicationLoss(nn.Module):
 
         # Multiplicative homomorphism: mu(a*b) ≈ mu(a) * mu(b) (element-wise)
         mu_target = mu_A[idx_a_local] * mu_A[idx_b_local]
+        if mu_prod.shape != mu_target.shape:
+            raise RuntimeError(
+                f"AlgebraicMultiplicationLoss: shape mismatch — "
+                f"mu_prod {mu_prod.shape} vs mu_target {mu_target.shape}. "
+                f"model.get_mu_representations must return shape "
+                f"(n_pairs, latent_dim) matching the input batch."
+            )
         loss_val = F.smooth_l1_loss(mu_prod, mu_target)
 
         loss = self.weight * loss_val
@@ -410,10 +424,17 @@ class AlgebraicDistributiveLoss(nn.Module):
         
         # Representations
         mu_res = model.get_mu_representations(idx_dist_gt, mu_A.device)
-        
+
         # Distributive target: mu(a) * (mu(b) + mu(c))
         mu_target = mu_A[idx_a] * (mu_A[idx_b] + mu_A[idx_c])
-        
+
+        if mu_res.shape != mu_target.shape:
+            raise RuntimeError(
+                f"AlgebraicDistributiveLoss: shape mismatch — "
+                f"mu_res {mu_res.shape} vs mu_target {mu_target.shape}. "
+                f"model.get_mu_representations must return shape "
+                f"(n_samples, latent_dim) matching the input batch."
+            )
         loss_val = F.smooth_l1_loss(mu_res, mu_target)
         loss = self.weight * loss_val
         metrics["alg_distributive_loss"] = loss.item()

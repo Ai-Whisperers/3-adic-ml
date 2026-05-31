@@ -190,8 +190,10 @@ class CombinedLoss(nn.Module):
                 'coverage': rich_cfg.get('coverage_weight', 1.0),
                 'separation': rich_cfg.get('separation_weight', 3.0),
             }
+            self.rich_hierarchy_phase_start = rich_cfg.get('phase_start_epoch', 0)
         else:
             self.rich_hierarchy = None
+            self.rich_hierarchy_phase_start = 0
 
         # RadialHierarchyLoss
         radial_cfg = self.config.get('radial', {})
@@ -208,9 +210,11 @@ class CombinedLoss(nn.Module):
                 valuation_fn=self._valuation_fn,
             )
             self.radial_weight = radial_cfg.get('weight', 1.0)
+            self.radial_phase_start = radial_cfg.get('phase_start_epoch', 0)
         else:
             self.radial_loss = None
             self.radial_weight = 0.0
+            self.radial_phase_start = 0
 
         # PAdicGeodesicLoss (phase-gated)
         geodesic_cfg = self.config.get('geodesic', {})
@@ -244,9 +248,11 @@ class CombinedLoss(nn.Module):
                 valuation_fn=self._valuation_fn,
             )
             self.rank_weight = rank_cfg.get('weight', 0.5)
+            self.rank_phase_start = rank_cfg.get('phase_start_epoch', 0)
         else:
             self.rank_loss = None
             self.rank_weight = 0.0
+            self.rank_phase_start = 0
 
         # MonotonicRadialLoss
         monotonic_cfg = self.config.get('monotonic', {})
@@ -263,9 +269,11 @@ class CombinedLoss(nn.Module):
                 valuation_fn=self._valuation_fn,
             )
             self.monotonic_weight = monotonic_cfg.get('weight', 1.0)
+            self.monotonic_phase_start = monotonic_cfg.get('phase_start_epoch', 0)
         else:
             self.monotonic_loss = None
             self.monotonic_weight = 0.0
+            self.monotonic_phase_start = 0
 
         # HyperbolicKLDivergence (makes this a true VAE, not a deterministic AE)
         kl_cfg = self.config.get('hyperbolic_kl', {})
@@ -549,7 +557,7 @@ class CombinedLoss(nn.Module):
 
         # 1. RichHierarchyLoss
         cur_c = curvature if curvature is not None else self.curvature
-        if self.rich_hierarchy is not None:
+        if self.rich_hierarchy is not None and epoch >= self.rich_hierarchy_phase_start:
             _call_logits = (
                 logits if self.rich_hierarchy_weights.get('coverage', 0.0) > 0.0
                 else None
@@ -561,7 +569,7 @@ class CombinedLoss(nn.Module):
 
             # Apply separate weights for components
             weighted_rich = (
-                get_weighted_loss(rich_raw['hierarchy'], self.rich_hierarchy_weights.get('hierarchy', 5.0), 
+                get_weighted_loss(rich_raw['hierarchy'], self.rich_hierarchy_weights.get('hierarchy', 5.0),
                                  self.log_sigma_hierarchy if self.use_learnable_weights else None) +
                 get_weighted_loss(rich_raw['coverage'], self.rich_hierarchy_weights.get('coverage', 1.0),
                                  self.log_sigma_coverage if self.use_learnable_weights else None) +
@@ -574,56 +582,52 @@ class CombinedLoss(nn.Module):
             total = total + weighted_rich
 
         # 2. RadialHierarchyLoss
-        if self.radial_loss is not None:
+        if self.radial_loss is not None and epoch >= self.radial_phase_start:
             radial_out, radial_metrics = self.radial_loss(z_hyp, indices, curvature=cur_c)
             losses['radial'] = radial_out
             losses['radial_metrics'] = radial_metrics
-            total = total + get_weighted_loss(radial_out, self.radial_weight, 
-                                            self.log_sigma_radial if self.use_learnable_weights else None,
-                                            phase_start=self.config.get('radial', {}).get('phase_start_epoch', 0))
+            total = total + get_weighted_loss(radial_out, self.radial_weight,
+                                            self.log_sigma_radial if self.use_learnable_weights else None)
 
         # 3. PAdicGeodesicLoss
-        if self.geodesic_loss is not None:
+        if self.geodesic_loss is not None and epoch >= self.geodesic_phase_start:
             geodesic_out, geodesic_metrics = self.geodesic_loss(z_hyp, indices, curvature=cur_c)
             losses['geodesic'] = geodesic_out
             losses['geodesic_metrics'] = geodesic_metrics
-            total = total + get_weighted_loss(geodesic_out, self.geodesic_weight, 
-                                            self.log_sigma_geodesic if self.use_learnable_weights else None,
-                                            phase_start=self.geodesic_phase_start)
+            total = total + get_weighted_loss(geodesic_out, self.geodesic_weight,
+                                            self.log_sigma_geodesic if self.use_learnable_weights else None)
 
         # 4. GlobalRankLoss
-        if self.rank_loss is not None:
+        if self.rank_loss is not None and epoch >= self.rank_phase_start:
             rank_out, rank_metrics = self.rank_loss(z_hyp, indices, curvature=cur_c)
             losses['rank'] = rank_out
             losses['rank_metrics'] = rank_metrics
-            total = total + get_weighted_loss(rank_out, self.rank_weight, 
-                                            self.log_sigma_rank if self.use_learnable_weights else None,
-                                            phase_start=self.config.get('rank', {}).get('phase_start_epoch', 0))
+            total = total + get_weighted_loss(rank_out, self.rank_weight,
+                                            self.log_sigma_rank if self.use_learnable_weights else None)
 
         # 5. MonotonicRadialLoss
-        if self.monotonic_loss is not None:
+        if self.monotonic_loss is not None and epoch >= self.monotonic_phase_start:
             monotonic_out, monotonic_metrics = self.monotonic_loss(z_hyp, indices, curvature=cur_c)
             losses['monotonic'] = monotonic_out
             losses['monotonic_metrics'] = monotonic_metrics
-            total = total + get_weighted_loss(monotonic_out, self.monotonic_weight, 
-                                            self.log_sigma_monotonic if self.use_learnable_weights else None,
-                                            phase_start=self.config.get('monotonic', {}).get('phase_start_epoch', 0))
+            total = total + get_weighted_loss(monotonic_out, self.monotonic_weight,
+                                            self.log_sigma_monotonic if self.use_learnable_weights else None)
 
         # 6. KL Divergence (makes this a true VAE)
-        if self.kl_loss is not None and mu is not None and logvar is not None:
+        kl_phase_start = self.config.get('hyperbolic_kl', {}).get('phase_start_epoch', 0)
+        if self.kl_loss is not None and mu is not None and logvar is not None and epoch >= kl_phase_start:
             kl_out = self.kl_loss(mu, logvar, z_hyp, curvature=cur_c)
             total = total + get_weighted_loss(kl_out, self.kl_weight,
-                                            self.log_sigma_kl if (self.use_learnable_weights and hasattr(self, 'log_sigma_kl')) else None,
-                                            phase_start=self.config.get('hyperbolic_kl', {}).get('phase_start_epoch', 0))
-            losses['kl'] = total # Simplification for now, revisit if granular KL is needed
+                                            self.log_sigma_kl if (self.use_learnable_weights and hasattr(self, 'log_sigma_kl')) else None)
+            losses['kl'] = kl_out
 
         # 7. ValuationPriorLoss (valuation-conditioned μ/σ prior)
-        if self.valuation_prior is not None and mu is not None:
+        vp_phase_start = self.config.get('valuation_prior', {}).get('phase_start_epoch', 0)
+        if self.valuation_prior is not None and mu is not None and epoch >= vp_phase_start:
             vp_out, vp_metrics = self.valuation_prior(mu, logvar, indices, curvature=cur_c)
             losses['valuation_prior'] = vp_out
             losses['valuation_prior_metrics'] = vp_metrics
-            total = total + get_weighted_loss(vp_out, self.valuation_prior_weight, None,
-                                            phase_start=self.config.get('valuation_prior', {}).get('phase_start_epoch', 0))
+            total = total + get_weighted_loss(vp_out, self.valuation_prior_weight, None)
 
         # 8. Lagrangian dual penalties (optional, from outer-loop dual ascent).
         # Each lambda_v * violation_tensor_v term is additive and in-graph:
@@ -813,6 +817,10 @@ class CombinedLoss(nn.Module):
             enabled.append('algebraic_coherence')
         if self.algebraic_addition_loss is not None:
             enabled.append('algebraic_addition')
+        if self.algebraic_multiplication_loss is not None:
+            enabled.append('algebraic_multiplication')
+        if self.algebraic_distributive_loss is not None:
+            enabled.append('algebraic_distributive')
         return enabled
 
     def get_learned_weights(self) -> Dict[str, float]:

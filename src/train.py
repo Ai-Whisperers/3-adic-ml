@@ -25,6 +25,7 @@ import yaml
 from src.config.schema import normalize_config
 from src.training.bootstrap import DataAuditor, ModelAuditor, get_timestamp, set_determinism
 from src.training.engine import train_model
+from src.training.metrics import GrokkingDetector
 from src.training.reporting import ReportingManager
 from src.training.setup import (
     setup_controller,
@@ -34,7 +35,7 @@ from src.training.setup import (
     setup_optimizer,
     setup_scheduler,
 )
-from src.utils import TensorBoardLogger, VisualizationPipeline
+from src.utils import HardwareMonitor, TensorBoardLogger, VisualizationPipeline
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -91,6 +92,13 @@ def main():
         print("[ERROR] --force-gpu specified but CUDA not available.")
         sys.exit(1)
 
+    use_amp = config.get("device", {}).get("use_amp", False)
+    if use_amp and device.type == "cuda":
+        # Model uses float64 globally; CUDA autocast only downcasts float32→float16/bf16
+        # and leaves float64 untouched, so AMP provides no benefit here.
+        print("[WARN] use_amp=true has no effect: the model uses float64 throughout. "
+              "Disable use_amp to remove the GradScaler overhead.")
+
     seed = args.seed if args.seed is not None else config.get("training", {}).get("seed", 42)
     set_determinism(seed)
 
@@ -146,7 +154,20 @@ def main():
     # 8. Late Registration (Ensure cleanup on crash)
     atexit.register(tb_logger.close)
 
-    # 9. Training Execution
+    # 9. Optional monitoring & grokking detection
+    hw_monitor = HardwareMonitor(device)
+
+    grokking_cfg = config.get("training", {}).get("grokking_detection", {})
+    grokking_detector = None
+    if grokking_cfg.get("enabled", False):
+        grokking_detector = GrokkingDetector(
+            window=grokking_cfg.get("monitor_window", 20),
+            slope_eps=grokking_cfg.get("plateau_threshold", 1e-4),
+            val_lift_min=grokking_cfg.get("accuracy_jump_threshold", 0.02),
+        )
+        print(f"  [OK] Grokking detector enabled (window={grokking_detector.window})")
+
+    # 10. Training Execution
     print("\n[OK] Starting training engine...")
     results = train_model(
         model=model,
@@ -161,11 +182,13 @@ def main():
         config=config,
         lr_controller=lr_controller,
         dual_state=dual_state,
+        hw_monitor=hw_monitor,
+        grokking_detector=grokking_detector,
         vis_pipeline=vis_pipeline,
-        use_amp=config.get("device", {}).get("use_amp", False),
+        use_amp=use_amp,
     )
 
-    # 10. Summary
+    # 11. Summary
     reporting.save_results(results)
     reporting.print_summary(results)
 

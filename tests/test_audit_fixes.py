@@ -222,3 +222,124 @@ class TestStateNetDeepKeyValidation:
             StateNetConfig.from_dict({
                 "lr_scales": {"encoder_A": 0.05}  # wrong capitalisation
             })
+
+
+# ---------------------------------------------------------------------------
+# Quality gate: engine.py must not contain the dead print_every call
+# ---------------------------------------------------------------------------
+
+class TestEngineDeadVariable:
+    """Regression for dead `train_cfg.get('print_every', 5)` result-discarded call.
+
+    The call was removed because its return value was never used.  This test
+    prevents it from being accidentally re-introduced.
+    """
+
+    def test_engine_has_no_dead_print_every_call(self) -> None:
+        from pathlib import Path
+        engine_src = (Path(__file__).parent.parent / "src" / "training" / "engine.py").read_text()
+        # The pattern "train_cfg.get(\"print_every\"" with NO assignment on the same
+        # line is the dead call we removed.  We allow it only inside comments.
+        import re
+        for lineno, line in enumerate(engine_src.splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if re.search(r'train_cfg\.get\(["\']print_every', stripped):
+                # Allow it only if there is an assignment target
+                if "=" not in stripped.split("train_cfg")[0]:
+                    raise AssertionError(
+                        f"Dead train_cfg.get('print_every', …) call found at "
+                        f"src/training/engine.py:{lineno}: {line!r}"
+                    )
+
+
+# ---------------------------------------------------------------------------
+# Quality gate: CombinedLoss.get_enabled_losses() must list all loss attributes
+# ---------------------------------------------------------------------------
+
+class TestCombinedLossRegistryCompleteness:
+    """Regression for get_enabled_losses() omitting algebraic_multiplication
+    and algebraic_distributive.
+
+    Every Optional[<LossClass>] attribute of CombinedLoss that is populated
+    inside _init_losses() must appear in get_enabled_losses().
+    """
+
+    def _all_algebraic_config(self) -> dict:
+        return {
+            "rich_hierarchy": {"enabled": True, "hierarchy_weight": 1.0,
+                               "coverage_weight": 0.0, "separation_weight": 0.0},
+            "algebraic_addition": {"enabled": True, "weight": 1.0},
+            "algebraic_multiplication": {"enabled": True, "weight": 1.0},
+            "algebraic_distributive": {"enabled": True, "weight": 1.0},
+        }
+
+    def test_algebraic_multiplication_appears_in_enabled_list(self) -> None:
+        from src.losses.combined import CombinedLoss
+        fn = CombinedLoss(self._all_algebraic_config())
+        assert "algebraic_multiplication" in fn.get_enabled_losses(), (
+            "algebraic_multiplication is enabled but missing from get_enabled_losses()"
+        )
+
+    def test_algebraic_distributive_appears_in_enabled_list(self) -> None:
+        from src.losses.combined import CombinedLoss
+        fn = CombinedLoss(self._all_algebraic_config())
+        assert "algebraic_distributive" in fn.get_enabled_losses(), (
+            "algebraic_distributive is enabled but missing from get_enabled_losses()"
+        )
+
+    def test_repr_includes_algebraic_multiplication(self) -> None:
+        from src.losses.combined import CombinedLoss
+        fn = CombinedLoss(self._all_algebraic_config())
+        assert "algebraic_multiplication" in repr(fn)
+
+    def test_repr_includes_algebraic_distributive(self) -> None:
+        from src.losses.combined import CombinedLoss
+        fn = CombinedLoss(self._all_algebraic_config())
+        assert "algebraic_distributive" in repr(fn)
+
+    def test_disabled_losses_not_in_enabled_list(self) -> None:
+        from src.losses.combined import CombinedLoss
+        cfg = {"rich_hierarchy": {"enabled": True, "hierarchy_weight": 1.0,
+                                  "coverage_weight": 0.0, "separation_weight": 0.0}}
+        fn = CombinedLoss(cfg)
+        enabled = fn.get_enabled_losses()
+        assert "algebraic_addition" not in enabled
+        assert "algebraic_multiplication" not in enabled
+        assert "algebraic_distributive" not in enabled
+
+
+# ---------------------------------------------------------------------------
+# Quality gate: bootstrap factored default must match schema default
+# ---------------------------------------------------------------------------
+
+class TestBootstrapFactoredDefault:
+    """Regression for bootstrap.py using factored=False while schema defaults to True.
+
+    When model_cfg does not contain a 'factored' key (i.e., caller did not
+    normalize the config through Pydantic first), ModelAuditor must fall back
+    to the same default that ModelConfig uses so callers get consistent behaviour.
+    """
+
+    def test_schema_default_is_true(self) -> None:
+        from src.config.schema import ModelConfig
+        assert ModelConfig().factored is True, (
+            "ModelConfig.factored default changed — update bootstrap.py to match"
+        )
+
+    def test_bootstrap_default_matches_schema(self) -> None:
+        """ModelAuditor must call model_cfg.get('factored', True), not False."""
+        from pathlib import Path
+        bootstrap_src = (
+            Path(__file__).parent.parent / "src" / "training" / "bootstrap.py"
+        ).read_text()
+        # The only occurrence of get("factored", …) must default to True
+        import re
+        matches = re.findall(r'\.get\(["\']factored["\'],\s*(\w+)\)', bootstrap_src)
+        assert matches, "Expected model_cfg.get('factored', …) call not found in bootstrap.py"
+        for default_val in matches:
+            assert default_val == "True", (
+                f"bootstrap.py uses get('factored', {default_val}); "
+                f"must be True to match ModelConfig default"
+            )

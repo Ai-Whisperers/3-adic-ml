@@ -197,12 +197,26 @@ class TestAlgebraicAdditionLoss:
         """Verify that n_pairs is clamped to batch size."""
         mu, _, indices, _, _ = sample_data
         model = MagicMock()
-        model.get_mu_representations.return_value = torch.randn(1, 16, dtype=torch.float64)
-        
-        # Request more pairs than possible
+        # Return the correct shape: (n_pairs, latent_dim)
+        def mock_get_mu(idx, device):
+            return torch.randn(len(idx), 16, dtype=torch.float64, device=device)
+        model.get_mu_representations.side_effect = mock_get_mu
+
+        # Request more pairs than possible; should be silently clamped
         loss_fn = AlgebraicAdditionLoss(n_pairs=1000)
         loss, metrics = loss_fn(mu, indices, model, epoch=1)
         assert "alg_addition_loss" in metrics
+
+    def test_shape_mismatch_raises_runtime_error(self, sample_data):
+        """Wrong-shape model output must raise RuntimeError, not silently broadcast."""
+        mu, _, indices, _, _ = sample_data
+        model = MagicMock()
+        # Intentionally wrong: always returns a single row regardless of input size
+        model.get_mu_representations.return_value = torch.randn(1, 16, dtype=torch.float64)
+
+        loss_fn = AlgebraicAdditionLoss(n_pairs=8)
+        with pytest.raises(RuntimeError, match="shape mismatch"):
+            loss_fn(mu, indices, model, epoch=1)
 
 
 class TestAlgebraicMultiplicationLoss:

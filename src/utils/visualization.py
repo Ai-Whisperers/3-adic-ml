@@ -713,9 +713,11 @@ class VisualizationPipeline:
         D = compute_hyperbolic_distance_matrix(z_np, c=self.curvature)
 
         html_epoch_dir = self.html_dir / f"epoch_{epoch:05d}"
+        # Always create projections/ because steps 6-8 write there whenever
+        # matplotlib or the SVG renderer is available, independent of Plotly.
+        os.makedirs(html_epoch_dir / "projections", exist_ok=True)
         if self.save_html and _HAS_PLOTLY:
             os.makedirs(html_epoch_dir / "topology", exist_ok=True)
-            os.makedirs(html_epoch_dir / "projections", exist_ok=True)
             os.makedirs(html_epoch_dir / "algebra", exist_ok=True)
 
         # 3. UMAP 3D (precomputed metric = Poincaré)

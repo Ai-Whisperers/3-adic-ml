@@ -133,6 +133,17 @@ def test_visualization_pipeline_runs_expected_steps(monkeypatch, tmp_path) -> No
         "_run_poincare3d_step",
         lambda epoch, z_np, val_np, html_dir: calls.append("poincare"),
     )
+    # Patch the two native-renderer steps so they don't need a real display/backend
+    monkeypatch.setattr(
+        pipeline,
+        "_run_native_poincare_step",
+        lambda epoch, z_np, val_np, idx_np, html_dir: calls.append("native"),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_svg_step",
+        lambda epoch, z_np, val_np, idx_np, html_dir: calls.append("svg"),
+    )
     monkeypatch.setattr(
         pipeline,
         "_run_persistence_step",
@@ -144,13 +155,90 @@ def test_visualization_pipeline_runs_expected_steps(monkeypatch, tmp_path) -> No
     indices = torch.arange(20)
 
     pipeline.run(epoch=1, z_hyp=z_hyp, valuations=valuations, indices=indices)
-    assert calls == ["umap", "pacmap", "trimap", "poincare", "persist"]
+    assert calls == ["umap", "pacmap", "trimap", "poincare", "native", "svg", "persist"]
     assert logger.flush.call_count == 1
 
     calls.clear()
     pipeline.run(epoch=2, z_hyp=z_hyp, valuations=valuations, indices=indices)
-    assert calls == ["umap", "pacmap", "trimap", "poincare"]
+    assert calls == ["umap", "pacmap", "trimap", "poincare", "native", "svg"]
     assert logger.flush.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Regression: projections/ directory must exist even when Plotly is absent
+# ---------------------------------------------------------------------------
+
+def test_projections_dir_created_without_plotly(monkeypatch, tmp_path) -> None:
+    """Regression for bug: projections/ was only mkdir'd inside the Plotly gate.
+
+    Steps 6-8 (_run_poincare3d_step, _run_native_poincare_step, _run_svg_step)
+    pass html_epoch_dir/"projections" as their output directory regardless of
+    whether Plotly is installed.  The directory must therefore exist before any
+    of those steps run, independent of save_html / _HAS_PLOTLY.
+    """
+    monkeypatch.setattr(viz, "_HAS_PLOTLY", False)
+
+    pipeline = VisualizationPipeline(
+        config={"save_html": False, "html_dir": str(tmp_path)},
+        logger=MagicMock(),
+    )
+
+    # Stub out every rendering step so no real backend is invoked
+    def _noop_umap(epoch, D, z_np, val_np, html_dir): pass
+    def _noop_pacmap(epoch, D, z_np, val_np, html_dir): pass
+    def _noop_trimap(epoch, D, val_np, html_dir): pass
+    def _noop_poincare3d(epoch, z_np, val_np, html_dir): pass
+    def _noop_native(epoch, z_np, val_np, idx_np, html_dir): pass
+    def _noop_svg(epoch, z_np, val_np, idx_np, html_dir): pass
+    def _noop_persist(epoch, D, html_dir): pass
+    monkeypatch.setattr(viz, "compute_hyperbolic_distance_matrix",
+                        lambda z, c=1.0: np.zeros((len(z), len(z)), dtype=np.float32))
+    monkeypatch.setattr(pipeline, "_run_umap_step", _noop_umap)
+    monkeypatch.setattr(pipeline, "_run_pacmap_step", _noop_pacmap)
+    monkeypatch.setattr(pipeline, "_run_trimap_step", _noop_trimap)
+    monkeypatch.setattr(pipeline, "_run_poincare3d_step", _noop_poincare3d)
+    monkeypatch.setattr(pipeline, "_run_native_poincare_step", _noop_native)
+    monkeypatch.setattr(pipeline, "_run_svg_step", _noop_svg)
+    monkeypatch.setattr(pipeline, "_run_persistence_step", _noop_persist)
+
+    z_hyp = torch.randn(20, 4, dtype=torch.float64) * 0.05
+    valuations = torch.arange(20) % 10
+    indices = torch.arange(20)
+
+    pipeline.run(epoch=1, z_hyp=z_hyp, valuations=valuations, indices=indices)
+
+    projections_dir = tmp_path / "epoch_00001" / "projections"
+    assert projections_dir.exists(), (
+        "projections/ subdirectory must be created even when Plotly is absent; "
+        "native Poincaré and SVG steps write there via matplotlib"
+    )
+
+
+def test_projections_dir_created_with_save_html_false(monkeypatch, tmp_path) -> None:
+    """projections/ must exist when save_html=False (matplotlib-only path)."""
+    pipeline = VisualizationPipeline(
+        config={"save_html": False, "html_dir": str(tmp_path)},
+        logger=MagicMock(),
+    )
+
+    monkeypatch.setattr(viz, "compute_hyperbolic_distance_matrix",
+                        lambda z, c=1.0: np.zeros((len(z), len(z)), dtype=np.float32))
+    monkeypatch.setattr(pipeline, "_run_umap_step", lambda *a: None)
+    monkeypatch.setattr(pipeline, "_run_pacmap_step", lambda *a: None)
+    monkeypatch.setattr(pipeline, "_run_trimap_step", lambda *a: None)
+    monkeypatch.setattr(pipeline, "_run_poincare3d_step", lambda *a: None)
+    monkeypatch.setattr(pipeline, "_run_native_poincare_step", lambda *a: None)
+    monkeypatch.setattr(pipeline, "_run_svg_step", lambda *a: None)
+    monkeypatch.setattr(pipeline, "_run_persistence_step", lambda *a: None)
+
+    pipeline.run(
+        epoch=1,
+        z_hyp=torch.randn(20, 4, dtype=torch.float64) * 0.05,
+        valuations=torch.arange(20) % 10,
+        indices=torch.arange(20),
+    )
+
+    assert (tmp_path / "epoch_00001" / "projections").exists()
 
 
 # ---------------------------------------------------------------------------

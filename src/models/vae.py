@@ -44,6 +44,7 @@ Reference:
     Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
 """
 
+import warnings
 from typing import Any, Dict, List, Tuple
 
 import torch
@@ -87,7 +88,17 @@ class EncoderHead(nn.Module):
         self.encoder_type = encoder_type
         self.input_dim = input_dim
 
-        # Backbone output dim depends on type
+        # Backbone output dim depends on type. The "standard" backbone always
+        # outputs 64 regardless of hidden_dim (v5.5 compat); warn if hidden_dim
+        # differs so callers aren't surprised.
+        if encoder_type == "standard" and hidden_dim != 64:
+            warnings.warn(
+                f"EncoderHead: hidden_dim={hidden_dim} is ignored for "
+                "encoder_type='standard'; the backbone always outputs 64. "
+                "Use encoder_type='improved' to respect hidden_dim.",
+                UserWarning,
+                stacklevel=2,
+            )
         enc_out_dim = hidden_dim if encoder_type == "improved" else 64
 
         # Build components
@@ -293,17 +304,18 @@ class TernaryVAEV6(nn.Module):
         self.factored = factored
         self.radial_dims = radial_dims
         self.detach_radial = detach_radial
-        self.positional_encoding = True
+        self.positional_encoding = positional_encoding
         self.pos_weight_base = pos_weight_base
         
         # Positional significance weights: pos_weights[k] = 1/base^k.
         # Position 0 is most predictive of v_3(n) (determines v_3=0 vs >0 for
         # 66% of the dataset), so it receives weight 1.0.
-        self.register_buffer(
-            "pos_weights",
-            torch.tensor([1.0 / (pos_weight_base ** k) for k in range(9)], dtype=torch.float64),
-            persistent=False,
-        )
+        if positional_encoding:
+            self.register_buffer(
+                "pos_weights",
+                torch.tensor([1.0 / (pos_weight_base ** k) for k in range(9)], dtype=torch.float64),
+                persistent=False,
+            )
 
         # Encoder heads (backbone + mu/logvar projections)
         # input_dim = 18 if positional_encoding else 9

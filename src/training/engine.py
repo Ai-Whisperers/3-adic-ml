@@ -5,7 +5,6 @@
 
 """Core training engine for p-adic VAE."""
 
-import time
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -65,7 +64,6 @@ def train_model(
     max_grad_norm = train_cfg.get("max_grad_norm", 1.0)
     eval_every = train_cfg.get("eval_every", 5)
     save_every = train_cfg.get("save_every", 25)
-    train_cfg.get("print_every", 5)
 
     # Resolve valuation function
     valuation_type = (config.get("data") or {}).get("valuation_type", "index")
@@ -96,8 +94,6 @@ def train_model(
     )
 
     for epoch in epoch_iter:
-        time.time()
-
         # 1. Training Phase
         train_metrics = train_epoch(
             epoch, model, train_loader, optimizer, loss_fn, loss_fn_b,
@@ -427,6 +423,7 @@ def validate_epoch(
         "hier_metrics_A": hier_A,
         "hier_metrics_B": hier_B,
         "z_A_cat": z_A_cat,
+        "z_B_cat": z_B_cat,
         "mu_A_cat": mu_A_cat,
         "idx_cat": idx_cat,
         "alg_metrics": alg_metrics,
