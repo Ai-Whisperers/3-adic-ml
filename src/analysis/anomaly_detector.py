@@ -1,51 +1,92 @@
-import torch
+# Copyright (c) 2024-2026 AI Whisperers
+#
+# Licensed under the MIT License.
+# See LICENSE file in the repository root for full license text.
+
+"""Anomaly detection using Poincaré-ball k-NN density estimation."""
+
+from typing import Dict
+
 import numpy as np
-from typing import Optional, List, Dict
-from src.geometry import poincare_distance
+import torch
+
+from src.geometry.poincare import get_manifold, poincare_distance_matrix
+
 
 class AnomalyDetector:
-    """Production-grade anomaly detection using latent space density."""
-    
-    def __init__(self, model, device: torch.device = torch.device("cpu")):
+    """Anomaly detection using k-NN distances in hyperbolic (Poincaré-ball) space.
+
+    Calibration: fit() computes mean k-NN Poincaré distance over normal embeddings
+    and sets a threshold at mean + sigma_factor * std.
+
+    Detection: detect() flags query embeddings whose mean k-NN distance to the
+    normal set exceeds the threshold.
+
+    Both fit() and detect() are fully vectorized — no Python loops over points.
+    """
+
+    def __init__(self, model=None, device: torch.device = torch.device("cpu"), curvature: float = 1.0):
         self.model = model
         self.device = device
-        self.z_norm = None
-        self.threshold = None
-        
-    def fit(self, normal_embeddings: torch.Tensor, k: int = 5, sigma_factor: float = 3.0):
-        """Calibrates threshold based on k-NN distances in normal dataset."""
+        self.curvature = curvature
+        self.z_norm: torch.Tensor | None = None
+        self.threshold: float | None = None
+
+    def fit(self, normal_embeddings: torch.Tensor, k: int = 5, sigma_factor: float = 3.0) -> None:
+        """Calibrate threshold from k-NN distances in the normal embedding set.
+
+        Args:
+            normal_embeddings: Points on the Poincaré ball, shape (N, D).
+            k: Number of nearest neighbours to average over.
+            sigma_factor: Threshold = mean + sigma_factor * std of kNN distances.
+        """
         self.z_norm = normal_embeddings.to(self.device)
         n_norm = self.z_norm.shape[0]
-        
-        nn_dists = []
-        # Pairwise distance matrix computation (optimized)
-        # Using a subset if N is large for fitting
-        dists = torch.cdist(self.z_norm, self.z_norm, p=2) # Placeholder for Poincare distance matrix logic
-        
-        # We need actual Poincare distances. For production, consider using geoopt vectorized dists
-        for i in range(n_norm):
-            d_i = [poincare_distance(self.z_norm[i].unsqueeze(0), self.z_norm[j].unsqueeze(0), c=1.0).item() 
-                   for j in range(n_norm) if i != j]
-            nn_dists.append(np.mean(sorted(d_i)[:k]))
-            
-        self.threshold = np.mean(nn_dists) + sigma_factor * np.std(nn_dists)
-        print(f"Detector fitted: Threshold={self.threshold:.4f}")
-        
+
+        # Full N×N pairwise Poincaré distance matrix — one vectorized call.
+        dist_matrix = poincare_distance_matrix(self.z_norm, c=self.curvature)  # (N, N)
+
+        # Mask self-distances so they are never selected as a neighbour.
+        eye = torch.eye(n_norm, dtype=torch.bool, device=self.device)
+        dist_matrix = dist_matrix.masked_fill(eye, float("inf"))
+
+        k_actual = min(k, n_norm - 1)
+        knn_dists, _ = dist_matrix.topk(k_actual, dim=1, largest=False)  # (N, k)
+        mean_knn = knn_dists.mean(dim=1).cpu().numpy()  # (N,)
+
+        self.threshold = float(mean_knn.mean() + sigma_factor * mean_knn.std())
+        print(f"[AnomalyDetector] Fitted: threshold={self.threshold:.4f} "
+              f"(n={n_norm}, k={k_actual}, sigma_factor={sigma_factor})")
+
     def detect(self, query_embeddings: torch.Tensor, k: int = 5) -> Dict[str, np.ndarray]:
-        """Classifies queries as Normal or Anomaly."""
+        """Classify query embeddings as normal or anomalous.
+
+        Args:
+            query_embeddings: Points on the Poincaré ball, shape (M, D).
+            k: Number of nearest neighbours to average over.
+
+        Returns:
+            Dict with:
+                - ``is_anomaly``: bool array of shape (M,)
+                - ``min_dist``: float array of mean kNN distances, shape (M,)
+        """
         if self.z_norm is None or self.threshold is None:
-            raise ValueError("Detector must be fitted first.")
-            
-        queries = query_embeddings.to(self.device)
-        dists_to_normal = []
-        for q in queries:
-            d = [poincare_distance(q.unsqueeze(0), n.unsqueeze(0), c=1.0).item() for n in self.z_norm]
-            dists_to_normal.append(np.mean(sorted(d)[:k]))
-            
-        dists_to_normal = np.array(dists_to_normal)
-        is_anomaly = dists_to_normal > self.threshold
-        
+            raise ValueError("AnomalyDetector must be fitted before calling detect().")
+
+        queries = query_embeddings.to(self.device)   # (M, D)
+        n_norm = self.z_norm.shape[0]
+
+        # Cross-distance matrix (M, N) via geoopt broadcasting.
+        manifold = get_manifold(self.curvature, device=self.device)
+        q_exp = queries.unsqueeze(1)          # (M, 1, D)
+        n_exp = self.z_norm.unsqueeze(0)      # (1, N, D)
+        cross_dists = manifold.dist(q_exp, n_exp, keepdim=False)  # (M, N)
+
+        k_actual = min(k, n_norm)
+        knn_dists, _ = cross_dists.topk(k_actual, dim=1, largest=False)  # (M, k)
+        mean_knn = knn_dists.mean(dim=1).cpu().numpy()  # (M,)
+
         return {
-            "is_anomaly": is_anomaly,
-            "min_dist": dists_to_normal
+            "is_anomaly": mean_knn > self.threshold,
+            "min_dist": mean_knn,
         }

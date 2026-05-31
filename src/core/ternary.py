@@ -223,15 +223,8 @@ class TernarySpace:
         return props
 
     def _compute_level_counts(self) -> torch.Tensor:
-        """Compute population count for each valuation level.
-
-        Returns:
-            Tensor of shape (MAX_VALUATION + 1,) with count at each level
-        """
-        counts = torch.zeros(self.MAX_VALUATION + 1, dtype=torch.long)
-        for v in range(self.MAX_VALUATION + 1):
-            counts[v] = (self._valuation_lut == v).sum()
-        return counts
+        """Compute population count for each valuation level."""
+        return torch.bincount(self._valuation_lut, minlength=self.MAX_VALUATION + 1)
 
     def _build_algebraic_lut(self) -> torch.Tensor:
         """Build algebraic property LUT for binary-operation interpretation.
@@ -459,13 +452,10 @@ class TernarySpace:
         d_a = t_a % 3
         d_b = t_b % 3
 
-        # Modular addition in {0, 1, 2}
+        # Modular addition in {0, 1, 2}, then map 2 → -1 via arithmetic.
+        # d - 3*(d==2): 0→0, 1→1, 2→2-3=-1
         d_sum = (d_a + d_b) % 3
-
-        # Map back to {-1, 0, 1}: 0->0, 1->1, 2->-1
-        t_sum = d_sum.clone()
-        t_sum[d_sum == 2] = -1
-
+        t_sum = d_sum - 3.0 * (d_sum == 2.0).to(d_sum.dtype)
         return self.from_ternary(t_sum)
 
     def ternary_mul(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
@@ -493,11 +483,7 @@ class TernarySpace:
         d_b = t_b % 3
 
         d_prod = (d_a * d_b) % 3
-
-        # Map back to {-1, 0, 1}: 0->0, 1->1, 2->-1
-        t_prod = d_prod.clone()
-        t_prod[d_prod == 2] = -1
-
+        t_prod = d_prod - 3.0 * (d_prod == 2.0).to(d_prod.dtype)
         return self.from_ternary(t_prod)
 
     # =========================================================================
@@ -659,11 +645,9 @@ class TernarySpace:
         Returns:
             Dict mapping valuation -> count
         """
-        v = self.valuation(indices)
-        hist = {}
-        for val in range(self.MAX_VALUATION + 1):
-            hist[val] = (v == val).sum().item()
-        return hist
+        v = self.valuation(indices).long()
+        counts = torch.bincount(v, minlength=self.MAX_VALUATION + 1)
+        return dict(enumerate(counts.tolist()))
 
     def expected_valuation(self) -> float:
         """Compute expected valuation over uniform distribution.

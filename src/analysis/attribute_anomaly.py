@@ -13,7 +13,9 @@ def compute_attribution(sequence: str, model, detector):
         idx = torch.tensor([seq_to_ternary_index(seq)])
         with torch.no_grad():
             mu = model.get_mu_representations(idx, torch.device("cpu"))
-            z, _ = model.projections.proj_A(mu)
+            # proj_A returns (z_hyp, r) in factored mode, plain z_hyp otherwise.
+            result = model.projections.proj_A(mu)
+            z = result[0] if isinstance(result, tuple) else result
         res = detector.detect(z)
         return float(res["min_dist"][0])
 
