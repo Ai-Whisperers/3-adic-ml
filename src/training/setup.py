@@ -142,6 +142,31 @@ def setup_optimizer(
     return optimizer
 
 
+def _cosine_warmup_restarts_factor(epoch: int, T_0: int, T_mult: int) -> float:
+    """Return the cosine-annealing-with-warm-restarts multiplier in [0, 1].
+
+    Analytically reimplements CosineAnnealingWarmRestarts so the factor can
+    be composed with a phase scale inside a single LambdaLR.  Using
+    ChainedScheduler([CosineAnnealingWarmRestarts, LambdaLR]) was wrong:
+    LambdaLR uses optimizer base_lr as its reference, overwriting cosine's
+    output and making the cosine schedule a no-op.
+    """
+    import math
+    if T_0 <= 0:
+        return 1.0
+    if T_mult == 1:
+        T_cur = epoch % T_0
+        T_i = T_0
+    else:
+        T_i = T_0
+        t_start = 0
+        while t_start + T_i <= epoch:
+            t_start += T_i
+            T_i = max(1, int(T_i * T_mult))
+        T_cur = epoch - t_start
+    return 0.5 * (1.0 + math.cos(math.pi * T_cur / T_i))
+
+
 def setup_scheduler(
     optimizer: torch.optim.Optimizer,
     config: Dict[str, Any],
@@ -162,8 +187,8 @@ def setup_scheduler(
         phases = scheduler_cfg.get("phases", [])
         if phases:
             first_phase = phases[0]
-            T_0 = first_phase.get("T_0", scheduler_cfg.get("T_0", 25))
-            T_mult = first_phase.get("T_mult", scheduler_cfg.get("T_mult", 2))
+            T_0 = int(first_phase.get("T_0", scheduler_cfg.get("T_0", 25)))
+            T_mult = int(first_phase.get("T_mult", scheduler_cfg.get("T_mult", 2)))
 
             phase_schedule = []
             for p in phases:
@@ -172,22 +197,20 @@ def setup_scheduler(
                 phase_schedule.append((epoch_range[0], epoch_range[1], scale))
             phase_schedule.sort(key=lambda x: x[0])
 
-            def multi_phase_lr_lambda(epoch):
-                current_scale = phase_schedule[-1][2]
+            # Single LambdaLR that multiplies base_lr by (cosine_factor × phase_scale).
+            # This fixes the old ChainedScheduler approach where LambdaLR overwrote
+            # the cosine output, making the cosine schedule a no-op.
+            def multi_phase_lr_lambda(epoch: int) -> float:
+                phase_scale = phase_schedule[-1][2]
                 for start, end, scale in phase_schedule:
                     if start <= epoch < end:
-                        current_scale = scale
+                        phase_scale = scale
                         break
-                return current_scale
+                cosine_factor = _cosine_warmup_restarts_factor(epoch, T_0, T_mult)
+                return phase_scale * cosine_factor
 
-            base_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                optimizer, T_0=T_0, T_mult=T_mult,
-            )
-            phase_scheduler = torch.optim.lr_scheduler.LambdaLR(
-                optimizer, lr_lambda=multi_phase_lr_lambda,
-            )
-            return torch.optim.lr_scheduler.ChainedScheduler(
-                [base_scheduler, phase_scheduler]
+            return torch.optim.lr_scheduler.LambdaLR(
+                optimizer, lr_lambda=multi_phase_lr_lambda
             )
 
     return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)

@@ -285,9 +285,11 @@ class CombinedLoss(nn.Module):
                 variance_only=kl_cfg.get('variance_only', False),
             )
             self.kl_weight = kl_cfg.get('weight', 0.01)
+            self.kl_warmup_epochs = max(0, int(kl_cfg.get('warmup_epochs', 0)))
         else:
             self.kl_loss = None
             self.kl_weight = 0.0
+            self.kl_warmup_epochs = 0
 
         # ValuationPriorLoss (replaces N(0,I) mean term with valuation-conditioned prior)
         vp_cfg = self.config.get('valuation_prior', {})
@@ -614,12 +616,22 @@ class CombinedLoss(nn.Module):
                                             self.log_sigma_monotonic if self.use_learnable_weights else None)
 
         # 6. KL Divergence (makes this a true VAE)
+        # Linearly ramp from 0 → full weight over kl_warmup_epochs after phase_start.
+        # warmup_epochs=0 (default) preserves the old step-function behaviour.
         kl_phase_start = self.config.get('hyperbolic_kl', {}).get('phase_start_epoch', 0)
         if self.kl_loss is not None and mu is not None and logvar is not None and epoch >= kl_phase_start:
             kl_out = self.kl_loss(mu, logvar, z_hyp, curvature=cur_c)
-            total = total + get_weighted_loss(kl_out, self.kl_weight,
-                                            self.log_sigma_kl if (self.use_learnable_weights and hasattr(self, 'log_sigma_kl')) else None)
+            if self.kl_warmup_epochs > 0 and not self.use_learnable_weights:
+                warmup_factor = min(1.0, (epoch - kl_phase_start + 1) / self.kl_warmup_epochs)
+                effective_kl_weight = self.kl_weight * warmup_factor
+            else:
+                effective_kl_weight = self.kl_weight
+            total = total + get_weighted_loss(
+                kl_out, effective_kl_weight,
+                self.log_sigma_kl if (self.use_learnable_weights and hasattr(self, 'log_sigma_kl')) else None,
+            )
             losses['kl'] = kl_out
+            losses['kl_warmup_factor'] = warmup_factor if self.kl_warmup_epochs > 0 and not self.use_learnable_weights else 1.0
 
         # 7. ValuationPriorLoss (valuation-conditioned μ/σ prior)
         vp_phase_start = self.config.get('valuation_prior', {}).get('phase_start_epoch', 0)

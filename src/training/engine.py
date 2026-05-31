@@ -135,13 +135,16 @@ def train_model(
                 )
                 controller_state = lr_controller.update(metrics)
 
-                # Apply new scales
+                # Apply new scales — also syncs requires_grad for each param group
                 cosine_factor = scheduler.get_last_lr()[0] / scheduler.base_lrs[0]
                 current_base_lr = train_cfg.get("lr", 1e-3) * cosine_factor
                 new_scales = controller_state["lr_scales"]
                 update_optimizer_lr_scales(optimizer, current_base_lr, new_scales)
 
-                # Sync model requires_grad
+                # Keep model's internal _trainable state consistent with LR scales.
+                # requires_grad is already synced by update_optimizer_lr_scales above;
+                # these calls only update the model's _trainable flag (used by
+                # is_trainable / get_trainable_params for introspection).
                 model.set_encoder_a_trainable(new_scales.get('encoder_a', 0.0) > 0)
                 model.set_encoder_b_trainable(new_scales.get('encoder_b', 0.0) > 0)
                 model.set_projections_trainable(new_scales.get('projections', 0.0) > 0)

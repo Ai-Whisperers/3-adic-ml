@@ -332,6 +332,15 @@ class HyperbolicKLConfig(StrictConfigModel):
     free_bits: float = Field(default=0.0, ge=0)
     variance_only: bool = False
     weight: float = Field(default=0.01, ge=0)
+    phase_start_epoch: int = Field(default=0, ge=0)
+    warmup_epochs: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Linearly ramp KL weight from 0 to full over this many epochs after "
+            "phase_start_epoch. 0 means step-function onset (old behaviour)."
+        ),
+    )
 
 
 class WithinLevelContrastiveConfig(StrictConfigModel):

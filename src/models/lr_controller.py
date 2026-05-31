@@ -521,6 +521,13 @@ def update_optimizer_lr_scales(
         if name in lr_scales:
             group['lr'] = base_lr * lr_scales[name]
             matched_scales.add(name)
+            # Sync requires_grad atomically with the LR update.
+            # PyTorch computes gradients for all requires_grad=True params regardless
+            # of the optimizer LR; setting requires_grad=False prevents wasted compute
+            # when a component is frozen (LR=0).
+            is_active = group['lr'] > 0
+            for p in group['params']:
+                p.requires_grad = is_active
         elif name:
             unmatched_groups.append(name)
 

@@ -333,9 +333,14 @@ def plot_algebraic_consistency(
         idx_sum_gt = TERNARY.ternary_add(idx_a, idx_b)
         mu_sum_gt = model.get_mu_representations(idx_sum_gt, device)
         
-        # Project both to Poincaré ball
-        z_pred, _ = model.projections.proj_A(mu_sum_pred)
-        z_gt, _ = model.projections.proj_A(mu_sum_gt)
+        # Project both to Poincaré ball.
+        # proj_A returns (z_hyp, r) in factored mode, plain z_hyp otherwise.
+        def _project(v):
+            result = model.projections.proj_A(v)
+            return result[0] if isinstance(result, tuple) else result
+
+        z_pred = _project(mu_sum_pred)
+        z_gt = _project(mu_sum_gt)
         
         z_pred = z_pred.cpu().numpy()
         z_gt = z_gt.cpu().numpy()
