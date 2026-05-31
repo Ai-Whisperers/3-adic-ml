@@ -123,3 +123,5 @@ sandbox/
 # Use: python -m src.utils.checkpoint_hub download --checkpoint <name>
 **/*.pt
 *.7z
+/visualizations/
+
