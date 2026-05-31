@@ -34,9 +34,8 @@ class GlobalRankLoss(HierarchyLossBase):
         self.use_all_pairs = use_all_pairs
         self.curvature = curvature
         self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
-        self.generator = torch.Generator()
-        self.generator.manual_seed(seed)
         self.scatter_weight = scatter_weight
+        # No CPU generator — randint uses device=device directly.
 
     def forward(
         self,
@@ -58,8 +57,8 @@ class GlobalRankLoss(HierarchyLossBase):
             i_idx, j_idx = torch.triu_indices(batch_size, batch_size, offset=1, device=device)
         else:
             n_pairs = min(self.n_pairs, batch_size * (batch_size - 1) // 2)
-            i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
-            j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
+            i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
+            j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
             same = i_idx == j_idx
             j_idx[same] = (j_idx[same] + 1) % batch_size
 
@@ -113,5 +112,7 @@ class GlobalRankLoss(HierarchyLossBase):
             for v in range(10):
                 if (v_same == v).any():
                     metrics[f'scatter_v{v}'] = scatter_all[v].item()
+                    # In-graph tensor for Lagrangian dual penalties
+                    metrics[f'scatter_tensor_v{v}'] = scatter_all[v]
 
         return loss, metrics

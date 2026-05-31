@@ -46,8 +46,8 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         self.use_individual_valuation = use_individual_valuation
         self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
         self.max_valuation = float(TERNARY.MAX_VALUATION)
-        self.generator = torch.Generator()
-        self.generator.manual_seed(seed)
+        # No CPU generator — randint uses device=device directly to avoid
+        # the index-tensor transfer from CPU to training device each forward pass.
 
     def target_distance(self, valuation: torch.Tensor) -> torch.Tensor:
         """Map 3-adic valuation to target hyperbolic distance."""
@@ -67,8 +67,8 @@ class PAdicGeodesicLoss(HierarchyLossBase):
             return torch.tensor(0.0, device=device, dtype=torch.float64), {"n_pairs": 0}
 
         n_pairs = min(self.n_pairs, batch_size * (batch_size - 1) // 2)
-        i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
-        j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
+        i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
+        j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
 
         same_mask = i_idx == j_idx
         j_idx[same_mask] = (j_idx[same_mask] + 1) % batch_size

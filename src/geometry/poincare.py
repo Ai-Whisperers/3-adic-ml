@@ -136,8 +136,8 @@ def hyperbolic_radius(z: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, keep
         >>> z = model.encode(x)  # Get hyperbolic embeddings
         >>> radii = hyperbolic_radius(z, c=1.0)  # Compute radii for loss
     """
-    origin = torch.zeros_like(z)
-    return poincare_distance(z, origin, c=c, keepdim=keepdim)
+    manifold = get_manifold(c, device=z.device)
+    return manifold.dist0(z, keepdim=keepdim)
 
 
 def project_to_poincare(z: torch.Tensor, max_norm: float = 0.95, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:

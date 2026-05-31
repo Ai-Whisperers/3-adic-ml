@@ -342,7 +342,14 @@ class MetricBasedLR(LRController):
         return (self.config.lr_scales.projections if self._active['projections'] else 0.0, event)
 
     def get_lr_scales(self, metrics: TrainingMetrics) -> Dict[str, float]:
-        """Get LR scales based on current metrics."""
+        """Get LR scales based on current metrics.
+
+        WARNING: This method is NOT side-effect-free. The gate helpers it calls
+        (_compute_coverage_gate, _compute_hierarchy_gate, _compute_projections_gate)
+        may mutate self._active and self._last_change when threshold conditions are
+        met.  Call update() instead in the training loop; reserve get_lr_scales()
+        for read-only inspection only when you know the gates won't trigger.
+        """
         # During warmup, use initial states
         if metrics.epoch < self.config.timing.warmup_epochs:
             return {

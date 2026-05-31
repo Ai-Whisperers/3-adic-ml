@@ -5,6 +5,7 @@
 
 """Radial and hierarchical consistency losses for p-adic VAE."""
 
+import math
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -51,13 +52,8 @@ class RadialHierarchyLoss(HierarchyLossBase):
         self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
         self.valuation_weight_exponent = valuation_weight_exponent
         self.margin_step_factor = margin_step_factor
-        self.generator = torch.Generator()
-        self.generator.manual_seed(seed)
-
-        target_radii = _euclidean_to_hyperbolic_radius(
-            _exponential_target_radii(max_valuation, inner_radius, outer_radius, scale=3.0)
-        )
-        self.register_buffer('_target_radii', target_radii)
+        # No CPU generator — randint uses device=device directly to avoid
+        # the CPU→GPU index-tensor transfer that occurred on every forward pass.
 
     def forward(
         self,
@@ -91,8 +87,8 @@ class RadialHierarchyLoss(HierarchyLossBase):
         margin_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
         if self.use_margin_loss and batch_size >= 2:
             n_pairs = min(1000, batch_size * (batch_size - 1) // 2)
-            i_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
-            j_idx = torch.randint(0, batch_size, (n_pairs,), generator=self.generator).to(device)
+            i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
+            j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
             same = i_idx == j_idx
             j_idx[same] = (j_idx[same] + 1) % batch_size
 
@@ -101,10 +97,11 @@ class RadialHierarchyLoss(HierarchyLossBase):
             higher_v_mask = v_i > v_j
 
             if higher_v_mask.any():
-                vi_clamped = v_i[higher_v_mask].long().clamp(0, self.max_valuation).cpu()
-                vj_clamped = v_j[higher_v_mask].long().clamp(0, self.max_valuation).cpu()
-                target_r_j = self._target_radii[vj_clamped].to(device)
-                target_r_i = self._target_radii[vi_clamped].to(device)
+                vi_clamped = v_i[higher_v_mask].long().clamp(0, self.max_valuation)
+                vj_clamped = v_j[higher_v_mask].long().clamp(0, self.max_valuation)
+                # Use target_radii_all (already on device, uses current curvature)
+                target_r_j = target_radii_all[vj_clamped]
+                target_r_i = target_radii_all[vi_clamped]
                 expected_margin = (target_r_j - target_r_i) * self.margin_step_factor
                 actual_diff = r_j[higher_v_mask] - r_i[higher_v_mask]
                 violations = F.relu(expected_margin - actual_diff)
@@ -166,11 +163,6 @@ class MonotonicRadialLoss(HierarchyLossBase):
         self.target_loss_weight = target_loss_weight
         self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
 
-        target_radii = _euclidean_to_hyperbolic_radius(
-            _exponential_target_radii(max_valuation, inner_radius, outer_radius, scale=3.0)
-        )
-        self.register_buffer('_target_radii', target_radii)
-
     def forward(
         self,
         z_hyp: torch.Tensor,
@@ -231,7 +223,10 @@ class MonotonicRadialLoss(HierarchyLossBase):
 
         per_gap_tensors: MetricsDict = {}
         for i in range(n_levels - 1):
-            per_gap_tensors[f"gap_viol_v{levels_present[i]}"] = float(max(0.0, violations[i].item()))
+            v_idx = levels_present[i]
+            per_gap_tensors[f"gap_viol_v{v_idx}"] = float(max(0.0, violations[i].item()))
+            # In-graph tensor for Lagrangian dual penalties (combined.py reads this key)
+            per_gap_tensors[f"gap_viol_tensor_v{v_idx}"] = F.relu(violations[i])
 
         metrics: MetricsDict = {
             "n_levels": n_levels,
@@ -258,6 +253,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         separation_margin: float = 0.01,
         variance_weight: float = 0.1,
         valuation_fn=None,
+        max_valuation: int = 9,
     ) -> None:
         super().__init__()
         self._validate_radii(inner_radius, outer_radius, self.__class__.__name__)
@@ -269,11 +265,8 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         self.curvature = curvature
         self.separation_margin = separation_margin
         self.variance_weight = variance_weight
+        self.max_valuation = max_valuation
         self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
-        target_radii = _euclidean_to_hyperbolic_radius(
-            _exponential_target_radii(9, inner_radius, outer_radius, scale=3.0)
-        )
-        self.register_buffer("target_radii", target_radii)
 
     def forward(  # type: ignore[override]
         self,
@@ -286,13 +279,15 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         device, cur_c = z_hyp.device, kwargs.get("curvature", self.curvature)
         radii = hyperbolic_radius(z_hyp, c=cur_c)
         target_radii_adj = _euclidean_to_hyperbolic_radius(
-            _exponential_target_radii(9, self.inner_radius, self.outer_radius, scale=3.0).to(device),
+            _exponential_target_radii(
+                self.max_valuation, self.inner_radius, self.outer_radius, scale=3.0
+            ).to(device),
             c=cur_c
         )
         from typing import cast
         valuations = cast(torch.LongTensor, self._valuation_fn(batch_indices).long().to(device))
 
-        dim_size = 10
+        dim_size = self.max_valuation + 1
         present_mask = level_has_data(valuations, dim_size=dim_size)
         means_all = level_scatter_mean(radii, valuations, dim_size=dim_size)
 
@@ -320,7 +315,8 @@ class RichHierarchyLoss(RichHierarchyLossBase):
             if logits.shape[-1] == 3:
                 coverage_loss = F.cross_entropy(logits.view(-1, 3), targets_shifted.view(-1))
             elif logits.shape[-1] == 27:
-                coverage_loss = F.cross_entropy(logits.view(-1, 9, 3).permute(0, 2, 1), targets_shifted)
+                n_digits = logits.shape[-1] // 3
+                coverage_loss = F.cross_entropy(logits.view(-1, n_digits, 3).permute(0, 2, 1), targets_shifted)
 
         separation_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
         present_lvls = present_mask.nonzero(as_tuple=True)[0].tolist()
@@ -374,7 +370,6 @@ class WithinLevelContrastiveLoss(nn.Module):
             if mask.numel() < 2: continue
             z_v = z_hyp[mask]
             if z_v.size(0) * (z_v.size(0)-1) // 2 > self.max_pairs_per_level:
-                import math
                 n_take = min(z_v.size(0), math.ceil((2 * self.max_pairs_per_level) ** 0.5) + 1)
                 z_v = z_v[torch.randperm(z_v.size(0), device=device)[:n_take]]
 

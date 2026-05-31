@@ -112,18 +112,18 @@ class DataAuditor:
         idx_train = all_indices[train_idx]
         idx_val = all_indices[val_idx]
 
-        # Leakage check
-        train_set = {tuple(x.tolist()) for x in X_train}
-        val_set = {tuple(x.tolist()) for x in X_val}
-        overlap = train_set.intersection(val_set)
+        # Leakage check via index intersection (O(n) vs the O(n*9) set-of-tuples approach).
+        # For custom_indices with repeated values the same integer index appears in both
+        # splits, so this correctly identifies shared content without building Python tuples.
+        overlap_count = int(torch.isin(idx_val, idx_train).sum().item())
 
         self.audit_log["n_train"] = len(X_train)
         self.audit_log["n_val"] = len(X_val)
-        self.audit_log["data_leakage_count"] = len(overlap)
+        self.audit_log["data_leakage_count"] = overlap_count
 
-        if len(overlap) > 0:
+        if overlap_count > 0:
             print(
-                f"  [WARN] Data leakage detected: {len(overlap)} samples in both sets"
+                f"  [WARN] Data leakage detected: {overlap_count} samples in both sets"
             )
         else:
             print(f"  [OK] No data leakage (train={len(X_train)}, val={len(X_val)})")

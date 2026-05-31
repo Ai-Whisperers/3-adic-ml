@@ -137,8 +137,13 @@ class AngularCoherenceLoss(nn.Module):
         di = dir_vecs[i_idx[same_cls]]
         dj = dir_vecs[j_idx[same_cls]]
         cos_sim = (di * dj).sum(dim=-1)
-        t = torch.tensor(self.target_sim[0], device=z_hyp.device, dtype=z_hyp.dtype)
-        loss = self.weight * torch.nn.functional.relu(t - cos_sim).mean()
+        # Use the per-valuation target_sim for each same-class pair.
+        # Same-class pairs share the same (vals, prefix_k) key, so they share
+        # the same valuation level — use that level's target similarity.
+        pair_vals = vals[i_idx[same_cls]].clamp(0, len(self.target_sim) - 1)
+        t_values = torch.tensor(self.target_sim, device=z_hyp.device, dtype=z_hyp.dtype)
+        t_per_pair = t_values[pair_vals]
+        loss = self.weight * torch.nn.functional.relu(t_per_pair - cos_sim).mean()
 
         metrics["angular_coherence_loss"] = loss.item()
         metrics["angular_coherence_pairs"] = int(n_same)
@@ -155,7 +160,6 @@ class AlgebraicCoherenceLoss(nn.Module):
         target_sim: float = 0.70,
         phase_start_epoch: int = 20,
         min_class_size: int = 3,
-        valuation_fn=None,
     ):
         super().__init__()
         self.weight = weight

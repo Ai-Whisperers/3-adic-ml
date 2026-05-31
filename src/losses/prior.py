@@ -130,5 +130,7 @@ class ValuationPriorLoss(HierarchyLossBase):
         for v in present_mask.nonzero(as_tuple=False).squeeze(-1).tolist():
             metrics[f'vp_gap_v{v}'] = float(gaps_all[v].detach().item())
             metrics[f'vp_mu_norm_v{v}'] = float(mean_norms_all[v].detach().item())
+            # In-graph tensor for Lagrangian dual penalties
+            metrics[f'vp_gap_tensor_v{v}'] = gaps_all[v]
 
         return loss, metrics
