@@ -5,77 +5,45 @@
 
 """Poincare Ball geometry with geoopt backend.
 
-This module provides numerically stable hyperbolic geometry operations
-using geoopt's C++ backend for optimal performance.
+Numerically stable hyperbolic geometry operations. All functions automatically
+use the device of their input tensors. The manifold cache is keyed by
+(curvature, device) to prevent device mismatches.
 
-IMPORTANT: All functions automatically use the device of input tensors.
-The manifold cache is keyed by (curvature, device) to prevent device mismatches.
-
-Actively Used Functions (by losses, models, train.py):
-    - poincare_distance: Hyperbolic distance between points
-    - hyperbolic_radius: Distance from origin (used by all losses for radii)
-    - exp_map_zero: Tangent space → manifold (used by HyperbolicProjection)
-    - log_map_zero: Manifold → tangent space (used by VAE decoder)
-    - lambda_x: Conformal factor (used by HyperbolicKLDivergence)
-    - get_riemannian_optimizer: RiemannianAdam/SGD factory
-    - ManifoldParameter: Learnable hyperbolic embeddings
-
-Available Utilities (not currently used but available):
-    - project_to_poincare: Clamp points to ball
-    - mobius_add: Hyperbolic translation
-    - parallel_transport: Move tangent vectors
-    - geodesic, geodesic_interpolation: Interpolation along geodesics
-    - poincare_distance_matrix: All pairwise distances
-
-Reference:
-    Nickel & Kiela (2017) "Poincare Embeddings for Learning Hierarchical Representations"
-    Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincare VAEs"
+Actively used: poincare_distance, hyperbolic_radius, exp_map_zero, log_map_zero,
+               lambda_x, get_riemannian_optimizer, ManifoldParameter.
+Available:     project_to_poincare, mobius_add, parallel_transport, geodesic,
+               geodesic_interpolation, poincare_distance_matrix.
 """
 
 from typing import Any, Union
 
-# geoopt is a required dependency
 import geoopt
 from geoopt import ManifoldParameter, ManifoldTensor
 from geoopt import PoincareBall as GeooptPoincareBall
 from geoopt.optim import RiemannianAdam, RiemannianSGD
 import torch
 
-# Global manifold cache for efficiency - keyed by (curvature, device)
+# Global manifold cache keyed by (curvature, device)
 _manifold_cache: dict[tuple[float, str], GeooptPoincareBall] = {}
 RiemannianOptimizer = Union[RiemannianAdam, RiemannianSGD]
 
 
 def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str | None = None) -> GeooptPoincareBall:
-    """Get a PoincareBall manifold with specified curvature and device.
+    """Return a cached PoincareBall manifold for (curvature, device).
 
-    IMPORTANT: Always pass device explicitly via `device=x.device` to ensure
-    the manifold's internal tensors are on the correct device. Using device=None
-    defaults to CPU which may cause device mismatch errors.
-
-    Args:
-        c: Curvature parameter (c > 0 for hyperbolic space)
-        device: Device for manifold tensors. Pass tensor.device to match tensor.
-                Defaults to CPU if None (not recommended for GPU training).
-
-    Returns:
-        geoopt.PoincareBall manifold with internal tensors on the specified device
+    Always pass device=tensor.device explicitly to avoid CPU/GPU mismatches.
+    Tensor curvature is keyed by id() — not c.item() — to prevent memory
+    leaks and gradient breaks when the parameter value drifts across batches.
     """
-    # If c is a tensor (learnable curvature), we must key by its object ID
-    # to avoid a memory leak. Keying by c.item() creates a new manifold
-    # instance every batch as the value drifts, leaking memory and
-    # breaking the gradient flow.
     c_clamped: Union[torch.Tensor, float]
     if isinstance(c, torch.Tensor):
         c_clamped = c.clamp(min=1e-6)
-        # Use object ID for cache key (stable for the lifetime of the parameter)
         c_key: Union[float, int] = id(c)
     else:
         c_val = max(float(c), 1e-6)
         c_clamped = c_val
         c_key = c_val
 
-    # Normalize device to string for cache key
     if device is None:
         device_str = "cpu"
     elif isinstance(device, torch.device):
@@ -85,11 +53,7 @@ def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str
 
     cache_key = (c_key, device_str)
     if cache_key not in _manifold_cache:
-        # Use the clamped curvature for the manifold instance.
-        # This allows gradients to flow if c is a learnable parameter.
         manifold = geoopt.PoincareBall(c=c_clamped)
-        # Move entire manifold (including k buffer) to the target device
-        # PoincareBall is an nn.Module, so .to() works
         if device_str != "cpu":
             manifold = manifold.to(device_str)
         _manifold_cache[cache_key] = manifold
@@ -98,246 +62,83 @@ def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str
 
 
 def poincare_distance(x: torch.Tensor, y: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, keepdim: bool = False) -> torch.Tensor:
-    """Compute Poincare distance between points.
-
-    Uses geoopt for numerical stability.
-
-    Args:
-        x: First set of points, shape (..., dim)
-        y: Second set of points, shape (..., dim)
-        c: Curvature parameter
-        keepdim: Whether to keep the last dimension
-
-    Returns:
-        Poincare distances, shape (...) or (..., 1) if keepdim
-    """
-    manifold = get_manifold(c, device=x.device)
-    return manifold.dist(x, y, keepdim=keepdim)
+    """Poincaré geodesic distance between x and y."""
+    return get_manifold(c, device=x.device).dist(x, y, keepdim=keepdim)
 
 
 def hyperbolic_radius(z: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, keepdim: bool = False) -> torch.Tensor:
-    """Compute hyperbolic distance from origin (radius in Poincaré ball).
-
-    This is the canonical way to compute radii for hierarchy losses.
-    Avoids creating temporary zero tensors and ensures correct device handling.
-
-    The hyperbolic radius is NOT the same as Euclidean norm. Near the boundary,
-    hyperbolic radius grows faster than Euclidean norm due to the metric.
-
-    Args:
-        z: Points on Poincaré ball, shape (..., dim)
-        c: Curvature parameter
-        keepdim: Whether to keep the last dimension
-
-    Returns:
-        Hyperbolic radii (distances from origin), shape (...) or (..., 1)
-
-    Example:
-        >>> z = model.encode(x)  # Get hyperbolic embeddings
-        >>> radii = hyperbolic_radius(z, c=1.0)  # Compute radii for loss
-    """
-    manifold = get_manifold(c, device=z.device)
-    return manifold.dist0(z, keepdim=keepdim)
+    """Hyperbolic distance from the origin (canonical radius for hierarchy losses)."""
+    return get_manifold(c, device=z.device).dist0(z, keepdim=keepdim)
 
 
 def project_to_poincare(z: torch.Tensor, max_norm: float = 0.95, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
-    """Project points onto the Poincare ball.
-
-    Uses geoopt.projx for stability at boundary.
-
-    Args:
-        z: Points to project, shape (..., dim)
-        max_norm: Maximum norm (< 1/sqrt(c))
-        c: Curvature parameter
-
-    Returns:
-        Projected points on Poincare ball
-    """
+    """Project points onto the Poincaré ball with optional max_norm constraint."""
     manifold = get_manifold(c, device=z.device)
-    # geoopt's projx clamps to 1-eps boundary
     z_proj = manifold.projx(z)
-
-    # Apply additional max_norm constraint if needed
     norm = torch.norm(z_proj, dim=-1, keepdim=True).clamp(min=1e-10)
-    scale = (max_norm / norm).clamp(max=1.0)
-    return z_proj * scale
+    return z_proj * (max_norm / norm).clamp(max=1.0)
 
 
 def exp_map_zero(v: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
-    """Exponential map from tangent space at origin to Poincare ball.
-
-    exp_0(v) = tanh(sqrt(c) * ||v||) * v / (sqrt(c) * ||v||)
-
-    Args:
-        v: Tangent vectors at origin, shape (..., dim)
-        c: Curvature parameter
-
-    Returns:
-        Points on Poincare ball
-    """
+    """Exponential map at the origin: tangent space → Poincaré ball."""
     manifold = get_manifold(c, device=v.device)
-    origin = torch.zeros_like(v)
-    return manifold.expmap(origin, v)
+    return manifold.expmap(torch.zeros_like(v), v)
 
 
 def log_map_zero(z: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, max_norm: float | None = None) -> torch.Tensor:
-    """Logarithmic map from Poincare ball to tangent space at origin.
+    """Logarithmic map at the origin: Poincaré ball → tangent space.
 
-    log_0(z) = arctanh(sqrt(c) * ||z||) * z / (sqrt(c) * ||z||)
-
-    Args:
-        z: Points on Poincare ball, shape (..., dim)
-        c: Curvature parameter
-        max_norm: Maximum norm (for clamping near boundary). Points with
-                  norm > max_norm are rescaled before logmap to avoid
-                  numerical instability near the boundary (arctanh diverges).
-                  If None, defaults to ball_radius - 1e-5.
-
-    Returns:
-        Tangent vectors at origin
+    Clamps z to max_norm before logmap to avoid arctanh divergence near the
+    boundary. Defaults to ball_radius - 1e-5 = 1/sqrt(c) - 1e-5.
     """
-    # Default: clamp just inside the ball boundary (1/sqrt(c))
     ball_radius = 1.0 / (c ** 0.5)
-    effective_max_norm = max_norm if max_norm is not None else ball_radius - 1e-5
-    # Never exceed ball boundary regardless of what caller passes
-    effective_max_norm = min(effective_max_norm, ball_radius - 1e-5)
-
+    effective_max_norm = min(
+        max_norm if max_norm is not None else ball_radius - 1e-5,
+        ball_radius - 1e-5,
+    )
     norm = torch.norm(z, dim=-1, keepdim=True).clamp(min=1e-10)
-    scale = (effective_max_norm / norm).clamp(max=1.0)
-    z_clamped = z * scale
-
+    z_clamped = z * (effective_max_norm / norm).clamp(max=1.0)
     manifold = get_manifold(c, device=z.device)
-    origin = torch.zeros_like(z_clamped)
-    return manifold.logmap(origin, z_clamped)
+    return manifold.logmap(torch.zeros_like(z_clamped), z_clamped)
 
 
 def mobius_add(x: torch.Tensor, y: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
-    """Mobius addition on Poincare ball.
-
-    x (+) y = ((1 + 2c<x,y> + c||y||^2)x + (1 - c||x||^2)y) /
-              (1 + 2c<x,y> + c^2||x||^2||y||^2)
-
-    Args:
-        x: First operand, shape (..., dim)
-        y: Second operand, shape (..., dim)
-        c: Curvature parameter
-
-    Returns:
-        Result of Mobius addition
-    """
-    manifold = get_manifold(c, device=x.device)
-    return manifold.mobius_add(x, y)
+    """Möbius addition on the Poincaré ball."""
+    return get_manifold(c, device=x.device).mobius_add(x, y)
 
 
 def lambda_x(x: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, keepdim: bool = True) -> torch.Tensor:
-    """Compute conformal factor lambda_x = 2 / (1 - c * ||x||^2).
-
-    This factor relates Euclidean and Riemannian metrics at point x.
-
-    Args:
-        x: Points on Poincare ball, shape (..., dim)
-        c: Curvature parameter
-        keepdim: Whether to keep last dimension
-
-    Returns:
-        Conformal factors
-    """
-    manifold = get_manifold(c, device=x.device)
-    return manifold.lambda_x(x, keepdim=keepdim)
+    """Conformal factor λ_x = 2 / (1 - c‖x‖²)."""
+    return get_manifold(c, device=x.device).lambda_x(x, keepdim=keepdim)
 
 
 def parallel_transport(x: torch.Tensor, y: torch.Tensor, v: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
-    """Parallel transport tangent vector v from x to y.
-
-    Args:
-        x: Source point, shape (..., dim)
-        y: Target point, shape (..., dim)
-        v: Tangent vector at x, shape (..., dim)
-        c: Curvature parameter
-
-    Returns:
-        Transported tangent vector at y
-    """
-    manifold = get_manifold(c, device=x.device)
-    return manifold.transp(x, y, v)
+    """Parallel transport tangent vector v from x to y."""
+    return get_manifold(c, device=x.device).transp(x, y, v)
 
 
 def geodesic(x: torch.Tensor, y: torch.Tensor, t: float, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
-    """Interpolate along geodesic from x to y at parameter t.
-
-    The geodesic is the shortest path between two points on the Poincaré ball.
-    Unlike linear interpolation, this follows the curved manifold.
-
-    Args:
-        x: Start point on Poincaré ball, shape (..., dim)
-        y: End point on Poincaré ball, shape (..., dim)
-        t: Interpolation parameter in [0, 1]. t=0 gives x, t=1 gives y
-        c: Curvature parameter
-
-    Returns:
-        Point on geodesic at parameter t
-    """
-    manifold = get_manifold(c, device=x.device)
-    return manifold.geodesic(t, x, y)
+    """Interpolate along the geodesic from x to y at parameter t ∈ [0, 1]."""
+    return get_manifold(c, device=x.device).geodesic(t, x, y)
 
 
 def geodesic_interpolation(x: torch.Tensor, y: torch.Tensor, steps: int = 10, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
-    """Generate points along geodesic from x to y.
-
-    Useful for visualization and analysis of paths between embeddings.
-
-    Args:
-        x: Start point on Poincaré ball, shape (..., dim)
-        y: End point on Poincaré ball, shape (..., dim)
-        steps: Number of interpolation steps
-        c: Curvature parameter
-
-    Returns:
-        Points along geodesic, shape (steps, ..., dim)
-    """
+    """Generate `steps` evenly spaced points along the geodesic from x to y."""
     manifold = get_manifold(c, device=x.device)
     t_values = torch.linspace(0, 1, steps, device=x.device, dtype=x.dtype)
     return torch.stack([manifold.geodesic(t.item(), x, y) for t in t_values])
 
 
 def create_manifold_parameter(data: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, requires_grad: bool = True) -> ManifoldParameter:
-    """Create a learnable parameter that lives on the Poincare ball.
-
-    This wraps a tensor as a ManifoldParameter, which:
-    - Automatically projects data onto the manifold
-    - Enables Riemannian gradient updates via RiemannianAdam
-    - Handles boundary conditions automatically
-
-    Args:
-        data: Initial data (will be projected to manifold)
-        c: Curvature parameter
-        requires_grad: Whether parameter requires gradients
-
-    Returns:
-        ManifoldParameter on the Poincare ball
-    """
+    """Learnable ManifoldParameter on the Poincaré ball (projected on creation)."""
     manifold = get_manifold(c, device=data.device)
-    # Project data onto manifold for safety
-    data_proj = manifold.projx(data)
-    return ManifoldParameter(data_proj, manifold=manifold, requires_grad=requires_grad)
+    return ManifoldParameter(manifold.projx(data), manifold=manifold, requires_grad=requires_grad)
 
 
 def create_manifold_tensor(data: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> ManifoldTensor:
-    """Create a non-learnable tensor on the Poincare ball.
-
-    Like ManifoldParameter but without gradients. Useful for
-    intermediate computations that should respect manifold geometry.
-
-    Args:
-        data: Initial data (will be projected to manifold)
-        c: Curvature parameter
-
-    Returns:
-        ManifoldTensor on the Poincare ball
-    """
+    """Non-learnable ManifoldTensor on the Poincaré ball (projected on creation)."""
     manifold = get_manifold(c, device=data.device)
-    data_proj = manifold.projx(data)
-    return ManifoldTensor(data_proj, manifold=manifold)
+    return ManifoldTensor(manifold.projx(data), manifold=manifold)
 
 
 def get_riemannian_optimizer(
@@ -346,68 +147,15 @@ def get_riemannian_optimizer(
     optimizer_type: str = "adam",
     **kwargs: Any,
 ) -> RiemannianOptimizer:
-    """Get a Riemannian optimizer for hyperbolic parameters.
-
-    Args:
-        params: Model parameters
-        lr: Learning rate
-        optimizer_type: 'adam' or 'sgd'
-        **kwargs: Additional optimizer arguments
-
-    Returns:
-        Riemannian optimizer
-    """
+    """Return RiemannianAdam (default) or RiemannianSGD for the given params."""
     if optimizer_type == "adam":
         return RiemannianAdam(params, lr=lr, **kwargs)
     elif optimizer_type == "sgd":
         return RiemannianSGD(params, lr=lr, **kwargs)
-
     raise ValueError(f"Unknown optimizer type: {optimizer_type}")
 
 
 def poincare_distance_matrix(z: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
-    """Compute all pairwise Poincare distances (vectorized).
-
-    Uses geoopt for numerical stability at the ball boundary.
-
-    Args:
-        z: Points on Poincare ball, shape (n, dim)
-        c: Curvature parameter
-
-    Returns:
-        Distance matrix of shape (n, n)
-    """
+    """Compute all (n, n) pairwise Poincaré distances (vectorized)."""
     manifold = get_manifold(c, device=z.device)
-
-    # Expand for pairwise computation: (n, 1, dim) and (1, n, dim)
-    z_i = z.unsqueeze(1)  # (n, 1, dim)
-    z_j = z.unsqueeze(0)  # (1, n, dim)
-
-    # Use geoopt's stable distance computation
-    # Broadcasting: (n, 1, dim) vs (1, n, dim) -> (n, n)
-    return manifold.dist(z_i, z_j, keepdim=False)
-
-
-__all__ = [
-    # Core functions (actively used)
-    "get_manifold",
-    "poincare_distance",
-    "hyperbolic_radius",
-    "exp_map_zero",
-    "log_map_zero",
-    "lambda_x",
-    "get_riemannian_optimizer",
-    "ManifoldParameter",
-    # Utility functions (available but not currently used)
-    "poincare_distance_matrix",
-    "project_to_poincare",
-    "mobius_add",
-    "parallel_transport",
-    "geodesic",
-    "geodesic_interpolation",
-    "create_manifold_parameter",
-    "create_manifold_tensor",
-    "ManifoldTensor",
-    "RiemannianAdam",
-    "RiemannianSGD",
-]
+    return manifold.dist(z.unsqueeze(1), z.unsqueeze(0), keepdim=False)

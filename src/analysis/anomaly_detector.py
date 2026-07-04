@@ -10,7 +10,7 @@ from typing import Dict
 import numpy as np
 import torch
 
-from src.geometry.poincare import get_manifold, poincare_distance_matrix
+from src.geometry import get_manifold, poincare_distance_matrix
 
 
 class AnomalyDetector:
@@ -33,13 +33,7 @@ class AnomalyDetector:
         self.threshold: float | None = None
 
     def fit(self, normal_embeddings: torch.Tensor, k: int = 5, sigma_factor: float = 3.0) -> None:
-        """Calibrate threshold from k-NN distances in the normal embedding set.
-
-        Args:
-            normal_embeddings: Points on the Poincaré ball, shape (N, D).
-            k: Number of nearest neighbours to average over.
-            sigma_factor: Threshold = mean + sigma_factor * std of kNN distances.
-        """
+        """Calibrate threshold = mean + sigma_factor * std of mean-kNN distances over normal_embeddings."""
         self.z_norm = normal_embeddings.to(self.device)
         n_norm = self.z_norm.shape[0]
 
@@ -59,17 +53,7 @@ class AnomalyDetector:
               f"(n={n_norm}, k={k_actual}, sigma_factor={sigma_factor})")
 
     def detect(self, query_embeddings: torch.Tensor, k: int = 5) -> Dict[str, np.ndarray]:
-        """Classify query embeddings as normal or anomalous.
-
-        Args:
-            query_embeddings: Points on the Poincaré ball, shape (M, D).
-            k: Number of nearest neighbours to average over.
-
-        Returns:
-            Dict with:
-                - ``is_anomaly``: bool array of shape (M,)
-                - ``min_dist``: float array of mean kNN distances, shape (M,)
-        """
+        """Return {'is_anomaly': (M,) bool, 'min_dist': (M,) float} for each query point."""
         if self.z_norm is None or self.threshold is None:
             raise ValueError("AnomalyDetector must be fitted before calling detect().")
 

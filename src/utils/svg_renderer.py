@@ -12,7 +12,9 @@ Zero dependencies beyond numpy.
 from typing import List, Optional
 
 import numpy as np
+import torch
 
+from src.core import TERNARY
 from src.utils.geodesic_utils import get_geodesic_arc
 
 
@@ -65,9 +67,6 @@ def render_poincare_disk_svg(
     # 1. Tree Edges (Geodesic Arcs)
     idx_map = {idx: i for i, idx in enumerate(indices)} if indices is not None else None
     if show_tree and indices is not None and idx_map:
-        import torch
-
-        from src.core import TERNARY
         parents = TERNARY.parent(torch.from_numpy(indices)).numpy()
 
         for i, p_idx in enumerate(parents):
@@ -104,9 +103,6 @@ def render_poincare_disk_svg(
 
     # 3. Prefix Territory Shading
     if indices is not None:
-        import torch
-
-        from src.core import TERNARY
         prefix_classes = TERNARY.digit_prefix_class(torch.from_numpy(indices), k=3).numpy()
         unique_prefixes = np.unique(prefix_classes)
         for p in unique_prefixes:

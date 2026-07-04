@@ -37,8 +37,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .utils import compute_coverage_loss, make_zero_loss, weight_to_log_sigma
+
 from src.core.contracts import CombinedLossOutput
-from src.core.ternary import get_valuation_fn
+from src.core import get_valuation_fn
 
 from .algebraic import (
     AlgebraicAdditionLoss,
@@ -63,6 +65,7 @@ from .radius_defaults import (
 from .rank import GlobalRankLoss
 from .contrastive import HyperbolicContrastiveLoss
 from .surrogate import SurrogatePropertyLoss, SurrogateRegressor
+
 
 
 
@@ -503,20 +506,6 @@ class CombinedLoss(nn.Module):
         The -log_sigma regularization prevents weights from collapsing to zero.
         Initial log_sigma=0 gives effective_weight=0.5, which is a neutral starting point.
         """
-        # Map from loss name to initial log_sigma (derived from config weights)
-        # log_sigma = -0.5 * log(2 * weight) so that 1/(2*exp(2*log_sigma)) = weight
-        import math
-
-        def weight_to_log_sigma(w: float) -> float:
-            """Convert fixed weight to initial log_sigma."""
-            # effective_weight = 1 / (2 * exp(2 * log_sigma))
-            # w = 1 / (2 * exp(2 * s))
-            # 2w = 1 / exp(2s)
-            # exp(2s) = 1 / (2w)
-            # 2s = -log(2w)
-            # s = -0.5 * log(2w)
-            return -0.5 * math.log(max(2 * w, 1e-6))
-
         # RichHierarchy sub-components
         if self.rich_hierarchy is not None:
             self.log_sigma_hierarchy = nn.Parameter(
@@ -596,6 +585,138 @@ class CombinedLoss(nn.Module):
         # (which would make the weight go to zero)
         return weight * loss - log_sigma
 
+    def _apply_weight(
+        self,
+        loss_val: torch.Tensor,
+        base_weight: float,
+        log_sigma: Optional[nn.Parameter],
+        epoch: int,
+        device: torch.device,
+        phase_start: int = 0,
+    ) -> torch.Tensor:
+        """Apply weight and phase gating to a loss value."""
+        if epoch < phase_start:
+            return make_zero_loss(device)
+        if self.use_learnable_weights and log_sigma is not None:
+            return self._weighted_loss(loss_val, log_sigma)
+        return base_weight * loss_val
+
+    def _forward_biological_losses(
+        self,
+        z_hyp: torch.Tensor,
+        indices: torch.Tensor,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        epoch: int,
+        cur_c: Any,
+        losses: CombinedLossOutput,
+    ) -> torch.Tensor:
+        """Compute losses 1–5: the radial/hierarchy group, gated by biological_losses_active."""
+        device = z_hyp.device
+        total = make_zero_loss(device)
+
+        if not self.biological_losses_active:
+            return total
+
+        # 1. RichHierarchyLoss
+        if self.rich_hierarchy is not None and epoch >= self.rich_hierarchy_phase_start:
+            _call_logits = logits if self.rich_hierarchy_weights.get('coverage', 0.0) > 0.0 else None
+            rich_raw, rich_metrics = self.rich_hierarchy(
+                z_hyp, indices, logits=_call_logits, targets=targets, curvature=cur_c
+            )
+            ls = self.log_sigma_hierarchy if self.use_learnable_weights else None
+            lc = self.log_sigma_coverage if self.use_learnable_weights else None
+            lsp = self.log_sigma_separation if self.use_learnable_weights else None
+            weighted_rich = (
+                self._apply_weight(rich_raw['hierarchy'], self.rich_hierarchy_weights.get('hierarchy', 5.0), ls, epoch, device) +
+                self._apply_weight(rich_raw['coverage'], self.rich_hierarchy_weights.get('coverage', 1.0), lc, epoch, device) +
+                self._apply_weight(rich_raw['separation'], self.rich_hierarchy_weights.get('separation', 3.0), lsp, epoch, device)
+            )
+            losses['rich_hierarchy'] = weighted_rich
+            losses['rich_hierarchy_detail'] = rich_metrics
+            total = total + weighted_rich
+
+        # 2. RadialHierarchyLoss
+        if self.radial_loss is not None and epoch >= self.radial_phase_start:
+            radial_out, radial_metrics = self.radial_loss(z_hyp, indices, curvature=cur_c)
+            losses['radial'] = radial_out
+            losses['radial_metrics'] = radial_metrics
+            ls = self.log_sigma_radial if self.use_learnable_weights else None
+            total = total + self._apply_weight(radial_out, self.radial_weight, ls, epoch, device)
+
+        # 3. PAdicGeodesicLoss
+        if self.geodesic_loss is not None and epoch >= self.geodesic_phase_start:
+            geodesic_out, geodesic_metrics = self.geodesic_loss(z_hyp, indices, curvature=cur_c)
+            losses['geodesic'] = geodesic_out
+            losses['geodesic_metrics'] = geodesic_metrics
+            ls = self.log_sigma_geodesic if self.use_learnable_weights else None
+            total = total + self._apply_weight(geodesic_out, self.geodesic_weight, ls, epoch, device)
+
+        # 4. GlobalRankLoss
+        if self.rank_loss is not None and epoch >= self.rank_phase_start:
+            rank_out, rank_metrics = self.rank_loss(z_hyp, indices, curvature=cur_c)
+            losses['rank'] = rank_out
+            losses['rank_metrics'] = rank_metrics
+            ls = self.log_sigma_rank if self.use_learnable_weights else None
+            total = total + self._apply_weight(rank_out, self.rank_weight, ls, epoch, device)
+
+        # 5. MonotonicRadialLoss
+        if self.monotonic_loss is not None and epoch >= self.monotonic_phase_start:
+            monotonic_out, monotonic_metrics = self.monotonic_loss(z_hyp, indices, curvature=cur_c)
+            losses['monotonic'] = monotonic_out
+            losses['monotonic_metrics'] = monotonic_metrics
+            ls = self.log_sigma_monotonic if self.use_learnable_weights else None
+            total = total + self._apply_weight(monotonic_out, self.monotonic_weight, ls, epoch, device)
+
+        return total
+
+    def _forward_lagrangian_penalties(
+        self,
+        dual_weights: Dict[str, List[float]],
+        losses: CombinedLossOutput,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Compute loss 8: Lagrangian dual penalties from outer-loop dual ascent."""
+        total = make_zero_loss(device)
+        lam_margin = dual_weights.get('lambda_margin', [])
+        lam_scatter = dual_weights.get('lambda_scatter', [])
+        lam_prior = dual_weights.get('lambda_prior', [])
+
+        # Margin penalties from MonotonicRadialLoss
+        if 'monotonic_metrics' in losses:
+            lag = make_zero_loss(device)
+            for v in range(9):
+                vt = losses['monotonic_metrics'].get(f'gap_viol_tensor_v{v}')
+                if vt is not None and v < len(lam_margin) and lam_margin[v] > 0.0:
+                    lag = lag + lam_margin[v] * vt
+            if lag.item() > 0.0:
+                losses['lagrangian_margin'] = lag
+                total = total + lag
+
+        # Scatter penalties from GlobalRankLoss
+        if 'rank_metrics' in losses:
+            lag = make_zero_loss(device)
+            for v in range(10):
+                st = losses['rank_metrics'].get(f'scatter_tensor_v{v}')
+                if st is not None and v < len(lam_scatter) and lam_scatter[v] > 0.0:
+                    lag = lag + lam_scatter[v] * st
+            if lag.item() > 0.0:
+                losses['lagrangian_scatter'] = lag
+                total = total + lag
+
+        # Prior norm penalties from ValuationPriorLoss
+        if 'valuation_prior_metrics' in losses:
+            lag = make_zero_loss(device)
+            for v in range(10):
+                gt = losses['valuation_prior_metrics'].get(f'vp_gap_tensor_v{v}')
+                if gt is not None and v < len(lam_prior) and lam_prior[v] > 0.0:
+                    lag = lag + lam_prior[v] * gt
+            if lag.item() > 0.0:
+                losses['lagrangian_prior'] = lag
+                total = total + lag
+
+        return total
+
     def forward(
         self,
         z_hyp: torch.Tensor,
@@ -613,78 +734,13 @@ class CombinedLoss(nn.Module):
         """Compute combined loss with curriculum-based weight scheduling."""
         device = z_hyp.device
         losses: CombinedLossOutput = {}
-        total = torch.tensor(0.0, device=device, dtype=torch.float64)
-
-        def get_weighted_loss(loss_val, base_weight, log_sigma, phase_start=0):
-            """Apply weight and phase gating."""
-            if epoch < phase_start:
-                return torch.tensor(0.0, device=device, dtype=torch.float64)
-            
-            if self.use_learnable_weights and log_sigma is not None:
-                return self._weighted_loss(loss_val, log_sigma)
-            return base_weight * loss_val
-
-        # 1. RichHierarchyLoss
         cur_c = curvature if curvature is not None else self.curvature
-        if self.rich_hierarchy is not None and epoch >= self.rich_hierarchy_phase_start and self.biological_losses_active:
-            _call_logits = (
-                logits if self.rich_hierarchy_weights.get('coverage', 0.0) > 0.0
-                else None
-            )
-            rich_raw, rich_metrics = self.rich_hierarchy(
-                z_hyp, indices, logits=_call_logits, targets=targets,
-                curvature=cur_c
-            )
+        total = make_zero_loss(device)
 
-            # Apply separate weights for components
-            weighted_rich = (
-                get_weighted_loss(rich_raw['hierarchy'], self.rich_hierarchy_weights.get('hierarchy', 5.0),
-                                 self.log_sigma_hierarchy if self.use_learnable_weights else None) +
-                get_weighted_loss(rich_raw['coverage'], self.rich_hierarchy_weights.get('coverage', 1.0),
-                                 self.log_sigma_coverage if self.use_learnable_weights else None) +
-                get_weighted_loss(rich_raw['separation'], self.rich_hierarchy_weights.get('separation', 3.0),
-                                 self.log_sigma_separation if self.use_learnable_weights else None)
-            )
+        # 1–5. Radial / hierarchy losses (gated by biological_losses_active)
+        total = total + self._forward_biological_losses(z_hyp, indices, logits, targets, epoch, cur_c, losses)
 
-            losses['rich_hierarchy'] = weighted_rich
-            losses['rich_hierarchy_detail'] = rich_metrics
-            total = total + weighted_rich
-
-        # 2. RadialHierarchyLoss
-        if self.radial_loss is not None and epoch >= self.radial_phase_start and self.biological_losses_active:
-            radial_out, radial_metrics = self.radial_loss(z_hyp, indices, curvature=cur_c)
-            losses['radial'] = radial_out
-            losses['radial_metrics'] = radial_metrics
-            total = total + get_weighted_loss(radial_out, self.radial_weight,
-                                            self.log_sigma_radial if self.use_learnable_weights else None)
-
-        # 3. PAdicGeodesicLoss
-        if self.geodesic_loss is not None and epoch >= self.geodesic_phase_start and self.biological_losses_active:
-            geodesic_out, geodesic_metrics = self.geodesic_loss(z_hyp, indices, curvature=cur_c)
-            losses['geodesic'] = geodesic_out
-            losses['geodesic_metrics'] = geodesic_metrics
-            total = total + get_weighted_loss(geodesic_out, self.geodesic_weight,
-                                            self.log_sigma_geodesic if self.use_learnable_weights else None)
-
-        # 4. GlobalRankLoss
-        if self.rank_loss is not None and epoch >= self.rank_phase_start and self.biological_losses_active:
-            rank_out, rank_metrics = self.rank_loss(z_hyp, indices, curvature=cur_c)
-            losses['rank'] = rank_out
-            losses['rank_metrics'] = rank_metrics
-            total = total + get_weighted_loss(rank_out, self.rank_weight,
-                                            self.log_sigma_rank if self.use_learnable_weights else None)
-
-        # 5. MonotonicRadialLoss
-        if self.monotonic_loss is not None and epoch >= self.monotonic_phase_start and self.biological_losses_active:
-            monotonic_out, monotonic_metrics = self.monotonic_loss(z_hyp, indices, curvature=cur_c)
-            losses['monotonic'] = monotonic_out
-            losses['monotonic_metrics'] = monotonic_metrics
-            total = total + get_weighted_loss(monotonic_out, self.monotonic_weight,
-                                            self.log_sigma_monotonic if self.use_learnable_weights else None)
-
-        # 6. KL Divergence (makes this a true VAE)
-        # Linearly ramp from 0 → full weight over kl_warmup_epochs after phase_start.
-        # warmup_epochs=0 (default) preserves the old step-function behaviour.
+        # 6. KL Divergence — linearly ramped over kl_warmup_epochs after phase_start
         kl_phase_start = self.config.get('hyperbolic_kl', {}).get('phase_start_epoch', 0)
         if self.kl_loss is not None and mu is not None and logvar is not None and epoch >= kl_phase_start:
             kl_out = self.kl_loss(mu, logvar, z_hyp, curvature=cur_c)
@@ -692,79 +748,33 @@ class CombinedLoss(nn.Module):
                 warmup_factor = min(1.0, (epoch - kl_phase_start + 1) / self.kl_warmup_epochs)
                 effective_kl_weight = self.kl_weight * warmup_factor
             else:
+                warmup_factor = 1.0
                 effective_kl_weight = self.kl_weight
-            total = total + get_weighted_loss(
-                kl_out, effective_kl_weight,
-                self.log_sigma_kl if (self.use_learnable_weights and hasattr(self, 'log_sigma_kl')) else None,
-            )
+            ls = self.log_sigma_kl if (self.use_learnable_weights and hasattr(self, 'log_sigma_kl')) else None
+            total = total + self._apply_weight(kl_out, effective_kl_weight, ls, epoch, device)
             losses['kl'] = kl_out
-            losses['kl_warmup_factor'] = warmup_factor if self.kl_warmup_epochs > 0 and not self.use_learnable_weights else 1.0
+            losses['kl_warmup_factor'] = warmup_factor
 
-        # 7. ValuationPriorLoss (valuation-conditioned μ/σ prior)
+        # 7. ValuationPriorLoss
         vp_phase_start = self.config.get('valuation_prior', {}).get('phase_start_epoch', 0)
         if self.valuation_prior is not None and mu is not None and epoch >= vp_phase_start:
             vp_out, vp_metrics = self.valuation_prior(mu, indices, logvar=logvar, curvature=cur_c)
             losses['valuation_prior'] = vp_out
             losses['valuation_prior_metrics'] = vp_metrics
-            total = total + get_weighted_loss(vp_out, self.valuation_prior_weight, None)
+            total = total + self._apply_weight(vp_out, self.valuation_prior_weight, None, epoch, device)
 
-
-        # 8. Lagrangian dual penalties (optional, from outer-loop dual ascent).
-        # Each lambda_v * violation_tensor_v term is additive and in-graph:
-        # the tensor violations come from per-level metrics dicts computed above,
-        # and lambda values are plain floats (not optimiser parameters).
+        # 8. Lagrangian dual penalties
         if dual_weights is not None:
-            lam_margin = dual_weights.get('lambda_margin', [])
-            lam_scatter = dual_weights.get('lambda_scatter', [])
-            lam_prior = dual_weights.get('lambda_prior', [])
+            total = total + self._forward_lagrangian_penalties(dual_weights, losses, device)
 
-            # Margin penalties from MonotonicRadialLoss
-            if 'monotonic_metrics' in losses:
-                mono_m = losses['monotonic_metrics']
-                lagrangian_margin_total = torch.tensor(0.0, device=device, dtype=torch.float64)
-                for v in range(9):
-                    vt = mono_m.get(f'gap_viol_tensor_v{v}')
-                    if vt is not None and v < len(lam_margin) and lam_margin[v] > 0.0:
-                        lagrangian_margin_total = lagrangian_margin_total + lam_margin[v] * vt
-                if lagrangian_margin_total.item() > 0.0:
-                    losses['lagrangian_margin'] = lagrangian_margin_total
-                    total = total + lagrangian_margin_total
-
-            # Scatter penalties from GlobalRankLoss
-            if 'rank_metrics' in losses:
-                rank_m = losses['rank_metrics']
-                lagrangian_scatter_total = torch.tensor(0.0, device=device, dtype=torch.float64)
-                for v in range(10):
-                    st = rank_m.get(f'scatter_tensor_v{v}')
-                    if st is not None and v < len(lam_scatter) and lam_scatter[v] > 0.0:
-                        lagrangian_scatter_total = lagrangian_scatter_total + lam_scatter[v] * st
-                if lagrangian_scatter_total.item() > 0.0:
-                    losses['lagrangian_scatter'] = lagrangian_scatter_total
-                    total = total + lagrangian_scatter_total
-
-            # Prior norm penalties from ValuationPriorLoss
-            if 'valuation_prior_metrics' in losses:
-                vp_m = losses['valuation_prior_metrics']
-                lagrangian_prior_total = torch.tensor(0.0, device=device, dtype=torch.float64)
-                for v in range(10):
-                    gt = vp_m.get(f'vp_gap_tensor_v{v}')
-                    if gt is not None and v < len(lam_prior) and lam_prior[v] > 0.0:
-                        lagrangian_prior_total = lagrangian_prior_total + lam_prior[v] * gt
-                if lagrangian_prior_total.item() > 0.0:
-                    losses['lagrangian_prior'] = lagrangian_prior_total
-                    total = total + lagrangian_prior_total
-
-        # 9. Within-level contrastive loss (pull same-valuation points geodesically together)
+        # 9. Within-level contrastive loss
         if self.wlc_loss is not None:
             wlc_out, wlc_metrics = self.wlc_loss(z_hyp, indices)
             losses['within_level_contrastive'] = wlc_out
             losses['wlc_metrics'] = wlc_metrics
             total = total + wlc_out
 
-        # 10. Angular coherence loss (sharpen direction sub-clusters by digit prefix)
-        # Requires r (radial component from factored latent). In non-factored mode
-        # r=None, making AC structurally inapplicable: there is no separate direction
-        # space to align, only the combined z_hyp vector.
+        # 10. Angular coherence (requires factored latent r)
         if self.angular_coherence is not None and r is not None:
             ac_out, ac_metrics = self.angular_coherence(z_hyp, r, indices, epoch)
             losses['angular_coherence'] = ac_out
@@ -785,7 +795,7 @@ class CombinedLoss(nn.Module):
                 )
                 self._ac_warned_no_r = True
 
-        # 11. AlgebraicCoherenceLoss (requires factored latent, same as AC)
+        # 11. AlgebraicCoherenceLoss (requires factored latent r)
         if self.algebraic_coherence_loss is not None and r is not None:
             alg_out, alg_metrics = self.algebraic_coherence_loss(z_hyp, r, indices, epoch)
             losses['algebraic_coherence'] = alg_out
@@ -803,30 +813,28 @@ class CombinedLoss(nn.Module):
                 )
                 self._alg_warned_no_r = True
 
-        # 12. AlgebraicAdditionLoss (requires mu and model)
-        if self.algebraic_addition_loss is not None and mu is not None and model is not None:
-            aa_out, aa_metrics = self.algebraic_addition_loss(mu, indices, model, epoch)
-            losses['algebraic_addition'] = aa_out
-            losses['alg_addition_metrics'] = aa_metrics
-            total = total + aa_out
+        # 12–14. Algebraic homomorphism losses (require mu and model)
+        if mu is not None and model is not None:
+            if self.algebraic_addition_loss is not None:
+                aa_out, aa_metrics = self.algebraic_addition_loss(mu, indices, model, epoch)
+                losses['algebraic_addition'] = aa_out
+                losses['alg_addition_metrics'] = aa_metrics
+                total = total + aa_out
 
-        # 13. AlgebraicMultiplicationLoss (requires mu and model)
-        if self.algebraic_multiplication_loss is not None and mu is not None and model is not None:
-            am_out, am_metrics = self.algebraic_multiplication_loss(mu, indices, model, epoch)
-            losses['algebraic_multiplication'] = am_out
-            losses['alg_multiplication_metrics'] = am_metrics
-            total = total + am_out
+            if self.algebraic_multiplication_loss is not None:
+                am_out, am_metrics = self.algebraic_multiplication_loss(mu, indices, model, epoch)
+                losses['algebraic_multiplication'] = am_out
+                losses['alg_multiplication_metrics'] = am_metrics
+                total = total + am_out
 
-        # 14. AlgebraicDistributiveLoss (requires mu and model)
-        if self.algebraic_distributive_loss is not None and mu is not None and model is not None:
-            ad_out, ad_metrics = self.algebraic_distributive_loss(mu, indices, model, epoch)
-            losses['algebraic_distributive'] = ad_out
-            losses['alg_distributive_metrics'] = ad_metrics
-            total = total + ad_out
+            if self.algebraic_distributive_loss is not None:
+                ad_out, ad_metrics = self.algebraic_distributive_loss(mu, indices, model, epoch)
+                losses['algebraic_distributive'] = ad_out
+                losses['alg_distributive_metrics'] = ad_metrics
+                total = total + ad_out
 
-        # 15. Fallback: Basic coverage loss if no rich_hierarchy, or if rich_hierarchy is gated (inactive)
+        # 15. Fallback coverage loss when rich_hierarchy is absent or gated
         if self.rich_hierarchy is None or not self.biological_losses_active:
-            # Respect coverage_weight from config even if rich_hierarchy is disabled
             coverage_weight = self.config.get('rich_hierarchy', {}).get('coverage_weight', 1.0)
             if coverage_weight > 0.0:
                 coverage_loss = self._compute_coverage_loss(logits, targets)
@@ -838,55 +846,22 @@ class CombinedLoss(nn.Module):
             hc_out, hc_metrics = self.hyperbolic_contrastive(z_hyp, indices, curvature=cur_c)
             losses['hyperbolic_contrastive'] = hc_out
             losses['hyperbolic_contrastive_metrics'] = hc_metrics
-            total = total + get_weighted_loss(hc_out, self.hyperbolic_contrastive_weight,
-                                             self.log_sigma_contrastive if (self.use_learnable_weights and hasattr(self, 'log_sigma_contrastive')) else None)
+            ls = self.log_sigma_contrastive if (self.use_learnable_weights and hasattr(self, 'log_sigma_contrastive')) else None
+            total = total + self._apply_weight(hc_out, self.hyperbolic_contrastive_weight, ls, epoch, device)
 
         # 17. Surrogate Property Loss
         if self.surrogate_loss is not None and mu is not None and epoch >= self.surrogate_phase_start:
             sp_out, sp_metrics = self.surrogate_loss(mu, targets)
             losses['surrogate_property'] = sp_out
             losses['surrogate_property_metrics'] = sp_metrics
-            total = total + get_weighted_loss(sp_out, self.surrogate_weight,
-                                             self.log_sigma_surrogate if (self.use_learnable_weights and hasattr(self, 'log_sigma_surrogate')) else None)
+            ls = self.log_sigma_surrogate if (self.use_learnable_weights and hasattr(self, 'log_sigma_surrogate')) else None
+            total = total + self._apply_weight(sp_out, self.surrogate_weight, ls, epoch, device)
 
         losses['total'] = total
         return losses
 
-    def _compute_coverage_loss(
-        self,
-        logits: torch.Tensor,
-        targets: torch.Tensor,
-    ) -> torch.Tensor:
-        """Compute basic coverage (reconstruction) loss.
-
-        Args:
-            logits: Decoder logits (B, 27) or (B, 9, 3)
-            targets: Target ternary operations (B, 9) with values in {-1,0,1}
-
-        Returns:
-            CrossEntropy loss
-        """
-        device = logits.device
-
-        # Handle different logit shapes
-        if logits.shape[-1] == 3:
-            # (B, 9, 3) format
-            targets_shifted = (targets + 1).long().clamp(0, 2)
-            return F.cross_entropy(
-                logits.view(-1, 3),
-                targets_shifted.view(-1),
-            )
-        elif logits.shape[-1] == 27:
-            # (B, 27) format - reshape to (B, 9, 3)
-            logits_reshaped = logits.view(-1, 9, 3)
-            targets_shifted = (targets + 1).long().clamp(0, 2)
-            return F.cross_entropy(
-                logits_reshaped.permute(0, 2, 1),  # (B, 3, 9)
-                targets_shifted,  # (B, 9)
-            )
-        else:
-            # Unsupported shape - return zero loss with warning
-            return torch.tensor(0.0, device=device, dtype=torch.float64)
+    def _compute_coverage_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        return compute_coverage_loss(logits, targets)
 
     def get_enabled_losses(self) -> List[str]:
         """Return list of enabled loss names."""

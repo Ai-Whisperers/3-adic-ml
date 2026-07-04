@@ -5,7 +5,8 @@
 
 """Valuation-conditioned prior losses for p-adic VAE."""
 
-from typing import Any, Optional, Tuple, Union
+import math
+from typing import Any, cast, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -13,7 +14,7 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..utils.scatter_utils import level_has_data, level_scatter_mean
 from .base import HierarchyLossBase, MetricsDict
-from .utils import _exponential_target_radii
+from .utils import _exponential_target_radii, make_zero_loss
 
 
 class ValuationPriorLoss(HierarchyLossBase):
@@ -80,11 +81,9 @@ class ValuationPriorLoss(HierarchyLossBase):
             sqrt_c = torch.sqrt(curvature.clamp(min=1e-6))
             target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c
         else:
-            import math
             sqrt_c_float = math.sqrt(max(curvature, 1e-6))
             target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c_float
 
-        from typing import cast
         vals_raw = self._valuation_fn(batch_indices)
         valuations = cast(torch.Tensor, vals_raw).long().clamp(0, self.max_valuation)
 
@@ -94,7 +93,7 @@ class ValuationPriorLoss(HierarchyLossBase):
         mean_loss = F.mse_loss(mu_norms, target_norms)
 
         # 2. Variance Prior Loss
-        var_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
+        var_loss = make_zero_loss(device)
         avg_sigma = 0.0
         if logvar is not None:
             logvar = logvar.to(torch.float64)
@@ -108,7 +107,6 @@ class ValuationPriorLoss(HierarchyLossBase):
         loss = mean_loss + var_loss
 
         dim_size = self.max_valuation + 1
-        from typing import cast
         valuations_long = cast(torch.LongTensor, valuations)
         present_mask = level_has_data(valuations_long, dim_size=dim_size)
         mean_norms_all = level_scatter_mean(mu_norms, valuations_long, dim_size=dim_size)

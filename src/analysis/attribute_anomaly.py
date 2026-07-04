@@ -1,14 +1,10 @@
 import torch
 import numpy as np
 from scripts.data.prepare_codon_data import seq_to_ternary_index
-from src.core import TERNARY
+
 
 def compute_attribution(sequence: str, model, detector):
-    """
-    Computes importance scores for each nucleotide position using perturbation.
-    """
-    NUC_MAP = {'A': 0, 'C': 1, 'G': 2, 'T': 2} # Consistent with trainer
-    
+    """Importance score per nucleotide position via perturbation analysis."""
     def get_dist(seq):
         idx = torch.tensor([seq_to_ternary_index(seq)])
         with torch.no_grad():

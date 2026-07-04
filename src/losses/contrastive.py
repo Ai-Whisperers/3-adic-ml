@@ -13,6 +13,7 @@ import torch.nn as nn
 from ..core import TERNARY
 from ..geometry.poincare import get_manifold
 from .base import HierarchyLossBase, MetricsDict
+from .utils import make_zero_loss
 
 
 class HyperbolicContrastiveLoss(HierarchyLossBase):
@@ -51,7 +52,7 @@ class HyperbolicContrastiveLoss(HierarchyLossBase):
         cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
-            return torch.tensor(0.0, device=device, dtype=torch.float64), {
+            return make_zero_loss(device), {
                 "n_pairs": 0,
                 "n_pos_pairs": 0,
                 "contrastive_loss": 0.0,

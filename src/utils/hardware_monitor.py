@@ -29,28 +29,13 @@ except ImportError:
 
 
 class HardwareMonitor:
-    """Monitors GPU and system memory usage during training.
-
-    Provides methods for tracking memory utilization and generating
-    formatted status strings for terminal output.
-
-    Attributes:
-        device: PyTorch device being monitored
-        warn_threshold: Fraction (0-1) at which to warn about memory usage
-        is_cuda: Whether device is CUDA-enabled
-    """
+    """GPU and system memory monitor for terminal status strings and OOM diagnostics."""
 
     def __init__(
         self,
         device: torch.device,
         warn_threshold: float = 0.9,
     ):
-        """Initialize hardware monitor.
-
-        Args:
-            device: PyTorch device to monitor (cuda:X or cpu)
-            warn_threshold: Fraction of GPU memory to trigger warning (0-1)
-        """
         self.device = device
         self.warn_threshold = warn_threshold
         self.is_cuda = device.type == 'cuda' and torch.cuda.is_available()
@@ -62,15 +47,7 @@ class HardwareMonitor:
             self.gpu_total_bytes = 0
 
     def get_gpu_memory_mb(self) -> Dict[str, float]:
-        """Get current GPU memory usage in MB.
-
-        Returns:
-            Dict with keys:
-                - allocated: Currently allocated tensor memory
-                - reserved: Total CUDA memory reserved
-                - peak: Maximum allocated since last reset
-                - total: Total GPU memory available
-        """
+        """GPU memory in MB: keys allocated, reserved, peak, total."""
         if not self.is_cuda:
             return {'allocated': 0.0, 'reserved': 0.0, 'peak': 0.0, 'total': 0.0}
 
@@ -87,20 +64,12 @@ class HardwareMonitor:
         }
 
     def get_gpu_memory_gb(self) -> Dict[str, float]:
-        """Get current GPU memory usage in GB.
-
-        Returns:
-            Same as get_gpu_memory_mb() but in gigabytes.
-        """
+        """Same as get_gpu_memory_mb() but in gigabytes."""
         mb = self.get_gpu_memory_mb()
         return {k: v / 1024 for k, v in mb.items()}
 
     def get_gpu_utilization_pct(self) -> float:
-        """Get GPU memory utilization as percentage.
-
-        Returns:
-            Allocated memory as percentage of total (0-100)
-        """
+        """Allocated GPU memory as percentage of total (0-100)."""
         if not self.is_cuda or self.gpu_total_bytes == 0:
             return 0.0
 
@@ -108,17 +77,7 @@ class HardwareMonitor:
         return 100.0 * allocated / self.gpu_total_bytes
 
     def get_ram_usage_mb(self) -> Dict[str, float]:
-        """Get current RAM usage in MB.
-
-        Requires psutil to be installed.
-
-        Returns:
-            Dict with keys:
-                - used: Currently used RAM
-                - available: Available RAM
-                - total: Total RAM
-                - percent: Usage percentage (0-100)
-        """
+        """RAM usage in MB: keys used, available, total, percent. Requires psutil."""
         if not PSUTIL_AVAILABLE:
             return {'used': 0.0, 'available': 0.0, 'total': 0.0, 'percent': 0.0}
 
@@ -131,11 +90,7 @@ class HardwareMonitor:
         }
 
     def get_ram_usage_gb(self) -> Dict[str, float]:
-        """Get current RAM usage in GB.
-
-        Returns:
-            Same as get_ram_usage_mb() but in gigabytes (except percent).
-        """
+        """Same as get_ram_usage_mb() but in gigabytes (except percent)."""
         mb = self.get_ram_usage_mb()
         return {
             'used': mb['used'] / 1024,
@@ -145,11 +100,7 @@ class HardwareMonitor:
         }
 
     def get_gpu_status_string(self) -> str:
-        """Get formatted GPU status string.
-
-        Returns:
-            String like 'GPU: 2.1/6.0GB (35%)'
-        """
+        """Return string like 'GPU: 2.1/6.0GB (35%)'."""
         if not self.is_cuda:
             return 'GPU: N/A'
 
@@ -159,11 +110,7 @@ class HardwareMonitor:
         return f"GPU: {mem['allocated']:.1f}/{mem['total']:.1f}GB ({pct:.0f}%)"
 
     def get_ram_status_string(self) -> str:
-        """Get formatted RAM status string.
-
-        Returns:
-            String like 'RAM: 8.2/32.0GB (26%)'
-        """
+        """Return string like 'RAM: 8.2/32.0GB (26%)'."""
         if not PSUTIL_AVAILABLE:
             return 'RAM: N/A (psutil not installed)'
 
@@ -171,11 +118,7 @@ class HardwareMonitor:
         return f"RAM: {mem['used']:.1f}/{mem['total']:.1f}GB ({mem['percent']:.0f}%)"
 
     def get_status_string(self) -> str:
-        """Get combined hardware status string.
-
-        Returns:
-            String like 'GPU: 2.1/6.0GB (35%) | RAM: 8.2/32.0GB (26%)'
-        """
+        """Return 'GPU: ... | RAM: ...' combined status string."""
         parts = [self.get_gpu_status_string()]
 
         if PSUTIL_AVAILABLE:
@@ -184,11 +127,7 @@ class HardwareMonitor:
         return ' | '.join(parts)
 
     def get_peak_status_string(self) -> str:
-        """Get status string including peak GPU memory.
-
-        Returns:
-            String like 'GPU: 2.1/6.0GB (35%) peak=2.8GB | RAM: 8.2/32.0GB (26%)'
-        """
+        """Like get_status_string() but includes peak GPU memory."""
         if not self.is_cuda:
             return self.get_status_string()
 
@@ -203,11 +142,7 @@ class HardwareMonitor:
         return ' | '.join(parts)
 
     def check_memory_warning(self) -> Optional[str]:
-        """Check if memory usage exceeds warning threshold.
-
-        Returns:
-            Warning message if memory > threshold, None otherwise
-        """
+        """Return a warning string if GPU memory > warn_threshold, else None."""
         if not self.is_cuda:
             return None
 
@@ -223,22 +158,12 @@ class HardwareMonitor:
         return None
 
     def reset_peak_stats(self) -> None:
-        """Reset peak memory tracking.
-
-        Resets the max_memory_allocated counter for this device.
-        """
+        """Reset max_memory_allocated counter for this device."""
         if self.is_cuda:
             torch.cuda.reset_peak_memory_stats(self.device)
 
     def get_oom_diagnostic(self, batch_size: int = 0) -> str:
-        """Get diagnostic information for OOM debugging.
-
-        Args:
-            batch_size: Current batch size for suggestion
-
-        Returns:
-            Multi-line diagnostic string
-        """
+        """Multi-line diagnostic string with GPU/RAM state and batch size suggestion."""
         lines = []
 
         if self.is_cuda:

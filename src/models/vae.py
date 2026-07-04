@@ -50,6 +50,8 @@ from typing import Any, Dict, List, Tuple
 import torch
 import torch.nn as nn
 
+from src.core import TERNARY
+from src.core.contracts import VAEOutput
 from src.models.hyperbolic_projection import DualHyperbolicProjection
 
 # =============================================================================
@@ -245,9 +247,6 @@ def _build_decoder(
 # =============================================================================
 # TernaryVAEV6
 # =============================================================================
-
-
-from src.core.contracts import VAEOutput
 
 
 class TernaryVAEV6(nn.Module):
@@ -464,8 +463,6 @@ class TernaryVAEV6(nn.Module):
         Used by AlgebraicAdditionLoss to compute representations of sums
         within the forward pass while preserving gradients.
         """
-        # Convert indices to ternary
-        from src.core import TERNARY
         x = TERNARY.to_ternary(indices).to(device).to(torch.float64)
 
         # Apply positional encoding if enabled
@@ -567,64 +564,34 @@ class TernaryVAEV6Controllable(TernaryVAEV6):
         p = "train" if self._projections_trainable else "fixed"
         return f"A:{a} B:{b} P:{p}"
 
+    @staticmethod
+    def _make_param_group(params: List[torch.nn.Parameter], lr: float, name: str) -> Dict[str, Any]:
+        return {"params": params, "lr": lr, "name": name}
+
     def get_param_groups(self, base_lr: float) -> List[Dict[str, Any]]:
         """Return parameter groups with differential learning rates.
 
         Only includes parameters that currently require gradients.
         Groups are named for logging/debugging.
-
-        Args:
-            base_lr: Base learning rate to scale from
-
-        Returns:
-            List of param group dicts for optimizer
         """
         groups = []
 
-        # Encoder A (slow learner)
         enc_a_params = self.head_A.get_trainable_params()
         if enc_a_params:
-            groups.append(
-                {
-                    "params": enc_a_params,
-                    "lr": base_lr * self.encoder_a_lr_scale,
-                    "name": "encoder_a",
-                }
-            )
+            groups.append(self._make_param_group(enc_a_params, base_lr * self.encoder_a_lr_scale, "encoder_a"))
 
-        # Encoder B (medium learner)
         enc_b_params = self.head_B.get_trainable_params()
         if enc_b_params:
-            groups.append(
-                {
-                    "params": enc_b_params,
-                    "lr": base_lr * self.encoder_b_lr_scale,
-                    "name": "encoder_b",
-                }
-            )
+            groups.append(self._make_param_group(enc_b_params, base_lr * self.encoder_b_lr_scale, "encoder_b"))
 
-        # Projections / Controller (fast adapter)
         proj_params = [p for p in self.projections.parameters() if p.requires_grad]
         if proj_params:
-            groups.append(
-                {
-                    "params": proj_params,
-                    "lr": base_lr * self.projections_lr_scale,
-                    "name": "projections",
-                }
-            )
+            groups.append(self._make_param_group(proj_params, base_lr * self.projections_lr_scale, "projections"))
 
-        # Decoders (always trainable, full LR)
         dec_params = [p for p in self.decoder_A.parameters() if p.requires_grad]
         dec_params += [p for p in self.decoder_B.parameters() if p.requires_grad]
         if dec_params:
-            groups.append(
-                {
-                    "params": dec_params,
-                    "lr": base_lr,
-                    "name": "decoders",
-                }
-            )
+            groups.append(self._make_param_group(dec_params, base_lr, "decoders"))
 
         return groups
 

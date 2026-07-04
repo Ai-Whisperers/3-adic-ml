@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..geometry import poincare_distance
 from .base import HierarchyLossBase, MetricsDict
+from .utils import make_zero_loss
 
 
 class PAdicGeodesicLoss(HierarchyLossBase):
@@ -64,7 +65,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
-            return torch.tensor(0.0, device=device, dtype=torch.float64), {"n_pairs": 0}
+            return make_zero_loss(device), {"n_pairs": 0}
 
         n_pairs = min(self.n_pairs, batch_size * (batch_size - 1) // 2)
         i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
@@ -81,7 +82,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
             val_diff = torch.abs(v_i - v_j)
             cross_mask = val_diff > 0
             if not cross_mask.any():
-                return torch.tensor(0.0, device=device, dtype=torch.float64), {"n_pairs": 0}
+                return make_zero_loss(device), {"n_pairs": 0}
             d_actual = d_actual[cross_mask]
             val_diff = val_diff[cross_mask]
             d_target = self.max_target * val_diff / self.max_valuation
@@ -100,12 +101,12 @@ class PAdicGeodesicLoss(HierarchyLossBase):
             if d_actual.numel() >= 2:
                 corr = torch.corrcoef(torch.stack([d_actual, d_target]))[0, 1]
                 if torch.isnan(corr):
-                    corr = torch.tensor(0.0, device=device, dtype=torch.float64)
+                    corr = make_zero_loss(device)
             else:
                 corr = torch.tensor(float("nan"), device=device, dtype=torch.float64)
 
-            mean_d_low_v = d_actual[valuation < 2].mean() if (valuation < 2).any() else torch.tensor(0.0, device=device)
-            mean_d_high_v = d_actual[valuation >= 4].mean() if (valuation >= 4).any() else torch.tensor(0.0, device=device)
+            mean_d_low_v = d_actual[valuation < 2].mean() if (valuation < 2).any() else make_zero_loss(device)
+            mean_d_high_v = d_actual[valuation >= 4].mean() if (valuation >= 4).any() else make_zero_loss(device)
 
         metrics = {
             "n_pairs": n_pairs,

@@ -5,7 +5,7 @@
 
 """Ranking-based losses for p-adic VAE hierarchy."""
 
-from typing import Any, Tuple
+from typing import Any, cast, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..geometry import hyperbolic_radius
 from .base import HierarchyLossBase, MetricsDict
+from .utils import make_zero_loss
 
 
 class GlobalRankLoss(HierarchyLossBase):
@@ -48,7 +49,7 @@ class GlobalRankLoss(HierarchyLossBase):
         cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
-            return torch.tensor(0.0, device=device, dtype=torch.float64), {}
+            return make_zero_loss(device), {}
 
         actual_radius = hyperbolic_radius(z_hyp, c=cur_c)
         valuations = self._valuation_fn(batch_indices).double()
@@ -62,7 +63,6 @@ class GlobalRankLoss(HierarchyLossBase):
             same = i_idx == j_idx
             j_idx[same] = (j_idx[same] + 1) % batch_size
 
-        from typing import cast
         v_i, v_j = cast(torch.Tensor, valuations[i_idx]), cast(torch.Tensor, valuations[j_idx])
         r_i, r_j = actual_radius[i_idx], actual_radius[j_idx]
 
@@ -70,7 +70,7 @@ class GlobalRankLoss(HierarchyLossBase):
         lower_v_mask = v_i < v_j
         same_v_mask = v_i == v_j
 
-        loss = torch.tensor(0.0, device=device, dtype=torch.float64)
+        loss = make_zero_loss(device)
         n_viol_count = 0
 
         if higher_v_mask.any():
@@ -87,7 +87,7 @@ class GlobalRankLoss(HierarchyLossBase):
             loss = loss + viol_low.mean()
             n_viol_count += int((r_j[lower_v_mask] > r_i[lower_v_mask]).sum().item())
 
-        scatter_loss = torch.tensor(0.0, device=device, dtype=torch.float64)
+        scatter_loss = make_zero_loss(device)
         if self.scatter_weight > 0 and same_v_mask.any():
             scatter_loss = F.mse_loss(r_i[same_v_mask], r_j[same_v_mask])
             loss = loss + self.scatter_weight * scatter_loss
@@ -105,7 +105,6 @@ class GlobalRankLoss(HierarchyLossBase):
         if same_v_mask.any():
             from ..utils.scatter_utils import level_scatter_mean
             v_same = v_i[same_v_mask].long()
-            from typing import cast
             v_same_long = cast(torch.LongTensor, v_same)
             r_diff_sq = (r_i[same_v_mask] - r_j[same_v_mask])**2
             scatter_all = level_scatter_mean(r_diff_sq, v_same_long, dim_size=10)

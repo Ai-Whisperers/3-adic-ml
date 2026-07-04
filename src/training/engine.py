@@ -21,7 +21,7 @@ except ImportError:
     TQDM_AVAILABLE = False
 
 from ..core.contracts import TrainingResults, VAEOutput
-from ..core.ternary import get_valuation_fn
+from ..core import get_valuation_fn
 from ..models import (
     TrainingMetrics,
     get_optimizer_grad_stats,
@@ -35,6 +35,21 @@ from .metrics import (
     plot_algebraic_consistency,
 )
 from .reporting import ReportingManager, _build_checkpoint_payload
+
+
+_TRACKED_LOSS_KEYS = {
+    "hyperbolic_contrastive": "contrastive",
+    "surrogate_property": "surrogate",
+}
+
+
+def _assert_finite_losses(losses: Dict[str, Any], label: str, epoch: int) -> None:
+    """Raise on NaN/Inf in any tensor-valued loss entry."""
+    for name, val in losses.items():
+        if isinstance(val, torch.Tensor) and not torch.isfinite(val).all():
+            raise RuntimeError(
+                f"Numerical instability: {label} {name} loss is {val} at epoch {epoch}"
+            )
 
 
 def train_model(
@@ -319,15 +334,7 @@ def train_epoch(
     loss_sum = 0.0
     acc_sum = 0.0
     n_batches = 0
-
-    contrastive_A_sum = 0.0
-    contrastive_B_sum = 0.0
-    surrogate_A_sum = 0.0
-    surrogate_B_sum = 0.0
-    has_contrastive_A = False
-    has_contrastive_B = False
-    has_surrogate_A = False
-    has_surrogate_B = False
+    loss_accums: Dict[str, float] = {}
 
     if dual_state:
         dual_state.step_epoch(epoch)
@@ -355,15 +362,8 @@ def train_epoch(
                 model=model
             )
 
-            # --- Numerical Integrity: NaN/Inf Sanitizer ---
-            for name, loss_val in losses_A.items():
-                if isinstance(loss_val, torch.Tensor):
-                    if not torch.isfinite(loss_val).all():
-                        raise RuntimeError(f"Numerical instability: VAE-A {name} loss is {loss_val} at epoch {epoch}")
-            for name, loss_val in losses_B.items():
-                if isinstance(loss_val, torch.Tensor):
-                    if not torch.isfinite(loss_val).all():
-                        raise RuntimeError(f"Numerical instability: VAE-B {name} loss is {loss_val} at epoch {epoch}")
+            _assert_finite_losses(losses_A, "VAE-A", epoch)
+            _assert_finite_losses(losses_B, "VAE-B", epoch)
 
             loss = losses_A["total"] + losses_B["total"]
 
@@ -378,49 +378,28 @@ def train_epoch(
         if logits_A is not None:
             acc_sum += compute_accuracy(logits_A, batch_ops)
 
-        if "hyperbolic_contrastive" in losses_A:
-            contrastive_A_sum += losses_A["hyperbolic_contrastive"].item()
-            has_contrastive_A = True
-        if "hyperbolic_contrastive" in losses_B:
-            contrastive_B_sum += losses_B["hyperbolic_contrastive"].item()
-            has_contrastive_B = True
-        if "surrogate_property" in losses_A:
-            surrogate_A_sum += losses_A["surrogate_property"].item()
-            has_surrogate_A = True
-        if "surrogate_property" in losses_B:
-            surrogate_B_sum += losses_B["surrogate_property"].item()
-            has_surrogate_B = True
-
         n_batches += 1
 
-        step = global_step_start + n_batches
-        step_metrics = {
-            "Batch/Loss": loss.item(),
-            "Batch/GradNorm": grad_norm.item(),
-        }
-        if "hyperbolic_contrastive" in losses_A:
-            step_metrics["Batch/Loss_contrastive_A"] = losses_A["hyperbolic_contrastive"].item()
-        if "hyperbolic_contrastive" in losses_B:
-            step_metrics["Batch/Loss_contrastive_B"] = losses_B["hyperbolic_contrastive"].item()
-        if "surrogate_property" in losses_A:
-            step_metrics["Batch/Loss_surrogate_A"] = losses_A["surrogate_property"].item()
-        if "surrogate_property" in losses_B:
-            step_metrics["Batch/Loss_surrogate_B"] = losses_B["surrogate_property"].item()
+        step_metrics: Dict[str, float] = {"Batch/Loss": loss.item(), "Batch/GradNorm": grad_norm.item()}
+        for loss_key, short_name in _TRACKED_LOSS_KEYS.items():
+            for vae, losses in (("A", losses_A), ("B", losses_B)):
+                if loss_key in losses:
+                    val = losses[loss_key].item()
+                    acc_key = f"{loss_key}_{vae}"
+                    loss_accums[acc_key] = loss_accums.get(acc_key, 0.0) + val
+                    step_metrics[f"Batch/Loss_{short_name}_{vae}"] = val
 
-        reporting.log_metrics(step_metrics, step)
+        reporting.log_metrics(step_metrics, global_step_start + n_batches)
 
-    epoch_metrics = {
+    epoch_metrics: Dict[str, float] = {
         "avg_train_loss": loss_sum / n_batches,
         "avg_train_acc": acc_sum / n_batches,
     }
-    if has_contrastive_A:
-        epoch_metrics["avg_train_contrastive_A"] = contrastive_A_sum / n_batches
-    if has_contrastive_B:
-        epoch_metrics["avg_train_contrastive_B"] = contrastive_B_sum / n_batches
-    if has_surrogate_A:
-        epoch_metrics["avg_train_surrogate_A"] = surrogate_A_sum / n_batches
-    if has_surrogate_B:
-        epoch_metrics["avg_train_surrogate_B"] = surrogate_B_sum / n_batches
+    for loss_key, short_name in _TRACKED_LOSS_KEYS.items():
+        for vae in ("A", "B"):
+            acc_key = f"{loss_key}_{vae}"
+            if acc_key in loss_accums:
+                epoch_metrics[f"avg_train_{short_name}_{vae}"] = loss_accums[acc_key] / n_batches
     return epoch_metrics
 
 

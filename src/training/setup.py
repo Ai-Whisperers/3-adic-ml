@@ -6,6 +6,7 @@
 """Configuration and component setup for p-adic VAE training."""
 
 import copy
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
@@ -13,14 +14,13 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 
 from ..config import StateNetConfig
+from ..config.statenet_config import LRScales
 from ..core import TERNARY
-from ..core.ternary import get_valuation_fn
+from ..core import get_valuation_fn
 from ..geometry import get_riemannian_optimizer
 from ..losses import CombinedLoss
 from ..losses.lagrangian import LagrangianDualState
-from ..models import (
-    MetricBasedLR,
-)
+from ..models import MetricBasedLR
 
 
 def setup_dataloaders(
@@ -153,7 +153,6 @@ def _cosine_warmup_restarts_factor(epoch: int, T_0: int, T_mult: int) -> float:
     LambdaLR uses optimizer base_lr as its reference, overwriting cosine's
     output and making the cosine schedule a no-op.
     """
-    import math
     if T_0 <= 0:
         return 1.0
     if T_mult == 1:
@@ -230,7 +229,6 @@ def setup_controller(
     option_c_cfg = config.get("option_c") or {}
 
     if option_c_cfg.get("enabled", True):
-        from src.config.statenet_config import LRScales
         sn_config.lr_scales = LRScales(
             encoder_a=option_c_cfg.get("encoder_a_lr_scale", sn_config.lr_scales.encoder_a),
             encoder_b=option_c_cfg.get("encoder_b_lr_scale", sn_config.lr_scales.encoder_b),

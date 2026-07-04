@@ -670,14 +670,7 @@ class TernarySpace:
         return lut[indices, prop_idx]
 
     def digit_count(self, indices: torch.Tensor) -> torch.Tensor:
-        """Get number of non-zero digits for each index.
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Digit counts in [0, 9], same shape as indices
-        """
+        """Number of non-zero digits for each index (range [0, 9])."""
         return self._get_property(indices, self.PROP_DIGIT_COUNT)
 
     def zero_count_valuation(self, indices: torch.Tensor) -> torch.Tensor:
@@ -699,79 +692,28 @@ class TernarySpace:
         return self.N_DIGITS - self._get_property(indices, self.PROP_DIGIT_COUNT)
 
     def digit_sum(self, indices: torch.Tensor) -> torch.Tensor:
-        """Get sum of digits for each index.
-
-        The raw sum of {-1, 0, 1} digits, range [-9, +9].
-        (Stored shifted by +9 internally for non-negative values.)
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Digit sums in [-9, +9], same shape as indices
-        """
+        """Raw sum of {-1,0,1} digits in [-9, +9] (stored +9, unshifted on return)."""
         raw = self._get_property(indices, self.PROP_DIGIT_SUM)
-        return raw - self.N_DIGITS  # Unshift: stored + 9, so subtract 9
+        return raw - self.N_DIGITS
 
     def first_nonzero(self, indices: torch.Tensor) -> torch.Tensor:
-        """Get position of first non-zero digit (from LSB).
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Positions in [0, 8], or 9 if all digits are zero
-        """
+        """Position of first non-zero digit from LSB (9 if all digits are zero)."""
         return self._get_property(indices, self.PROP_FIRST_NONZERO)
 
     def last_nonzero(self, indices: torch.Tensor) -> torch.Tensor:
-        """Get position of last non-zero digit (from LSB).
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Positions in [0, 8], or -1 if all digits are zero
-        """
+        """Position of last non-zero digit from LSB (-1 if all digits are zero)."""
         return self._get_property(indices, self.PROP_LAST_NONZERO)
 
     def parent(self, indices: torch.Tensor) -> torch.Tensor:
-        """Get parent index in 3-adic tree (n // 3).
-
-        The 3-adic tree has root at 0, with each node n having
-        children {3n, 3n+1, 3n+2} (when in range).
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Parent indices, or -1 for index 0 (root)
-        """
+        """Parent index in 3-adic tree (n // 3), or -1 for index 0 (root)."""
         return self._get_property(indices, self.PROP_PARENT)
 
     def level_rank(self, indices: torch.Tensor) -> torch.Tensor:
-        """Get rank within same-valuation cohort.
-
-        Indices with the same valuation form a cohort. This returns
-        the position (0-indexed) within that cohort.
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Ranks within valuation cohort, same shape as indices
-        """
+        """0-indexed position within same-valuation cohort."""
         return self._get_property(indices, self.PROP_LEVEL_RANK)
 
     def level_count(self, level: int) -> int:
-        """Get number of indices at a specific valuation level.
-
-        Args:
-            level: Valuation level in [0, MAX_VALUATION]
-
-        Returns:
-            Count of indices with this valuation
-        """
+        """Number of indices at a specific valuation level."""
         if level < 0 or level > self.MAX_VALUATION:
             return 0
         return int(self._level_counts[level].item())
@@ -904,47 +846,19 @@ class TernarySpace:
         return lut[indices, prop_idx]
 
     def is_commutative(self, indices: torch.Tensor) -> torch.Tensor:
-        """Return bool tensor: True where f(a,b) = f(b,a) for all a,b.
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Bool tensor, same shape as indices
-        """
+        """True where f(a,b) = f(b,a) for all a,b ∈ {-1,0,1}."""
         return self._get_alg_property(indices, self.PROP_ALG_COMMUTATIVE)
 
     def is_idempotent(self, indices: torch.Tensor) -> torch.Tensor:
-        """Return bool tensor: True where f(a,a) = a for all a ∈ {-1,0,1}.
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Bool tensor, same shape as indices
-        """
+        """True where f(a,a) = a for all a ∈ {-1,0,1}."""
         return self._get_alg_property(indices, self.PROP_ALG_IDEMPOTENT)
 
     def has_identity_element(self, indices: torch.Tensor) -> torch.Tensor:
-        """Return bool tensor: True where ∃ e s.t. f(e,a) = f(a,e) = a.
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Bool tensor, same shape as indices
-        """
+        """True where ∃ e ∈ {-1,0,1} s.t. f(e,a) = f(a,e) = a."""
         return self._get_alg_property(indices, self.PROP_ALG_HAS_IDENTITY)
 
     def has_absorbing_element(self, indices: torch.Tensor) -> torch.Tensor:
-        """Return bool tensor: True where ∃ z s.t. f(z,a) = f(a,z) = z.
-
-        Args:
-            indices: Operation indices, any shape
-
-        Returns:
-            Bool tensor, same shape as indices
-        """
+        """True where ∃ z ∈ {-1,0,1} s.t. f(z,a) = f(a,z) = z."""
         return self._get_alg_property(indices, self.PROP_ALG_HAS_ABSORBING)
 
     def algebraic_signature(self, indices: torch.Tensor) -> torch.Tensor:

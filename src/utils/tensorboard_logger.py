@@ -36,27 +36,13 @@ if TYPE_CHECKING:
 
 
 class TensorBoardLogger:
-    """Handles all TensorBoard logging operations.
-
-    Provides methods for logging metrics, histograms, and embeddings
-    to TensorBoard for visualization.
-
-    Attributes:
-        writer: TensorBoard SummaryWriter instance
-        log_callback: Optional callback for log messages
-    """
+    """Thin wrapper around SummaryWriter for training metric logging."""
 
     def __init__(
         self,
         log_dir: Optional[Union[str, Path]],
         log_callback: Optional[Callable[[str], None]] = None,
     ):
-        """Initialize TensorBoard logger.
-
-        Args:
-            log_dir: Directory where TensorBoard logs will be saved
-            log_callback: Optional callback for log messages
-        """
         self.writer: Optional[SummaryWriterType] = None
         self.log_callback = log_callback or (lambda msg: None)
 
@@ -74,49 +60,22 @@ class TensorBoardLogger:
         return self.writer is not None
 
     def log_scalar(self, tag: str, value: float, step: int) -> None:
-        """Log a scalar value.
-
-        Args:
-            tag: Metric name/tag
-            value: Scalar value to log
-            step: Current training step or epoch
-        """
         if self.writer:
             self.writer.add_scalar(tag, value, step)
 
     def log_metrics(
         self, metrics: Mapping[str, float], step: int, prefix: str = ""
     ) -> None:
-        """Log multiple scalar metrics.
-
-        Args:
-            metrics: Dictionary of metric names and values
-            step: Current training step or epoch
-            prefix: Optional prefix for metric tags
-        """
         if self.writer:
             for name, val in metrics.items():
                 tag = f"{prefix}/{name}" if prefix else name
                 self.writer.add_scalar(tag, val, step)
 
     def log_histogram(self, tag: str, values: torch.Tensor, step: int) -> None:
-        """Log a histogram of values.
-
-        Args:
-            tag: Histogram name/tag
-            values: Tensor of values
-            step: Current training step or epoch
-        """
         if self.writer:
             self.writer.add_histogram(tag, values, step)
 
     def log_model_weights(self, model: torch.nn.Module, step: int) -> None:
-        """Log histograms of model weights.
-
-        Args:
-            model: PyTorch model
-            step: Current training step or epoch
-        """
         if self.writer:
             for name, param in model.named_parameters():
                 if param.requires_grad:
@@ -125,12 +84,6 @@ class TensorBoardLogger:
     def log_hparams(
         self, hparams: Mapping[str, Any], metrics: Mapping[str, float]
     ) -> None:
-        """Log hyperparameters and final metrics.
-
-        Args:
-            hparams: Dictionary of hyperparameters
-            metrics: Dictionary of final metrics
-        """
         if self.writer:
             # SummaryWriter.add_hparams expects specific types; ensure consistency
             clean_hparams = {}

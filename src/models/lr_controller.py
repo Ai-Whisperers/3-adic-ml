@@ -27,6 +27,7 @@ Usage:
     update_optimizer_lr_scales(optimizer, current_base_lr, lr_scales)
 """
 
+import warnings
 from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass
@@ -125,7 +126,6 @@ class LRController(ABC):
         pass
 
 
-
 class MetricBasedLR(LRController):
     """Metric-based LR control (soft version of StateNet logic).
 
@@ -144,35 +144,30 @@ class MetricBasedLR(LRController):
             config: Centralized StateNet configuration
         """
         self.config = config
-
-        # Rolling statistics (GPU-compatible)
         window = config.timing.window_size
         self._coverage_history: deque[float] = deque(maxlen=window)
         self._hierarchy_a_history: deque[float] = deque(maxlen=window)
         self._hierarchy_b_history: deque[float] = deque(maxlen=window)
         self._grad_norm_history: deque[float] = deque(maxlen=window)
-        self._q_history: deque[float] = deque(maxlen=window * 2)  # Longer for Q
+        self._q_history: deque[float] = deque(maxlen=window * 2)
+        self._init_state()
 
-        # Plateau counters
+    def _init_state(self) -> None:
+        """Initialize (or reset) all mutable controller state."""
+        cfg = self.config
         self._hierarchy_b_plateau_count = 0
         self._grad_low_count = 0
         self._hierarchy_a_stall_count = 0
-
-        # Last state change epoch (for hysteresis)
         self._last_change = {
-            'encoder_a': -config.timing.hysteresis_epochs,
-            'encoder_b': -config.timing.hysteresis_epochs,
-            'projections': -config.timing.hysteresis_epochs,
+            'encoder_a': -cfg.timing.hysteresis_epochs,
+            'encoder_b': -cfg.timing.hysteresis_epochs,
+            'projections': -cfg.timing.hysteresis_epochs,
         }
-
-        # Current "active" state (for soft gating)
         self._active = {
-            'encoder_a': config.initial.encoder_a_trainable,
-            'encoder_b': config.initial.encoder_b_trainable,
-            'projections': config.initial.projections_trainable,
+            'encoder_a': cfg.initial.encoder_a_trainable,
+            'encoder_b': cfg.initial.encoder_b_trainable,
+            'projections': cfg.initial.projections_trainable,
         }
-
-        # Best Q tracking
         self._best_q = 0.0
         self._last_epoch = -1
 
@@ -445,20 +440,16 @@ class MetricBasedLR(LRController):
 
     def load_state_dict(self, state: Dict[str, Any]) -> None:
         """Restore state from dict."""
-        self._coverage_history.clear()
-        self._coverage_history.extend(state.get("coverage_history", []))
-
-        self._hierarchy_a_history.clear()
-        self._hierarchy_a_history.extend(state.get("hierarchy_a_history", []))
-
-        self._hierarchy_b_history.clear()
-        self._hierarchy_b_history.extend(state.get("hierarchy_b_history", []))
-
-        self._grad_norm_history.clear()
-        self._grad_norm_history.extend(state.get("grad_norm_history", []))
-
-        self._q_history.clear()
-        self._q_history.extend(state.get("q_history", []))
+        for attr, key in [
+            ("_coverage_history", "coverage_history"),
+            ("_hierarchy_a_history", "hierarchy_a_history"),
+            ("_hierarchy_b_history", "hierarchy_b_history"),
+            ("_grad_norm_history", "grad_norm_history"),
+            ("_q_history", "q_history"),
+        ]:
+            buf = getattr(self, attr)
+            buf.clear()
+            buf.extend(state.get(key, []))
 
         self._hierarchy_b_plateau_count = state.get("hierarchy_b_plateau_count", 0)
         self._grad_low_count = state.get("grad_low_count", 0)
@@ -469,32 +460,14 @@ class MetricBasedLR(LRController):
         self._best_q = state.get("best_q", 0.0)
         self._last_epoch = state.get("last_epoch", -1)
 
-    def reset(self):
-        """Reset all state."""
-        self._coverage_history.clear()
-        self._hierarchy_a_history.clear()
-        self._hierarchy_b_history.clear()
-        self._grad_norm_history.clear()
-        self._q_history.clear()
-
-        self._hierarchy_b_plateau_count = 0
-        self._grad_low_count = 0
-        self._hierarchy_a_stall_count = 0
-
-        self._last_change = {
-            'encoder_a': -self.config.timing.hysteresis_epochs,
-            'encoder_b': -self.config.timing.hysteresis_epochs,
-            'projections': -self.config.timing.hysteresis_epochs,
-        }
-
-        self._active = {
-            'encoder_a': self.config.initial.encoder_a_trainable,
-            'encoder_b': self.config.initial.encoder_b_trainable,
-            'projections': self.config.initial.projections_trainable,
-        }
-
-        self._best_q = 0.0
-        self._last_epoch = -1
+    def reset(self) -> None:
+        """Reset all state to initial values."""
+        for buf in (
+            self._coverage_history, self._hierarchy_a_history,
+            self._hierarchy_b_history, self._grad_norm_history, self._q_history,
+        ):
+            buf.clear()
+        self._init_state()
 
 
 
@@ -512,8 +485,6 @@ def update_optimizer_lr_scales(
         base_lr: Base learning rate
         lr_scales: Dict mapping group name to LR scale
     """
-    import warnings
-
     matched_scales = set()
     unmatched_groups = []
     for group in optimizer.param_groups:

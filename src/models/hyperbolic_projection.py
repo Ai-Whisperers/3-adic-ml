@@ -162,6 +162,13 @@ class HyperbolicProjection(nn.Module):
         # Enforce float64 precision for numerical stability
         self.to(torch.float64)
 
+    def _expmap_and_clamp(self, z_transformed: torch.Tensor) -> torch.Tensor:
+        """Apply expmap0 and enforce max_radius constraint."""
+        origin = torch.zeros_like(z_transformed)
+        z_hyp = self.manifold.expmap(origin, z_transformed)
+        norm = torch.norm(z_hyp, dim=-1, keepdim=True).clamp(min=1e-10)
+        return z_hyp * (self.max_radius / norm).clamp(max=1.0)
+
     def _init_identity_manual(self):
         """Initialize tangent_net as identity (zero residual)."""
         with torch.no_grad():
@@ -216,22 +223,13 @@ class HyperbolicProjection(nn.Module):
             return self._forward_factored(z_tangent)
 
         # --- Non-factored mode (V6 expmap0 approach) ---
-        # Scale tangent vectors + residual transform
-        # tangent_scale is learned; init=0.1 prevents expmap0 saturation at init
-        z_scaled = self.tangent_scale * z_tangent
-        z_transformed = z_scaled + self.tangent_net(z_scaled)
-
-        # Project to manifold via expmap0 using model's own manifold instance.
+        # Scale tangent vectors + residual transform.
+        # tangent_scale is learned; init=0.1 prevents expmap0 saturation at init.
         # Using self.manifold.expmap() instead of the global exp_map_zero() cache
         # ensures gradients flow through self.manifold.c (learnable curvature).
-        # The global cache uses a detached float key and returns a static manifold.
-        origin = torch.zeros_like(z_transformed)
-        z_hyp = self.manifold.expmap(origin, z_transformed)
-
-        # Apply max_radius constraint (clamp avoids per-call tensor allocations)
-        norm = torch.norm(z_hyp, dim=-1, keepdim=True).clamp(min=1e-10)
-        scale = (self.max_radius / norm).clamp(max=1.0)
-        z_hyp = z_hyp * scale
+        z_scaled = self.tangent_scale * z_tangent
+        z_transformed = z_scaled + self.tangent_net(z_scaled)
+        z_hyp = self._expmap_and_clamp(z_transformed)
 
         if as_manifold:
             z_hyp = self.manifold.projx(z_hyp)
@@ -299,19 +297,10 @@ class HyperbolicProjection(nn.Module):
         if self.factored:
             z_hyp, r = self._forward_factored(z_tangent.to(torch.float64))
             return z_hyp, z_hyp, r  # z_transformed approximated by z_hyp
-        # Enforce float64 precision
         z_tangent = z_tangent.to(torch.float64)
-
         z_scaled = self.tangent_scale * z_tangent
         z_transformed = z_scaled + self.tangent_net(z_scaled)
-        origin = torch.zeros_like(z_transformed)
-        z_hyp = self.manifold.expmap(origin, z_transformed)
-
-        # Apply max_radius constraint (clamp avoids per-call tensor allocations)
-        norm = torch.norm(z_hyp, dim=-1, keepdim=True).clamp(min=1e-10)
-        scale = (self.max_radius / norm).clamp(max=1.0)
-        z_hyp = z_hyp * scale
-
+        z_hyp = self._expmap_and_clamp(z_transformed)
         tangent_norm = torch.norm(z_transformed, dim=-1)
         return z_hyp, z_transformed, tangent_norm
 

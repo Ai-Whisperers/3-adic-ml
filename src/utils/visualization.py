@@ -81,6 +81,11 @@ from src.utils.svg_renderer import save_poincare_disk_svg
 _LEVEL_CMAP = "plasma"
 _LEVEL_COLORS_MPL = None  # Lazily initialised
 
+_LANDMARK_WALKS = [
+    np.array([1, 3, 9, 27, 81, 243, 729, 2187, 6561]),
+    np.array([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
+]
+
 
 @dataclass(frozen=True)
 class VisualizationRuntimeConfig:
@@ -948,15 +953,7 @@ class VisualizationPipeline:
         """Render native 2D Poincaré disk (r-theta projection)."""
         colors = _level_colors(10)
 
-        # 0. Define landmark algebraic walks for visualization
-        # We pick indices that are likely to be in the sample
-        walks = []
-        # Walk 1: Powers of 3 (radial path)
-        p3 = [1, 3, 9, 27, 81, 243, 729, 2187, 6561]
-        walks.append(np.array(p3))
-        # Walk 2: Successive addition around a landmark
-        s1 = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-        walks.append(np.array(s1))
+        walks = _LANDMARK_WALKS
 
         # 1. Always try to save image via Matplotlib
         if _HAS_MPL:
@@ -1013,10 +1010,7 @@ class VisualizationPipeline:
         os.makedirs(html_dir, exist_ok=True)
         svg_path = html_dir / "poincare_disk_native.svg"
 
-        # 0. Define landmark algebraic walks
-        walks = []
-        walks.append(np.array([1, 3, 9, 27, 81, 243, 729, 2187, 6561]))
-        walks.append(np.array([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]))
+        walks = _LANDMARK_WALKS
 
         # 1. Project to 2D disk (r-theta) exactly like the renderer
         r_euclidean = np.linalg.norm(z_np, axis=1)

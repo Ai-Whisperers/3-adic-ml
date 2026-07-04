@@ -13,6 +13,7 @@ import torch.nn.functional as F
 
 from ..core import TERNARY
 from .base import MetricsDict
+from .utils import make_zero_loss
 
 
 class AngularCoherenceLoss(nn.Module):
@@ -48,7 +49,7 @@ class AngularCoherenceLoss(nn.Module):
         epoch: int = 0,
     ) -> Tuple[torch.Tensor, MetricsDict]:
         metrics: MetricsDict = {}
-        zero = torch.tensor(0.0, device=z_hyp.device, dtype=z_hyp.dtype)
+        zero = make_zero_loss(z_hyp.device, z_hyp.dtype)
 
         if epoch < self.phase_start_epoch:
             metrics["angular_coherence_loss"] = 0.0
@@ -59,7 +60,7 @@ class AngularCoherenceLoss(nn.Module):
         dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=eps)
 
         vals = self._valuation_fn(indices)
-        B = len(dir_vecs)
+        B = dir_vecs.shape[0]
         if B < 4:
             metrics["angular_coherence_loss"] = 0.0
             metrics["angular_coherence_pairs"] = 0
@@ -81,7 +82,7 @@ class AngularCoherenceLoss(nn.Module):
                     continue
 
                 idx_v = mask_v.nonzero(as_tuple=True)[0]
-                nv = len(idx_v)
+                nv = idx_v.shape[0]
                 perm = torch.randperm(nv, device=z_hyp.device)
                 num_v_pairs = self.n_pairs // max(1, sum(kk > 0 for kk in self.level_prefix_k))
                 half = min(num_v_pairs, nv // 2)
@@ -103,7 +104,7 @@ class AngularCoherenceLoss(nn.Module):
                 dj = dir_vecs[j_idx[same_cls]]
                 cos_sim = (di * dj).sum(dim=-1)
                 t = torch.tensor(t_sim, device=z_hyp.device, dtype=z_hyp.dtype)
-                level_loss = torch.nn.functional.relu(t - cos_sim).mean()
+                level_loss = F.relu(t - cos_sim).mean()
                 total_loss = total_loss + level_loss
                 total_pairs += int(n_same)
                 n_active_levels += 1
@@ -137,13 +138,10 @@ class AngularCoherenceLoss(nn.Module):
         di = dir_vecs[i_idx[same_cls]]
         dj = dir_vecs[j_idx[same_cls]]
         cos_sim = (di * dj).sum(dim=-1)
-        # Use the per-valuation target_sim for each same-class pair.
-        # Same-class pairs share the same (vals, prefix_k) key, so they share
-        # the same valuation level — use that level's target similarity.
         pair_vals = vals[i_idx[same_cls]].clamp(0, len(self.target_sim) - 1)
         t_values = torch.tensor(self.target_sim, device=z_hyp.device, dtype=z_hyp.dtype)
         t_per_pair = t_values[pair_vals]
-        loss = self.weight * torch.nn.functional.relu(t_per_pair - cos_sim).mean()
+        loss = self.weight * F.relu(t_per_pair - cos_sim).mean()
 
         metrics["angular_coherence_loss"] = loss.item()
         metrics["angular_coherence_pairs"] = int(n_same)
@@ -176,7 +174,7 @@ class AlgebraicCoherenceLoss(nn.Module):
         epoch: int = 0,
     ) -> Tuple[torch.Tensor, MetricsDict]:
         metrics: MetricsDict = {}
-        zero = torch.tensor(0.0, device=z_hyp.device, dtype=z_hyp.dtype)
+        zero = make_zero_loss(z_hyp.device, z_hyp.dtype)
 
         if epoch < self.phase_start_epoch:
             metrics["alg_coherence_loss"] = 0.0
@@ -206,7 +204,7 @@ class AlgebraicCoherenceLoss(nn.Module):
                 continue
 
             class_idx = mask.nonzero(as_tuple=True)[0]
-            nc = len(class_idx)
+            nc = class_idx.shape[0]
             half = min(nc // 2, self.n_pairs)
             if half < 2:
                 continue
@@ -234,86 +232,21 @@ class AlgebraicCoherenceLoss(nn.Module):
         return loss, metrics
 
 
-class AlgebraicAdditionLoss(nn.Module):
-    r"""Enforce additive consistency in tangent space (Mu space)."""
+class _AlgebraicBinaryLoss(nn.Module):
+    """Base for binary algebraic homomorphism losses (addition, multiplication).
 
-    def __init__(
-        self,
-        weight: float = 1.0,
-        n_pairs: int = 512,
-        phase_start_epoch: int = 0,
-        valuation_fn=None,
-    ):
-        super().__init__()
-        self.weight = weight
-        self.n_pairs = n_pairs
-        self.phase_start_epoch = phase_start_epoch
-        self.generator = torch.Generator()
-        self.generator.manual_seed(42)
-
-    def forward(
-        self,
-        mu_A: torch.Tensor,
-        indices: torch.Tensor,
-        model: nn.Module,
-        epoch: int = 0,
-    ) -> Tuple[torch.Tensor, MetricsDict]:
-        metrics: MetricsDict = {}
-        zero = torch.tensor(0.0, device=mu_A.device, dtype=mu_A.dtype)
-
-        if epoch < self.phase_start_epoch or self.weight <= 0:
-            metrics["alg_addition_loss"] = 0.0
-            return zero, metrics
-
-        B = mu_A.shape[0]
-        if B < 2:
-            metrics["alg_addition_loss"] = 0.0
-            return zero, metrics
-
-        n_triplets = min(self.n_pairs, B // 2)
-        if n_triplets < 1:
-            metrics["alg_addition_loss"] = 0.0
-            return zero, metrics
-
-        perm = torch.randperm(B, generator=self.generator).to(mu_A.device)
-        idx_a_local = perm[:n_triplets]
-        idx_b_local = perm[n_triplets : 2 * n_triplets]
-
-        idx_sum = TERNARY.ternary_add(indices[idx_a_local], indices[idx_b_local])
-        mu_sum = model.get_mu_representations(idx_sum, mu_A.device)
-
-        mu_target = mu_A[idx_a_local] + mu_A[idx_b_local]
-        if mu_sum.shape != mu_target.shape:
-            raise RuntimeError(
-                f"AlgebraicAdditionLoss: shape mismatch — "
-                f"mu_sum {mu_sum.shape} vs mu_target {mu_target.shape}. "
-                f"model.get_mu_representations must return shape "
-                f"(n_pairs, latent_dim) matching the input batch."
-            )
-        loss_val = F.smooth_l1_loss(mu_sum, mu_target)
-
-        loss = self.weight * loss_val
-        metrics["alg_addition_loss"] = loss.item()
-
-        with torch.no_grad():
-            cos_sim = F.cosine_similarity(mu_sum, mu_target).mean()
-            metrics["alg_addition_sim"] = cos_sim.item()
-
-        return loss, metrics
-
-
-class AlgebraicMultiplicationLoss(nn.Module):
-    r"""Enforce multiplicative consistency in tangent space (Mu space).
-    
-    Objective: z(a ⊗ b) ≈ z(a) ⊙ z(b) where ⊙ is element-wise product.
+    Subclasses define the ternary operation and the target combination rule.
+    Template: sample pairs → apply op → compare mu_result vs mu_target via smooth_l1.
     """
 
+    _loss_key: str
+    _sim_key: str
+
     def __init__(
         self,
         weight: float = 1.0,
         n_pairs: int = 512,
         phase_start_epoch: int = 0,
-        valuation_fn=None,
     ):
         super().__init__()
         self.weight = weight
@@ -321,6 +254,14 @@ class AlgebraicMultiplicationLoss(nn.Module):
         self.phase_start_epoch = phase_start_epoch
         self.generator = torch.Generator()
         self.generator.manual_seed(42)
+
+    def _ternary_op(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+    def _mu_target(
+        self, mu_A: torch.Tensor, idx_a: torch.Tensor, idx_b: torch.Tensor
+    ) -> torch.Tensor:
+        raise NotImplementedError
 
     def forward(
         self,
@@ -330,55 +271,74 @@ class AlgebraicMultiplicationLoss(nn.Module):
         epoch: int = 0,
     ) -> Tuple[torch.Tensor, MetricsDict]:
         metrics: MetricsDict = {}
-        zero = torch.tensor(0.0, device=mu_A.device, dtype=mu_A.dtype)
+        zero = make_zero_loss(mu_A.device, mu_A.dtype)
 
         if epoch < self.phase_start_epoch or self.weight <= 0:
-            metrics["alg_multiplication_loss"] = 0.0
+            metrics[self._loss_key] = 0.0
             return zero, metrics
 
         B = mu_A.shape[0]
-        if B < 2:
-            metrics["alg_multiplication_loss"] = 0.0
-            return zero, metrics
-
         n_triplets = min(self.n_pairs, B // 2)
-        if n_triplets < 1:
-            metrics["alg_multiplication_loss"] = 0.0
+        if B < 2 or n_triplets < 1:
+            metrics[self._loss_key] = 0.0
             return zero, metrics
 
         perm = torch.randperm(B, generator=self.generator).to(mu_A.device)
         idx_a_local = perm[:n_triplets]
-        idx_b_local = perm[n_triplets : 2 * n_triplets]
+        idx_b_local = perm[n_triplets:2 * n_triplets]
 
-        idx_prod = TERNARY.ternary_mul(indices[idx_a_local], indices[idx_b_local])
-        mu_prod = model.get_mu_representations(idx_prod, mu_A.device)
+        idx_result = self._ternary_op(indices[idx_a_local], indices[idx_b_local])
+        mu_result = model.get_mu_representations(idx_result, mu_A.device)
+        mu_target = self._mu_target(mu_A, idx_a_local, idx_b_local)
 
-        # Multiplicative homomorphism: mu(a*b) ≈ mu(a) * mu(b) (element-wise)
-        mu_target = mu_A[idx_a_local] * mu_A[idx_b_local]
-        if mu_prod.shape != mu_target.shape:
+        if mu_result.shape != mu_target.shape:
             raise RuntimeError(
-                f"AlgebraicMultiplicationLoss: shape mismatch — "
-                f"mu_prod {mu_prod.shape} vs mu_target {mu_target.shape}. "
-                f"model.get_mu_representations must return shape "
-                f"(n_pairs, latent_dim) matching the input batch."
+                f"{type(self).__name__}: shape mismatch — "
+                f"mu_result {mu_result.shape} vs mu_target {mu_target.shape}. "
+                f"model.get_mu_representations must return (n_pairs, latent_dim)."
             )
-        loss_val = F.smooth_l1_loss(mu_prod, mu_target)
 
-        loss = self.weight * loss_val
-        metrics["alg_multiplication_loss"] = loss.item()
+        loss = self.weight * F.smooth_l1_loss(mu_result, mu_target)
+        metrics[self._loss_key] = loss.item()
 
         with torch.no_grad():
-            cos_sim = F.cosine_similarity(mu_prod, mu_target).mean()
-            metrics["alg_multiplication_sim"] = cos_sim.item()
+            metrics[self._sim_key] = F.cosine_similarity(mu_result, mu_target).mean().item()
 
         return loss, metrics
+
+
+class AlgebraicAdditionLoss(_AlgebraicBinaryLoss):
+    r"""Enforce additive homomorphism: z(a ⊕ b) ≈ z(a) + z(b)."""
+
+    _loss_key = "alg_addition_loss"
+    _sim_key = "alg_addition_sim"
+
+    def _ternary_op(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
+        return TERNARY.ternary_add(idx_a, idx_b)
+
+    def _mu_target(
+        self, mu_A: torch.Tensor, idx_a: torch.Tensor, idx_b: torch.Tensor
+    ) -> torch.Tensor:
+        return mu_A[idx_a] + mu_A[idx_b]
+
+
+class AlgebraicMultiplicationLoss(_AlgebraicBinaryLoss):
+    r"""Enforce multiplicative homomorphism: z(a ⊗ b) ≈ z(a) ⊙ z(b) (element-wise)."""
+
+    _loss_key = "alg_multiplication_loss"
+    _sim_key = "alg_multiplication_sim"
+
+    def _ternary_op(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
+        return TERNARY.ternary_mul(idx_a, idx_b)
+
+    def _mu_target(
+        self, mu_A: torch.Tensor, idx_a: torch.Tensor, idx_b: torch.Tensor
+    ) -> torch.Tensor:
+        return mu_A[idx_a] * mu_A[idx_b]
 
 
 class AlgebraicDistributiveLoss(nn.Module):
-    r"""Enforce the distributive law in tangent space (Mu space).
-    
-    Objective: z(a ⊗ (b ⊕ c)) ≈ z(a) ⊙ (z(b) + z(c))
-    """
+    r"""Enforce the distributive law: z(a ⊗ (b ⊕ c)) ≈ z(a) ⊙ (z(b) + z(c))."""
 
     def __init__(
         self,
@@ -401,50 +361,39 @@ class AlgebraicDistributiveLoss(nn.Module):
         epoch: int = 0,
     ) -> Tuple[torch.Tensor, MetricsDict]:
         metrics: MetricsDict = {}
-        zero = torch.tensor(0.0, device=mu_A.device, dtype=mu_A.dtype)
+        zero = make_zero_loss(mu_A.device, mu_A.dtype)
 
         if epoch < self.phase_start_epoch or self.weight <= 0:
             metrics["alg_distributive_loss"] = 0.0
             return zero, metrics
 
         B = mu_A.shape[0]
-        if B < 3:
-            metrics["alg_distributive_loss"] = 0.0
-            return zero, metrics
-
         n_samples = min(self.n_triplets, B // 3)
-        if n_samples < 1:
+        if B < 3 or n_samples < 1:
             metrics["alg_distributive_loss"] = 0.0
             return zero, metrics
 
         perm = torch.randperm(B, generator=self.generator).to(mu_A.device)
         idx_a = perm[:n_samples]
-        idx_b = perm[n_samples : 2 * n_samples]
-        idx_c = perm[2 * n_samples : 3 * n_samples]
+        idx_b = perm[n_samples:2 * n_samples]
+        idx_c = perm[2 * n_samples:3 * n_samples]
 
-        # Ground truth: a * (b + c)
         idx_sum_bc = TERNARY.ternary_add(indices[idx_b], indices[idx_c])
         idx_dist_gt = TERNARY.ternary_mul(indices[idx_a], idx_sum_bc)
-        
-        # Representations
         mu_res = model.get_mu_representations(idx_dist_gt, mu_A.device)
-
-        # Distributive target: mu(a) * (mu(b) + mu(c))
         mu_target = mu_A[idx_a] * (mu_A[idx_b] + mu_A[idx_c])
 
         if mu_res.shape != mu_target.shape:
             raise RuntimeError(
                 f"AlgebraicDistributiveLoss: shape mismatch — "
                 f"mu_res {mu_res.shape} vs mu_target {mu_target.shape}. "
-                f"model.get_mu_representations must return shape "
-                f"(n_samples, latent_dim) matching the input batch."
+                f"model.get_mu_representations must return (n_samples, latent_dim)."
             )
-        loss_val = F.smooth_l1_loss(mu_res, mu_target)
-        loss = self.weight * loss_val
+
+        loss = self.weight * F.smooth_l1_loss(mu_res, mu_target)
         metrics["alg_distributive_loss"] = loss.item()
 
         with torch.no_grad():
-            cos_sim = F.cosine_similarity(mu_res, mu_target).mean()
-            metrics["alg_distributive_sim"] = cos_sim.item()
+            metrics["alg_distributive_sim"] = F.cosine_similarity(mu_res, mu_target).mean().item()
 
         return loss, metrics

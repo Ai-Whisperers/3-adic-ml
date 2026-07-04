@@ -20,8 +20,15 @@ Usage:
     print(config.coverage.fix_threshold)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any, Dict
+
+
+def _apply_section(obj: Any, data: Dict[str, Any]) -> None:
+    """Apply values from data dict to a dataclass object (existing values as defaults)."""
+    for f in fields(obj):
+        if f.name in data:
+            setattr(obj, f.name, data[f.name])
 
 
 @dataclass
@@ -133,14 +140,7 @@ class StateNetConfig:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "StateNetConfig":
-        """Create config from dictionary (e.g., from YAML).
-
-        Args:
-            d: Nested config dictionary
-
-        Returns:
-            StateNetConfig instance
-        """
+        """Create StateNetConfig from a nested YAML config dict."""
         _known_keys = {'enabled', 'coverage', 'hierarchy', 'controller', 'timing', 'lr_scales', 'initial'}
         unknown = set(d.keys()) - _known_keys
         if unknown:
@@ -150,12 +150,12 @@ class StateNetConfig:
             )
 
         _sub_keys: Dict[str, set] = {
-            'coverage':  {'fix_threshold', 'train_threshold', 'floor'},
-            'hierarchy': {'plateau_threshold', 'plateau_patience', 'patience_ceiling', 'stall_patience'},
-            'controller':{'grad_threshold', 'grad_patience', 'patience_ceiling', 'spike_multiplier'},
-            'timing':    {'warmup_epochs', 'hysteresis_epochs', 'window_size'},
-            'lr_scales': {'encoder_a', 'encoder_b', 'projections', 'decoders'},
-            'initial':   {'encoder_a_trainable', 'encoder_b_trainable', 'projections_trainable', 'decoders_trainable'},
+            'coverage':   {'fix_threshold', 'train_threshold', 'floor'},
+            'hierarchy':  {'plateau_threshold', 'plateau_patience', 'patience_ceiling', 'stall_patience'},
+            'controller': {'grad_threshold', 'grad_patience', 'patience_ceiling', 'spike_multiplier'},
+            'timing':     {'warmup_epochs', 'hysteresis_epochs', 'window_size'},
+            'lr_scales':  {'encoder_a', 'encoder_b', 'projections', 'decoders'},
+            'initial':    {'encoder_a_trainable', 'encoder_b_trainable', 'projections_trainable', 'decoders_trainable'},
         }
         for section, known in _sub_keys.items():
             if section in d and isinstance(d[section], dict):
@@ -167,55 +167,10 @@ class StateNetConfig:
                     )
 
         config = cls()
-
-        # Enable flag
         config.enabled = d.get('enabled', config.enabled)
-
-        # Coverage thresholds
-        if 'coverage' in d and isinstance(d['coverage'], dict):
-            cov = d['coverage']
-            config.coverage.fix_threshold = cov.get('fix_threshold', config.coverage.fix_threshold)
-            config.coverage.train_threshold = cov.get('train_threshold', config.coverage.train_threshold)
-            config.coverage.floor = cov.get('floor', config.coverage.floor)
-
-        # Hierarchy thresholds
-        if 'hierarchy' in d and isinstance(d['hierarchy'], dict):
-            hier = d['hierarchy']
-            config.hierarchy.plateau_threshold = hier.get('plateau_threshold', config.hierarchy.plateau_threshold)
-            config.hierarchy.plateau_patience = hier.get('plateau_patience', config.hierarchy.plateau_patience)
-            config.hierarchy.patience_ceiling = hier.get('patience_ceiling', config.hierarchy.patience_ceiling)
-            config.hierarchy.stall_patience = hier.get('stall_patience', config.hierarchy.stall_patience)
-
-        # Controller thresholds
-        if 'controller' in d and isinstance(d['controller'], dict):
-            ctrl = d['controller']
-            config.controller.grad_threshold = ctrl.get('grad_threshold', config.controller.grad_threshold)
-            config.controller.grad_patience = ctrl.get('grad_patience', config.controller.grad_patience)
-            config.controller.patience_ceiling = ctrl.get('patience_ceiling', config.controller.patience_ceiling)
-            config.controller.spike_multiplier = ctrl.get('spike_multiplier', config.controller.spike_multiplier)
-
-        # Timing
-        if 'timing' in d and isinstance(d['timing'], dict):
-            tim = d['timing']
-            config.timing.warmup_epochs = tim.get('warmup_epochs', config.timing.warmup_epochs)
-            config.timing.hysteresis_epochs = tim.get('hysteresis_epochs', config.timing.hysteresis_epochs)
-            config.timing.window_size = tim.get('window_size', config.timing.window_size)
-
-        # LR scales
-        if 'lr_scales' in d and isinstance(d['lr_scales'], dict):
-            lr = d['lr_scales']
-            config.lr_scales.encoder_a = lr.get('encoder_a', config.lr_scales.encoder_a)
-            config.lr_scales.encoder_b = lr.get('encoder_b', config.lr_scales.encoder_b)
-            config.lr_scales.projections = lr.get('projections', config.lr_scales.projections)
-            config.lr_scales.decoders = lr.get('decoders', config.lr_scales.decoders)
-
-        # Initial states
-        if 'initial' in d and isinstance(d['initial'], dict):
-            init = d['initial']
-            config.initial.encoder_a_trainable = init.get('encoder_a_trainable', config.initial.encoder_a_trainable)
-            config.initial.encoder_b_trainable = init.get('encoder_b_trainable', config.initial.encoder_b_trainable)
-            config.initial.projections_trainable = init.get('projections_trainable', config.initial.projections_trainable)
-
+        for attr in ('coverage', 'hierarchy', 'controller', 'timing', 'lr_scales', 'initial'):
+            if attr in d and isinstance(d[attr], dict):
+                _apply_section(getattr(config, attr), d[attr])
         return config
 
     def to_dict(self) -> Dict[str, Any]:

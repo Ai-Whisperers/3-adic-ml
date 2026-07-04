@@ -19,15 +19,7 @@ def load_checkpoint_compat(
     checkpoint_path: Union[str, Path],
     map_location: Union[str, torch.device] = "cpu"
 ) -> Dict[str, Any]:
-    """Load checkpoint with compatibility for different formats.
-
-    Args:
-        checkpoint_path: Path to the .pt file
-        map_location: Device to map tensors to
-
-    Returns:
-        Loaded checkpoint dictionary
-    """
+    """Load a .pt checkpoint file, raising FileNotFoundError if missing."""
     path = Path(checkpoint_path)
     if not path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {path}")
@@ -38,16 +30,7 @@ def load_checkpoint_compat(
 
 
 def get_model_state_dict(checkpoint: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract model state dictionary from checkpoint.
-
-    Handles different checkpoint structures (plain dict, 'model', 'model_state_dict').
-
-    Args:
-        checkpoint: Loaded checkpoint dictionary
-
-    Returns:
-        Model state dictionary
-    """
+    """Extract model state dict from checkpoint (handles 'model_state_dict', 'model', or plain dict)."""
     if "model_state_dict" in checkpoint:
         return checkpoint["model_state_dict"]
     elif "model" in checkpoint:

@@ -6,13 +6,14 @@
 """Metrics computation for p-adic VAE training."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, cast, Dict, List, Optional, Union
 
 import numpy as np
 from scipy.stats import spearmanr
 import torch
 
 from ..core import TERNARY
+from ..core.contracts import GrokkingState
 from ..geometry import hyperbolic_radius, poincare_distance
 from ..models import compute_Q
 from ..utils.scatter_utils import level_scatter_std
@@ -165,7 +166,6 @@ def compute_level_stratified_hierarchy(
         dim_size = TERNARY.MAX_VALUATION + 1
         vals_long = valuations.long()
 
-        from typing import cast
         # Vectorized per-level std via scatter (single pass, no Python loop)
         stds_all = level_scatter_std(radii, cast(torch.LongTensor, vals_long), dim_size=dim_size)  # (dim_size,)
         counts = torch.zeros(dim_size, dtype=torch.long, device=radii.device)
@@ -374,9 +374,6 @@ class GrokkingEvent:
     plateau_duration: int
     val_lift: float
     gap_collapse: float
-
-
-from ..core.contracts import GrokkingState
 
 
 class GrokkingDetector:

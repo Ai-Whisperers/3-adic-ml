@@ -27,7 +27,9 @@ try:
 except ImportError:
     _HAS_MPL = False
 
+from src.core import TERNARY
 from src.geometry import log_map_zero
+
 
 def render_poincare_disk_mpl(
     z_hyp: np.ndarray,
@@ -69,7 +71,6 @@ def render_poincare_disk_mpl(
 
     # 1. Draw Tree Edges (Cayley Graph)
     if show_tree and indices is not None:
-        from src.core import TERNARY
         from src.utils.geodesic_utils import get_geodesic_arc
         idx_map = {idx: i for i, idx in enumerate(indices)}
 
@@ -98,7 +99,6 @@ def render_poincare_disk_mpl(
 
     # 3. Draw Prefix Territory Shading
     if indices is not None:
-        from src.core import TERNARY
         prefix_classes = TERNARY.digit_prefix_class(torch.from_numpy(indices), k=3).numpy()
         unique_prefixes = np.unique(prefix_classes)
         for p in unique_prefixes:

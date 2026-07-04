@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.utils.data import TensorDataset
 
 from ..config.paths import PROJECT_ROOT
 from ..core import TERNARY
@@ -73,7 +74,7 @@ class DataAuditor:
         val_frac: float = 0.1,
         device: Optional[torch.device] = None,
         custom_indices_path: Optional[str] = None,
-    ) -> Tuple[torch.utils.data.TensorDataset, torch.utils.data.TensorDataset, torch.Tensor]:
+    ) -> Tuple[TensorDataset, TensorDataset, torch.Tensor]:
         """Generate data, split, and validate.
 
         Args:
@@ -136,8 +137,6 @@ class DataAuditor:
             f"  [OK] Value distribution: {dict(zip(vals.tolist(), [f'{d:.2%}' for d in dist.tolist()], strict=False))}"
         )
 
-        # Create datasets
-        from torch.utils.data import TensorDataset
         train_ds = TensorDataset(X_train, idx_train)
         val_ds = TensorDataset(X_val, idx_val)
 
