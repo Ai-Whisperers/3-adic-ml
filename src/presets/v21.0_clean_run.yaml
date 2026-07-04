@@ -95,14 +95,14 @@ loss:
     outer_radius: 0.95
     valuation_weight_exponent: 0.3
     weight: 5.0
-    phase_start_epoch: 500
+    phase_start_epoch: 20
 
   geodesic:
     curvature: 1.0
     enabled: true
     max_target_distance: 4.0
     n_pairs: 4000
-    phase_start_epoch: 500
+    phase_start_epoch: 20
     use_individual_valuation: true
     use_smooth_l1: true
     valuation_scale: 4.0
@@ -115,7 +115,7 @@ loss:
     temperature: 0.1
     use_all_pairs: false
     weight: 2.0
-    phase_start_epoch: 500
+    phase_start_epoch: 20
 
   monotonic:
     enabled: true
@@ -127,7 +127,7 @@ loss:
     temperature: 0.05
     use_soft_margin: true
     weight: 2.0
-    phase_start_epoch: 500
+    phase_start_epoch: 20
 
   # --- Regularization ---
   hyperbolic_kl:
@@ -208,7 +208,7 @@ statenet:
 training:
   batch_size: 1024
   epochs: 1000
-  eval_every: 25
+  eval_every: 10
   grokking_detection:
     accuracy_jump_threshold: 0.02
     enabled: true
@@ -224,8 +224,8 @@ training:
   min_epochs: 300
   num_workers: 4
   patience: 500
-  print_every: 25
-  save_every: 50
+  print_every: 10
+  save_every: 25
   scheduler:
     T_0: 500
     T_mult: 2
@@ -239,17 +239,17 @@ version:
   changes:
   - 'V21.0: Clean run — fix projection freezing from V20'
   - 'grad_threshold 0.002→0.0: projections never freeze'
-  - 'epochs 5000→1000: model converges by epoch 300'
-  - 'save_every 250→50, min_epochs 1000→300, scheduler T_0 1000→500'
-  - 'phase_start_epoch 2000→500 for Stage 2 losses (scaled to 1000-epoch budget)'
+  - 'Stage 2 phase_start_epoch 500→20: geodesic/radial/rank/monotonic active from epoch 20'
+  - 'eval_every 25→10, save_every 50→25: finer monitoring resolution'
+  - 'Smoke test (100ep) reached ARI=0.887 at epoch 50, exceeding V7 baseline of 0.844'
   config: v21.0_clean_run
-  date: '2026-06-18'
+  date: '2026-07-04'
   model: '21.0'
 
 visualization:
   curvature: 1.0
   html_dir: visualizations
   max_per_level: 1000
-  persist_every: 100
+  persist_every: 25
   save_html: false
   umap_neighbors: 30
