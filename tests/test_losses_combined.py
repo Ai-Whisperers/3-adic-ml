@@ -531,7 +531,7 @@ class TestLearnableWeightsBehavior:
             assert w > 1e-10, "Weight underflow"
 
     def test_regularization_term_prevents_collapse(self, sample_inputs):
-        """Verify -log_sigma regularization is present in loss."""
+        """Verify +log_sigma regularization (Kendall & Gal) is present in loss."""
         z_hyp, indices, logits, targets = sample_inputs
 
         config = {
@@ -541,16 +541,12 @@ class TestLearnableWeightsBehavior:
 
         loss_fn = CombinedLoss(config, curvature=1.0)
 
-        # Set log_sigma to positive value (would make weight small)
+        # At high log_sigma the effective weight is tiny but +log_sigma pushes
+        # back toward equilibrium — unlike -log_sigma which diverges to infinity.
         with torch.no_grad():
             loss_fn.log_sigma_radial.fill_(2.0)
 
         losses = loss_fn(z_hyp, indices, logits, targets, epoch=0)
-
-        # The total should include -log_sigma = -2.0 as regularization
-        # This makes total potentially negative when raw loss is small
-        # but prevents weight from collapsing to zero
-        # Just verify it runs without error
         assert torch.isfinite(losses['total'])
 
 

@@ -346,7 +346,7 @@ loss:
 **How it works:**
 - Each loss gets `nn.Parameter` log_sigma (initialized from config weights)
 - Effective weight = `0.5 * exp(-2 * log_sigma)`
-- Regularization `-log_sigma` prevents collapse to zero
+- Regularization `+log_sigma` (Kendall & Gal 2018) — stable equilibrium at `log_sigma = 0.5*log(loss)`
 - Gradients flow through → network learns optimal balance
 
 **Key difference from removed AnnealingConfig:**

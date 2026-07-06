@@ -14,7 +14,7 @@ V6.1 Feature: Learnable Loss Weights (Uncertainty Weighting)
 
     Instead of fixed weights, the network learns log-variance parameters:
         effective_weight = 1 / (2 * exp(2 * log_sigma))
-        regularization = -log_sigma  (prevents weights going to zero)
+        regularization = +log_sigma  (Kendall & Gal 2018 — stable equilibrium at log_sigma = 0.5*log(loss))
 
     This allows the model to automatically balance competing objectives
     based on gradient flow, rather than relying on hand-tuned weights.
@@ -578,12 +578,13 @@ class CombinedLoss(nn.Module):
             log_sigma: Learnable log-variance parameter
 
         Returns:
-            Weighted loss with regularization: weight * loss - log_sigma
+            Weighted loss with regularization: weight * loss + log_sigma
         """
         weight = self._uncertainty_weight(log_sigma)
-        # The -log_sigma term is regularization that prevents sigma from growing
-        # (which would make the weight go to zero)
-        return weight * loss - log_sigma
+        # +log_sigma is the Kendall & Gal regularization — creates a stable equilibrium
+        # at log_sigma = 0.5*log(loss). Using -log_sigma causes log_sigma to diverge to
+        # +inf (weight → 0) because dL/d(log_sigma) = -exp(-2*log_sigma)*loss - 1 < 0 always.
+        return weight * loss + log_sigma
 
     def _apply_weight(
         self,
