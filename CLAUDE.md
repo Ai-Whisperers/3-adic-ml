@@ -367,7 +367,7 @@ optimizer = torch.optim.Adam(
 print(loss_fn.get_learned_weights())  # {'hierarchy': 4.2, 'coverage': 1.8, ...}
 ```
 
-**When to use:** Enable for long training runs or when exploring new loss combinations. The network will discover the optimal curriculum (e.g., coverage → hierarchy → separation).
+**⚠ Do not use in practice.** The formula has a fundamental instability: when any loss approaches 0 (which happens at 100% accuracy), `log_sigma → -∞ → weight → ∞`. Observed in V21.0 final: `coverage=1797, hierarchy=192`. Use fixed weights (`learnable_weights: false`) for all runs. The sign bug (`-log_sigma`) was fixed in 2026-07, but the underlying instability with near-zero losses remains. See [[v21-training-results]].
 
 ### Quick Reference
 
@@ -509,3 +509,67 @@ Per-level loss details (`r_v0..r_v9`, `angular_coherence_pairs`) are computed by
 | `src/losses/combined.py` | Passes `level_prefix_k` and `target_sim` from YAML |
 | `src/presets/v7_large.yaml` | Config for level_prefix_k, target_sim, n_pairs |
 | `src/train.py` | Live ARI computation in eval block |
+
+---
+
+## V21.0 Training Results & V22 Plan (2026-07-06)
+
+### V21.0 Results (run: v21.0_clean_run_20260706_070224)
+
+Best checkpoint: **epoch 230** (`best_Q.pt`), trained for 1000 epochs (~4.25h on RTX 3050).
+
+| Metric | V7 baseline | V21 smoke test (ep50) | V21 best (ep230) |
+|--------|-------------|----------------------|-----------------|
+| ARI (prefix-3, v=0) | 0.844 | 0.887 | **1.000** |
+| Within-class cosine sim | — | 0.9998 | 0.9996 |
+| Spearman hierarchy | — | 0.8335 | 0.8335 (ceiling) |
+| Val accuracy | — | 100% | 100% |
+| Best Q | — | 1.90 | 1.9755 |
+
+**Radial hierarchy (ep230):**
+
+| Level | Mean radius | Count |
+|-------|-------------|-------|
+| v=0 | 0.9039 | 13122 |
+| v=1 | 0.6539 | 4374 |
+| v=2 | 0.4810 | 1458 |
+| v=3 | 0.3509 | 486 |
+| v=4 | 0.2583 | 162 |
+| v=5 | 0.1864 | 54 |
+| v=6 | 0.1393 | 18 |
+| v=7 | 0.0913 | 6 |
+| v=8 | 0.0405 | 2 |
+| v=9 | 0.0005 | 1 |
+
+Perfect monotonic ordering across all 10 levels. v=9 is essentially at the origin.
+
+### V21.0 Bugs Fixed
+
+| Bug | Fix |
+|-----|-----|
+| `learnable_weights` sign: `-log_sigma` → all weights collapse to 0 | Changed to `+log_sigma` in `src/losses/combined.py` |
+| `phase_start_epoch: 500` → Stage 2 never activated | Changed to `20` in `v21.0_clean_run.yaml` |
+
+### Spearman 0.833 Ceiling
+
+The Spearman correlation between valuation and embedding radius plateaus at **0.8335** within the first 20 epochs and never improves regardless of Stage 2 losses, loss weights, or training duration. This is not a bug — it reflects the limits of the Spearman proxy on this dataset. ARI=1.0 confirms that the model's angular geometry is perfect; the 0.833 ceiling is intrinsic to how Spearman measures radial ordering on the discrete v_3 distribution.
+
+### V22 Plan
+
+**Priority 1 — Stable baseline (disable learnable_weights):**
+```yaml
+loss:
+  learnable_weights: false  # was true; formula unstable when loss→0
+```
+Run 1000 epochs with fixed weights to get a clean comparison without weight divergence noise.
+
+**Priority 2 — Algebraic structure verification:**
+Now that ARI=1.0 and radial hierarchy is perfect, the next question is whether the model captured algebraic structure beyond index-based hierarchy. Use `FiniteTernaryGroupEngine` (or equivalent) to measure:
+- Do operations with the same algebraic identity map to nearby embeddings?
+- Are distributive/associative orbits geometrically clustered?
+- Can we decode algebraic properties from latent directions?
+
+**Priority 3 — KL enforcement (optional):**
+The model currently operates near-deterministically (KL ≈ 0.024). If a proper VAE is desired, increase `hyperbolic_kl.weight` from 0.05 and reduce `free_bits` from 0.5. Trade-off: higher KL may hurt ARI.
+
+**Do NOT chase Spearman.** The 0.833 ceiling is architectural/data-intrinsic. Any attempt to raise it via loss tuning is futile based on V21 evidence.
