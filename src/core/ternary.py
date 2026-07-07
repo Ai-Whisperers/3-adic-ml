@@ -46,6 +46,7 @@ Future (Option C):
 
 from typing import Optional
 
+import numpy as _np
 import torch
 
 
@@ -102,11 +103,12 @@ class TernarySpace:
     # Each operation is f: {-1,0,1}² → {-1,0,1} with digit[k] = f(a,b),
     # a=(k//3)-1, b=(k%3)-1 (row-major 3×3 table).
     # These are precomputed from the ternary LUT; O(1) lookup after init.
-    PROP_ALG_COMMUTATIVE  = 0   # f(a,b) = f(b,a) for all a,b
-    PROP_ALG_IDEMPOTENT   = 1   # f(a,a) = a for all a ∈ {-1,0,1}
-    PROP_ALG_HAS_IDENTITY = 2   # ∃ e ∈ {-1,0,1}: f(e,a)=f(a,e)=a for all a
-    PROP_ALG_HAS_ABSORBING = 3  # ∃ z ∈ {-1,0,1}: f(z,a)=f(a,z)=z for all a
-    N_ALG_PROPERTIES = 4
+    PROP_ALG_COMMUTATIVE   = 0   # f(a,b) = f(b,a) for all a,b
+    PROP_ALG_IDEMPOTENT    = 1   # f(a,a) = a for all a ∈ {-1,0,1}
+    PROP_ALG_HAS_IDENTITY  = 2   # ∃ e ∈ {-1,0,1}: f(e,a)=f(a,e)=a for all a
+    PROP_ALG_HAS_ABSORBING = 3   # ∃ z ∈ {-1,0,1}: f(z,a)=f(a,z)=z for all a
+    PROP_ALG_ASSOCIATIVE   = 4   # f(f(a,b),c) = f(a,f(b,c)) for all a,b,c
+    N_ALG_PROPERTIES = 5
 
     def __init__(self):
         """Initialize precomputed lookup tables."""
@@ -299,6 +301,18 @@ class TernarySpace:
         )
         has_abs = abs_z_neg1 | abs_z_zero | abs_z_pos1
         result[:, self.PROP_ALG_HAS_ABSORBING] = torch.from_numpy(has_abs)
+
+        # Associative: f(f(a,b),c) = f(a,f(b,c)) for all 27 (a,b,c) combinations.
+        # Vectorized: T[n,a,b] = output index in {0,1,2} (shifted from {-1,0,1}).
+        T = (ops + 1).astype('int32').reshape(N, 3, 3)
+        A3, B3, C3 = _np.meshgrid([0, 1, 2], [0, 1, 2], [0, 1, 2], indexing='ij')
+        A27 = A3.ravel(); B27 = B3.ravel(); C27 = C3.ravel()
+        fab  = T[:, A27, B27]                                            # (N,27): f(a,b)
+        fbc  = T[:, B27, C27]                                            # (N,27): f(b,c)
+        lhs  = T[_np.arange(N)[:, None], fab,  C27[None, :]]           # f(f(a,b),c)
+        rhs  = T[_np.arange(N)[:, None], A27[None, :], fbc]            # f(a,f(b,c))
+        assoc = (lhs == rhs).all(axis=1)
+        result[:, self.PROP_ALG_ASSOCIATIVE] = torch.from_numpy(assoc)
 
         return result
 
@@ -861,30 +875,36 @@ class TernarySpace:
         """True where ∃ z ∈ {-1,0,1} s.t. f(z,a) = f(a,z) = z."""
         return self._get_alg_property(indices, self.PROP_ALG_HAS_ABSORBING)
 
+    def is_associative(self, indices: torch.Tensor) -> torch.Tensor:
+        """True where f(f(a,b),c) = f(a,f(b,c)) for all a,b,c ∈ {-1,0,1}."""
+        return self._get_alg_property(indices, self.PROP_ALG_ASSOCIATIVE)
+
     def algebraic_signature(self, indices: torch.Tensor) -> torch.Tensor:
-        """3-bit algebraic signature packed as integer in [0, 7].
+        """4-bit algebraic signature packed as integer in [0, 15].
 
         Bit layout (MSB → LSB):
-            bit 2: is_commutative
+            bit 3: is_commutative
+            bit 2: is_associative
             bit 1: has_identity_element
             bit 0: has_absorbing_element
 
-        Class 0 (000) is the bulk (~95% of ops, none of the special properties).
-        Classes 1–7 are algebraically significant sub-populations.
+        Class 0 (0000) is the bulk (~94% of ops, none of the special properties).
+        Classes 1–15 are algebraically significant sub-populations.
 
         Args:
             indices: Operation indices, any shape
 
         Returns:
-            Integer tensor in [0, 7], same shape as indices
+            Integer tensor in [0, 15], same shape as indices
         """
         device = indices.device
         lut = self._get_cached_lut("algebraic", self._algebraic_lut, device)
         indices = torch.clamp(indices.long(), 0, self.N_OPERATIONS - 1)
-        props = lut[indices]  # (..., 4) bool
+        props = lut[indices]  # (..., 5) bool
         return (
-            props[..., self.PROP_ALG_COMMUTATIVE].long()  * 4 +
-            props[..., self.PROP_ALG_HAS_IDENTITY].long() * 2 +
+            props[..., self.PROP_ALG_COMMUTATIVE].long()   * 8 +
+            props[..., self.PROP_ALG_ASSOCIATIVE].long()   * 4 +
+            props[..., self.PROP_ALG_HAS_IDENTITY].long()  * 2 +
             props[..., self.PROP_ALG_HAS_ABSORBING].long()
         )
 
@@ -993,6 +1013,11 @@ def is_commutative(indices: torch.Tensor) -> torch.Tensor:
     return TERNARY.is_commutative(indices)
 
 
+def is_associative(indices: torch.Tensor) -> torch.Tensor:
+    """Check associativity. See TernarySpace.is_associative."""
+    return TERNARY.is_associative(indices)
+
+
 def is_idempotent(indices: torch.Tensor) -> torch.Tensor:
     """Check idempotency. See TernarySpace.is_idempotent."""
     return TERNARY.is_idempotent(indices)
@@ -1009,7 +1034,7 @@ def has_absorbing_element(indices: torch.Tensor) -> torch.Tensor:
 
 
 def algebraic_signature(indices: torch.Tensor) -> torch.Tensor:
-    """3-bit algebraic signature in [0,7]. See TernarySpace.algebraic_signature."""
+    """4-bit algebraic signature in [0,15]. See TernarySpace.algebraic_signature."""
     return TERNARY.algebraic_signature(indices)
 
 
@@ -1061,6 +1086,7 @@ __all__ = [
     "valuation_prefix_class",
     # Algebraic property accessors (v10)
     "is_commutative",
+    "is_associative",
     "is_idempotent",
     "has_identity_element",
     "has_absorbing_element",

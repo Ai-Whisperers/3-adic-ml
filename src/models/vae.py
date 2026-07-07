@@ -473,6 +473,22 @@ class TernaryVAEV6(nn.Module):
         mu_A, _ = self.head_A(x)
         return mu_A
 
+    def get_hyperbolic_representations(self, indices: torch.Tensor, device: torch.device) -> torch.Tensor:
+        """Get Poincaré ball embeddings (z_hyp) for arbitrary indices.
+
+        Used by AlgebraicCoherenceLoss to sample from full algebraic-class
+        populations, not just the current batch. Gradients flow through.
+        Deterministic (uses mu, no reparameterization).
+        """
+        x = TERNARY.to_ternary(indices).to(device).to(torch.float64)
+        if self.positional_encoding:
+            x = torch.cat([x, x * self.pos_weights], dim=-1)
+        mu_A, _ = self.head_A(x)
+        # projections expects (z_A_tangent, z_B_tangent); pass mu_A for both,
+        # return only z_A_hyp (first output).
+        z_A_hyp, _, _, _ = self.projections(mu_A, mu_A, as_manifold=False)
+        return z_A_hyp
+
 
 # =============================================================================
 # TernaryVAEV6Controllable

@@ -196,22 +196,30 @@ class TestAlgebraicOperations:
         assert torch.all(idx_prod_zero == 9841)
 
     def test_algebraic_signature(self):
-        """Verify algebraic signature computation."""
+        """Verify algebraic signature computation — 4-bit encoding (range 0-15)."""
         # Index 9841 is all 0s (constant 0 operation)
         idx_zero = torch.tensor([9841])
         sig = TERNARY.algebraic_signature(idx_zero)
-        assert sig.item() in range(8)
-        
+        assert sig.item() in range(16)  # 4-bit: bit3=comm, bit2=assoc, bit1=id, bit0=abs
+
         assert TERNARY.is_commutative(idx_zero).item() is True
+        assert TERNARY.is_associative(idx_zero).item() is True
         # constant 0 is NOT idempotent (f(1,1)=0 != 1)
         assert TERNARY.is_idempotent(idx_zero).item() is False
         assert TERNARY.has_absorbing_element(idx_zero).item() is True
+        # sig should have comm(8) + assoc(4) + abs(1) = 13
+        assert sig.item() == 13
 
         # Test commutative property on more indices for coverage
         indices = torch.randint(0, TERNARY.N_OPERATIONS, (100,))
         comm = TERNARY.is_commutative(indices)
         assert comm.shape == (100,)
         assert comm.dtype == torch.bool
+
+        # Verify is_associative output type
+        assoc = TERNARY.is_associative(indices)
+        assert assoc.shape == (100,)
+        assert assoc.dtype == torch.bool
 
 
 class TestRoundTripInvertibility:

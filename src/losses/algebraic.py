@@ -5,7 +5,7 @@
 
 """Algebraic coherence and addition losses for p-adic VAE."""
 
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -149,22 +149,57 @@ class AngularCoherenceLoss(nn.Module):
 
 
 class AlgebraicCoherenceLoss(nn.Module):
-    """Attract same-algebraic-class operations in embedding direction space."""
+    """Attract same-algebraic-class operations together angularly.
+
+    Uses a 4-bit signature (comm=8, assoc=4, identity=2, absorbing=1) covering
+    15 non-trivial algebraic classes. Rare classes (e.g. associative: 113 ops,
+    0.57%) almost never appear together in a batch, so this loss uses a
+    global-lookup mode: for each class, one half of the pair is sampled from the
+    full population via model.get_hyperbolic_representations(), while the other
+    half comes from the current batch. This guarantees a gradient signal for
+    every class present at the operation level, not just the batch level.
+
+    Class populations (out of 19683 total):
+        sig=8  (comm only):          666
+        sig=12 (comm+assoc):          50
+        sig=14 (comm+assoc+id):       27
+        sig=15 (comm+assoc+id+abs):   18  ← semilattices / complete lattices
+        sig=4  (assoc only):          13
+        sig=6  (assoc+id):             6  ← non-comm monoids
+        ...
+    """
+
+    # Precomputed global index lists for each non-zero signature, shared across instances.
+    _global_indices: Optional[dict] = None
 
     def __init__(
         self,
         weight: float = 1.0,
         n_pairs: int = 2000,
-        target_sim: float = 0.70,
+        target_sim: float = 0.85,
         phase_start_epoch: int = 20,
-        min_class_size: int = 3,
+        min_global_size: int = 2,
     ):
         super().__init__()
         self.weight = weight
         self.n_pairs = n_pairs
         self.target_sim = target_sim
         self.phase_start_epoch = phase_start_epoch
-        self.min_class_size = min_class_size
+        self.min_global_size = min_global_size
+        self._ensure_global_indices()
+
+    @classmethod
+    def _ensure_global_indices(cls) -> None:
+        """Build class→global_indices map once, reuse across instances."""
+        if cls._global_indices is not None:
+            return
+        all_idx = torch.arange(TERNARY.N_OPERATIONS)
+        sigs = TERNARY.algebraic_signature(all_idx).numpy()
+        cls._global_indices = {}
+        for sig_val in range(1, 16):
+            idx = (sigs == sig_val).nonzero()[0]
+            if len(idx) >= 2:
+                cls._global_indices[sig_val] = torch.from_numpy(idx).long()
 
     def forward(
         self,
@@ -172,6 +207,7 @@ class AlgebraicCoherenceLoss(nn.Module):
         r: torch.Tensor,
         indices: torch.Tensor,
         epoch: int = 0,
+        model: Optional[nn.Module] = None,
     ) -> Tuple[torch.Tensor, MetricsDict]:
         metrics: MetricsDict = {}
         zero = make_zero_loss(z_hyp.device, z_hyp.dtype)
@@ -181,15 +217,8 @@ class AlgebraicCoherenceLoss(nn.Module):
             metrics["alg_coherence_pairs"] = 0
             return zero, metrics
 
-        B = z_hyp.shape[0]
-        if B < 4:
-            metrics["alg_coherence_loss"] = 0.0
-            metrics["alg_coherence_pairs"] = 0
-            return zero, metrics
-
         eps = torch.tensor(1e-10, device=z_hyp.device, dtype=z_hyp.dtype)
         dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=eps)
-
         sigs = TERNARY.algebraic_signature(indices)
 
         t = torch.tensor(self.target_sim, device=z_hyp.device, dtype=z_hyp.dtype)
@@ -197,27 +226,43 @@ class AlgebraicCoherenceLoss(nn.Module):
         total_pairs = 0
         n_active = 0
 
-        for sig_val in range(1, 8):
-            mask = (sigs == sig_val)
-            n_in_class = int(mask.sum().item())
-            if n_in_class < self.min_class_size:
-                continue
+        for sig_val, global_idx in (self._global_indices or {}).items():
+            # --- Anchor side: sample from the current batch ---
+            batch_mask = (sigs == sig_val)
+            n_batch = int(batch_mask.sum().item())
 
-            class_idx = mask.nonzero(as_tuple=True)[0]
-            nc = class_idx.shape[0]
-            half = min(nc // 2, self.n_pairs)
-            if half < 2:
-                continue
+            if n_batch >= 2:
+                # Enough in batch: use batch pairs
+                batch_local = batch_mask.nonzero(as_tuple=True)[0]
+                n_pairs_cls = min(len(batch_local) // 2, self.n_pairs // max(1, len(self._global_indices)))
+                if n_pairs_cls < 1:
+                    continue
+                perm = torch.randperm(len(batch_local), device=z_hyp.device)
+                di = dir_vecs[batch_local[perm[:n_pairs_cls]]]
+                dj = dir_vecs[batch_local[perm[n_pairs_cls:n_pairs_cls * 2]]]
+            elif model is not None and n_batch >= 1:
+                # Rare class: 1 anchor from batch, counterpart from global population
+                batch_local = batch_mask.nonzero(as_tuple=True)[0]
+                n_global = len(global_idx)
+                n_pairs_cls = min(len(batch_local), self.n_pairs // max(1, len(self._global_indices)))
+                if n_pairs_cls < 1:
+                    continue
+                di = dir_vecs[batch_local[:n_pairs_cls]]
 
-            perm = torch.randperm(nc, device=z_hyp.device)
-            di = dir_vecs[class_idx[perm[:half]]]
-            dj = dir_vecs[class_idx[perm[half:half * 2]]]
+                # Sample from global population (different from batch anchor)
+                sel = torch.randint(n_global, (n_pairs_cls,))
+                global_sample = global_idx[sel].to(z_hyp.device)
+                with torch.no_grad():
+                    z_global = model.get_hyperbolic_representations(global_sample, z_hyp.device)
+                r_global = z_global.norm(dim=-1, keepdim=True).clamp(min=eps)
+                dj = (z_global / r_global).to(z_hyp.dtype)
+            else:
+                continue
 
             cos_sim = (di * dj).sum(dim=-1)
             cls_loss = F.relu(t - cos_sim).mean()
-
             total_loss = total_loss + cls_loss
-            total_pairs += half
+            total_pairs += int(cos_sim.shape[0])
             n_active += 1
             metrics[f"alg_loss_sig{sig_val}"] = cls_loss.item()
 

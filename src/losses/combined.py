@@ -371,9 +371,9 @@ class CombinedLoss(nn.Module):
             self.algebraic_coherence_loss = AlgebraicCoherenceLoss(
                 weight=alg_cfg.get('weight', 1.0),
                 n_pairs=alg_cfg.get('n_pairs', 2000),
-                target_sim=alg_cfg.get('target_sim', 0.70),
+                target_sim=alg_cfg.get('target_sim', 0.85),
                 phase_start_epoch=alg_cfg.get('phase_start_epoch', 20),
-                min_class_size=alg_cfg.get('min_class_size', 3),
+                min_global_size=alg_cfg.get('min_global_size', alg_cfg.get('min_class_size', 2)),
             )
             self.alg_coherence_weight = alg_cfg.get('weight', 1.0)
             self._alg_warned_no_r = False
@@ -798,7 +798,7 @@ class CombinedLoss(nn.Module):
 
         # 11. AlgebraicCoherenceLoss (requires factored latent r)
         if self.algebraic_coherence_loss is not None and r is not None:
-            alg_out, alg_metrics = self.algebraic_coherence_loss(z_hyp, r, indices, epoch)
+            alg_out, alg_metrics = self.algebraic_coherence_loss(z_hyp, r, indices, epoch, model=model)
             losses['algebraic_coherence'] = alg_out
             losses['alg_coherence_metrics'] = alg_metrics
             total = total + alg_out

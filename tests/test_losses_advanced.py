@@ -161,7 +161,8 @@ class TestAlgebraicCoherenceLoss:
         _, _, indices, z_hyp, r = sample_data
         # Force all distinct signatures (unlikely with small sample but possible)
         # Here we just set min_class_size high
-        loss_fn = AlgebraicCoherenceLoss(min_class_size=100, phase_start_epoch=0)
+        # min_global_size=1000 forces all classes to be skipped (none have that many ops globally)
+        loss_fn = AlgebraicCoherenceLoss(min_global_size=1000, phase_start_epoch=0)
         loss, metrics = loss_fn(z_hyp, r, indices, epoch=1)
 
         assert loss.item() == 0.0
