@@ -382,3 +382,124 @@ class TestSurrogatePropertyLoss:
         # Verify gradient flow
         loss.backward()
         assert mu.grad is not None
+
+
+# =============================================================================
+# AlgebraicCoherenceLoss — real model tests (global lookup path)
+# =============================================================================
+
+@pytest.fixture
+def tiny_vae():
+    """Minimal TernaryVAEV6Controllable for gradient tests (~250k params)."""
+    from src.models.vae import TernaryVAEV6Controllable
+    return TernaryVAEV6Controllable(
+        latent_dim=16,
+        hidden_dim=32,
+        max_radius=0.99,
+        factored=True,
+        radial_dims=4,
+        n_projection_layers=1,
+        projection_dropout=0.0,
+        learnable_curvature=False,
+        positional_encoding=False,
+        encoder_type="standard",
+        decoder_type="standard",
+        tangent_scale_init=0.1,
+        detach_radial=False,
+        init_identity=False,
+    )
+
+
+class TestAlgebraicCoherenceLossWithRealModel:
+    """Verify global-lookup path: gradients flow through get_hyperbolic_representations."""
+
+    def test_global_lookup_gradient_flow(self, tiny_vae):
+        """When only 1 op of a rare class is in the batch, model is queried for a
+        global counterpart via get_hyperbolic_representations (under no_grad for
+        efficiency). Gradient flows back through the batch anchor z_hyp only."""
+        from src.core import TERNARY
+        model = tiny_vae
+
+        # sig=6 (assoc+id, non-comm): exactly 6 ops globally → rare
+        # Put exactly 1 of them in the batch to trigger the global-lookup path.
+        rare_sig_indices = TERNARY.algebraic_signature(torch.arange(TERNARY.N_OPERATIONS))
+        rare_ops = (rare_sig_indices == 6).nonzero(as_tuple=True)[0]  # should be 6 ops
+        assert len(rare_ops) == 6
+
+        # Batch: 30 random non-sig-6 ops + 1 forced sig=6  (seed controls randomness)
+        torch.manual_seed(99)
+        # Exclude sig=6 ops from random pool
+        non_rare = (rare_sig_indices != 6).nonzero(as_tuple=True)[0]
+        random_idx = non_rare[torch.randint(len(non_rare), (30,))]
+        batch_idx = torch.cat([random_idx, rare_ops[:1]])  # exactly 1 sig=6 in batch
+
+        ops = TERNARY.to_ternary(batch_idx).float()
+        with torch.no_grad():
+            out = model(ops)
+        z_hyp = out["z_A_hyp"].detach().requires_grad_(True)
+        r = out["r_A"].detach()
+
+        loss_fn = AlgebraicCoherenceLoss(
+            weight=1.0,
+            phase_start_epoch=0,
+            min_global_size=2,
+            target_sim=0.9,
+        )
+
+        loss, metrics = loss_fn(z_hyp, r, batch_idx, epoch=1, model=model)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.shape == ()
+        assert torch.isfinite(loss)
+        # The global lookup path was triggered for sig=6
+        assert metrics["alg_coherence_pairs"] > 0, "Global lookup should have found a counterpart"
+
+        # Gradient flows through z_hyp (the batch anchor); global side uses no_grad for efficiency
+        loss.backward()
+        assert z_hyp.grad is not None
+        assert torch.isfinite(z_hyp.grad).all()
+        # Gradient only on the batch-anchor slice (last element is the sig=6 op)
+        assert z_hyp.grad[-1].abs().sum() > 0, "sig=6 batch op should have non-zero gradient"
+
+    def test_batch_only_path_gradient_flow(self, tiny_vae):
+        """When ≥2 ops of a class are in batch, no model lookup; gradients flow through z_hyp."""
+        from src.core import TERNARY
+        model = tiny_vae
+
+        # sig=8 (comm only): 573 ops → easily get 2+ in batch
+        torch.manual_seed(7)
+        comm_ops = (TERNARY.algebraic_signature(torch.arange(TERNARY.N_OPERATIONS)) == 8).nonzero(as_tuple=True)[0]
+        batch_idx = comm_ops[:32]  # force 32 same-class ops
+
+        ops = TERNARY.to_ternary(batch_idx).float()
+        with torch.no_grad():
+            out = model(ops)
+        z_hyp = out["z_A_hyp"].detach().requires_grad_(True)
+        r = out["r_A"].detach()
+
+        loss_fn = AlgebraicCoherenceLoss(weight=1.0, phase_start_epoch=0, min_global_size=2)
+        loss, metrics = loss_fn(z_hyp, r, batch_idx, epoch=1)
+
+        assert loss.item() > 0
+        loss.backward()
+        assert z_hyp.grad is not None
+        assert torch.isfinite(z_hyp.grad).all()
+
+    def test_get_hyperbolic_representations_shape_and_norm(self, tiny_vae):
+        """get_hyperbolic_representations returns Poincaré points (norm < 1).
+
+        With factored=True and radial_dims=4, the hyperbolic output has
+        shape (N, latent_dim - radial_dims) = (N, 12) for our tiny_vae.
+        """
+        from src.core import TERNARY
+        model = tiny_vae.eval()
+
+        idx = torch.tensor([0, 1, 9841, 19569])  # diverse ops
+        with torch.no_grad():
+            z = model.get_hyperbolic_representations(idx, torch.device("cpu"))
+
+        assert z.ndim == 2
+        assert z.shape[0] == 4
+        norms = z.norm(dim=-1)
+        assert (norms < 1.0).all(), f"Points outside Poincaré ball: {norms}"
+        assert torch.isfinite(z).all()

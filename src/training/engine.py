@@ -40,6 +40,7 @@ from .reporting import ReportingManager, _build_checkpoint_payload
 _TRACKED_LOSS_KEYS = {
     "hyperbolic_contrastive": "contrastive",
     "surrogate_property": "surrogate",
+    "algebraic_coherence": "alg_coherence",
 }
 
 
@@ -369,7 +370,13 @@ def train_epoch(
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
-        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+        # Include learnable loss weight params in clip so they're bounded if enabled.
+        all_params = (
+            list(model.parameters())
+            + list(loss_fn.parameters())
+            + list(loss_fn_b.parameters())
+        )
+        grad_norm = torch.nn.utils.clip_grad_norm_(all_params, max_grad_norm)
         scaler.step(optimizer)
         scaler.update()
 
@@ -465,6 +472,11 @@ def validate_epoch(
             alg_metrics.update(m)
         if hasattr(loss_fn, 'algebraic_distributive_loss') and loss_fn.algebraic_distributive_loss:
             _, m = loss_fn.algebraic_distributive_loss(mu_sub, idx_sub, model, epoch)
+            alg_metrics.update(m)
+        if hasattr(loss_fn, 'algebraic_coherence_loss') and loss_fn.algebraic_coherence_loss:
+            z_sub = z_A_cat[perm]
+            r_sub = z_sub.norm(dim=-1)
+            _, m = loss_fn.algebraic_coherence_loss(z_sub, r_sub, idx_sub, epoch, model=model)
             alg_metrics.update(m)
 
     return {
