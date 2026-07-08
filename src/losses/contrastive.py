@@ -5,10 +5,9 @@
 
 """Hyperbolic p-Adic Contrastive Loss using InfoNCE-style prefix similarity alignment."""
 
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Tuple
 
 import torch
-import torch.nn as nn
 
 from ..core import TERNARY
 from ..geometry.poincare import get_manifold

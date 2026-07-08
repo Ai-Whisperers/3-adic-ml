@@ -35,7 +35,6 @@ import warnings
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .utils import compute_coverage_loss, make_zero_loss, weight_to_log_sigma
 

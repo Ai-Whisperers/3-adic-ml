@@ -5,7 +5,7 @@
 
 """Algebraic coherence and addition losses for p-adic VAE."""
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -56,8 +56,7 @@ class AngularCoherenceLoss(nn.Module):
             metrics["angular_coherence_pairs"] = 0
             return zero, metrics
 
-        eps = torch.tensor(1e-10, device=z_hyp.device, dtype=z_hyp.dtype)
-        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=eps)
+        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=1e-10)
 
         vals = self._valuation_fn(indices)
         B = dir_vecs.shape[0]
@@ -103,8 +102,7 @@ class AngularCoherenceLoss(nn.Module):
                 di = dir_vecs[i_idx[same_cls]]
                 dj = dir_vecs[j_idx[same_cls]]
                 cos_sim = (di * dj).sum(dim=-1)
-                t = torch.tensor(t_sim, device=z_hyp.device, dtype=z_hyp.dtype)
-                level_loss = F.relu(t - cos_sim).mean()
+                level_loss = F.relu(t_sim - cos_sim).mean()
                 total_loss = total_loss + level_loss
                 total_pairs += int(n_same)
                 n_active_levels += 1
@@ -217,11 +215,9 @@ class AlgebraicCoherenceLoss(nn.Module):
             metrics["alg_coherence_pairs"] = 0
             return zero, metrics
 
-        eps = torch.tensor(1e-10, device=z_hyp.device, dtype=z_hyp.dtype)
-        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=eps)
+        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=1e-10)
         sigs = TERNARY.algebraic_signature(indices)
 
-        t = torch.tensor(self.target_sim, device=z_hyp.device, dtype=z_hyp.dtype)
         total_loss = zero
         total_pairs = 0
         n_active = 0
@@ -254,13 +250,13 @@ class AlgebraicCoherenceLoss(nn.Module):
                 global_sample = global_idx[sel].to(z_hyp.device)
                 with torch.no_grad():
                     z_global = model.get_hyperbolic_representations(global_sample, z_hyp.device)
-                r_global = z_global.norm(dim=-1, keepdim=True).clamp(min=eps)
+                r_global = z_global.norm(dim=-1, keepdim=True).clamp(min=1e-10)
                 dj = (z_global / r_global).to(z_hyp.dtype)
             else:
                 continue
 
             cos_sim = (di * dj).sum(dim=-1)
-            cls_loss = F.relu(t - cos_sim).mean()
+            cls_loss = F.relu(self.target_sim - cos_sim).mean()
             total_loss = total_loss + cls_loss
             total_pairs += int(cos_sim.shape[0])
             n_active += 1
