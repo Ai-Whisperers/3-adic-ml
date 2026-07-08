@@ -76,14 +76,14 @@ class GlobalRankLoss(HierarchyLossBase):
         if higher_v_mask.any():
             # v_i > v_j => r_i should be < r_j.
             # Violation if r_i - r_j > 0.
-            viol_high = F.sigmoid((r_i[higher_v_mask] - r_j[higher_v_mask]) / self.temperature)
+            viol_high = torch.sigmoid((r_i[higher_v_mask] - r_j[higher_v_mask]) / self.temperature)
             loss = loss + viol_high.mean()
             n_viol_count += int((r_i[higher_v_mask] > r_j[higher_v_mask]).sum().item())
 
         if lower_v_mask.any():
-            # v_i < v_j => r_i should be < r_j.
+            # v_i < v_j => r_i should be > r_j.
             # Violation if r_j - r_i > 0.
-            viol_low = F.sigmoid((r_j[lower_v_mask] - r_i[lower_v_mask]) / self.temperature)
+            viol_low = torch.sigmoid((r_j[lower_v_mask] - r_i[lower_v_mask]) / self.temperature)
             loss = loss + viol_low.mean()
             n_viol_count += int((r_j[lower_v_mask] > r_i[lower_v_mask]).sum().item())
 
