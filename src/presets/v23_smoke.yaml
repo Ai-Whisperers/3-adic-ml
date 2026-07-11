@@ -1,22 +1,21 @@
-# v22.0_fixed_weights.yaml
+# v23_smoke.yaml — Integration smoke test based on v23.0_algebraic.yaml
 #
-# Changes from V21.0:
-#   - learnable_weights: true → false
-#     Root cause: +log_sigma formula is unstable when loss→0 (which happens at 100% accuracy).
-#     V21 final: coverage weight diverged to 1797, hierarchy to 192. Best Q still at epoch 230
-#     before divergence fully destabilized the run. Fixed weights eliminate this noise.
+# Differences from v23.0:
+#   - epochs: 150 (vs 1000) — enough to cover all activation milestones
+#   - lagrangian.warmup_epochs: 20 (vs 100) — verifies dual ascent update path
+#   - print_every/eval_every: 5 (vs 10) — more granular progress
+#   - save_every: 150 — only final checkpoint
+#   - min_epochs: 50 — don't block early exit
+#   - patience: 150 — match epoch count
+#   - histogram_every: 150 — reduce TensorBoard overhead
 #
-#   - Fixed weight values: kept at V21.0 initial config values (hierarchy=10, coverage=10, etc.)
-#     These were already well-tuned. The network naturally emphasizes coverage first, then
-#     hierarchy via Stage 2 pressure — no curriculum gating needed with stable weights.
-#
-# V21.0 achievements (these are what V22 aims to reproduce stably):
-#   - ARI (prefix-3, v=0) = 1.000 at epoch 230
-#   - Radial hierarchy: perfect monotonic ordering v=0→v=9 (r_v9=0.0005 ≈ origin)
-#   - Val accuracy: 100% from epoch 10
-#   - Best Q: 1.9755
-#   - Spearman: 0.8335 (ceiling — do NOT chase this)
-#
+# Activation milestones to verify:
+#   epoch  0: algebraic_addition, algebraic_multiplication, algebraic_coherence,
+#              angular_coherence, hyperbolic_contrastive (phase_start_epoch=0)
+#   epoch 20: geodesic, rank, monotonic, radial activate (phase_start_epoch=20)
+#   epoch 20: Lagrangian dual ascent activates (warmup_epochs=20)
+#   epoch ??: dynamic_curriculum Stage 2 activates (when coverage >= 0.80)
+
 anchor_checkpoint: null
 data:
   indices_path: data/rosetta_indices.pt
@@ -32,15 +31,13 @@ logging:
     log_activations: true
     log_gradients: true
     log_weights: true
-  histogram_every: 50
+  histogram_every: 150
   verbose: false
 loss:
-  # --- Option B: Dynamic Curriculum Gating ---
   dynamic_curriculum:
     enabled: true
     coverage_threshold: 0.80
 
-  # --- Option B: Hyperbolic Contrastive ---
   hyperbolic_contrastive:
     enabled: true
     weight: 2.0
@@ -51,7 +48,6 @@ loss:
   surrogate_property:
     enabled: false
 
-  # --- Stage 1: Algebraic Grounding ---
   algebraic_addition:
     enabled: true
     n_pairs: 2048
@@ -64,13 +60,12 @@ loss:
     weight: 15.0
   algebraic_coherence:
     enabled: true
-    min_global_size: 5
+    min_global_size: 2
     n_pairs: 4000
     phase_start_epoch: 0
-    target_sim: 0.85
-    weight: 10.0
+    target_sim: 0.90
+    weight: 15.0
 
-  # Angular coherence: weight=20 (fix two-cluster collapse from V19).
   angular_coherence:
     enabled: true
     level_prefix_k: [5, 4, 3, 2, 2, 1, 0, 0, 0, 0]
@@ -80,7 +75,6 @@ loss:
     target_sim: [1.0, 0.95, 0.9, 0.85, 0.8, 0.7, 0.0, 0.0, 0.0, 0.0]
     weight: 20.0
 
-  # --- Stage 2: activated when coverage >= 0.80 ---
   rich_hierarchy:
     enabled: true
     coverage_weight: 10.0
@@ -133,7 +127,6 @@ loss:
     weight: 2.0
     phase_start_epoch: 20
 
-  # --- Regularization ---
   hyperbolic_kl:
     beta: 0.1
     enabled: true
@@ -145,8 +138,8 @@ loss:
     lr: 0.05
     max_lambda: 10.0
     n_levels: 10
-    warmup_epochs: 100
-  learnable_weights: false  # KEY FIX: disabled — formula unstable when loss→0
+    warmup_epochs: 20    # reduced from 100 — test dual ascent activation
+  learnable_weights: false
 
 model:
   curvature: 1.0
@@ -211,8 +204,8 @@ statenet:
 
 training:
   batch_size: 1024
-  epochs: 1000
-  eval_every: 10
+  epochs: 150
+  eval_every: 5
   grokking_detection:
     accuracy_jump_threshold: 0.02
     enabled: true
@@ -225,14 +218,14 @@ training:
   high_v_budget_ratio: 0.3
   lr: 0.0005
   max_grad_norm: 1.0
-  min_epochs: 300
+  min_epochs: 50
   num_workers: 4
-  patience: 500
-  print_every: 10
-  save_every: 25
+  patience: 150
+  print_every: 5
+  save_every: 150
   scheduler:
-    T_0: 500
-    T_mult: 2
+    T_0: 150
+    T_mult: 1
     type: cosine_warmup_restart
   use_adaptive: true
   use_stratified: true
@@ -241,17 +234,15 @@ training:
 
 version:
   changes:
-  - 'V22.0: Fixed weights — disable learnable_weights (formula unstable when loss→0)'
-  - 'All other config identical to V21.0 — clean comparison baseline'
-  - 'Target: reproduce ARI=1.0 + perfect radial hierarchy stably, without weight divergence'
-  config: v22.0_fixed_weights
-  date: '2026-07-07'
-  model: '22.0'
+  - 'v23_smoke: integration smoke test of v23.0 pipeline'
+  config: v23_smoke
+  date: '2026-07-11'
+  model: '23.0'
 
 visualization:
   curvature: 1.0
   html_dir: visualizations
   max_per_level: 1000
-  persist_every: 25
+  persist_every: 150
   save_html: false
   umap_neighbors: 30

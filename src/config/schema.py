@@ -406,7 +406,7 @@ class AlgebraicCoherenceLossConfig(StrictConfigModel):
     n_pairs: int = Field(default=2000, ge=10)
     target_sim: float = Field(default=0.70, ge=0.0, le=1.0)
     phase_start_epoch: int = Field(default=20, ge=0)
-    min_class_size: int = Field(default=3, ge=2)
+    min_global_size: int = Field(default=2, ge=2)
 
 
 class AlgebraicAdditionLossConfig(StrictConfigModel):
