@@ -635,3 +635,47 @@ Perfect monotonic ordering across all 10 levels. v=9 essentially at the origin.
 - **Measure algebraic clustering:** Now that the algebraic losses are active, evaluate whether same-signature operations are geometrically clustered in direction space. Use `AlgebraicCoherenceLoss._global_indices` to extract per-class embeddings and compute within-class vs between-class angular distances.
 - **ARI on algebraic classes:** Compute ARI using `algebraic_signature` as labels (instead of `digit_prefix_class`) to quantify whether the algebraic structure is encoded in the latent directions.
 - **KL enforcement (optional):** Model operates near-deterministically (KL ≈ 0.024). Increase `hyperbolic_kl.weight` and reduce `free_bits` if a proper VAE posterior is desired. Trade-off: higher KL may hurt Q.
+
+---
+
+## V24.0 — tangent_scale Log-Reparameterization Fix (2026-07-11)
+
+### Root Cause: VAE-B Directional Collapse
+
+V23.0 deep analysis revealed `tangent_scale_B` collapsed from 0.042 → ~6e-8 between epochs 25-75, causing all z_B_hyp to point in the same direction (pairwise cosine sim = 1.000000). Mechanism:
+
+1. `tangent_scale → 0` makes `tangent_net(0 * z_θ) = tangent_net(0)` = constant for all samples
+2. All directions normalize to the same vector → angular coherence loss on B trivially satisfies → zero gradient
+3. Stable degenerate fixed point: once collapsed, cannot recover
+
+VAE-A escaped by chance of initialization. Radii (via independent `linear_r`) were unaffected, preserving Spearman=0.8335 despite directional collapse.
+
+### Fix: Log-Space Reparameterization
+
+**File:** `src/models/hyperbolic_projection.py`
+
+```python
+# Before (collapses to 0 — degenerate fixed point):
+self.tangent_scale = nn.Parameter(torch.tensor(tangent_scale_init))
+z_theta_scaled = self.tangent_scale * z_theta
+
+# After (always > 0 — no fixed point at 0):
+self.log_tangent_scale = nn.Parameter(torch.tensor(math.log(tangent_scale_init)))
+z_theta_scaled = self.log_tangent_scale.exp() * z_theta
+```
+
+Changes applied:
+- `__init__`: store `log(tangent_scale_init)` as `log_tangent_scale` parameter
+- Validation: `tangent_scale_init <= 0` raises error (was `< 0`, allowing 0)
+- All 3 forward paths: `self.tangent_scale` → `self.log_tangent_scale.exp()`
+- `import math` added at top of file
+
+**Checkpoint key change:** `tangent_scale` → `log_tangent_scale` (V24 is a fresh run; no migration needed)
+
+**Monitoring:** TensorBoard logs `log_tangent_scale` in log-space. Effective scale = `exp(logged_value)`. Expect both A and B to stay in range (-5, +1) throughout training.
+
+### Config: `src/presets/v24.0_tangent_fix.yaml`
+
+Identical to V23.0 in all other respects. The fix isolates the `tangent_scale` change.
+
+Expected improvement: VAE-B develops diverse directions (ARI_B should be > 0), confirming both VAEs contribute genuinely to the hierarchy signal.

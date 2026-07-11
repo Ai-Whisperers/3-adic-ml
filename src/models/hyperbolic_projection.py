@@ -21,6 +21,7 @@ Reference:
   Mathieu et al. (2019) "Continuous Hierarchical Representations with Poincaré VAEs"
 """
 
+import math
 from typing import Optional, Tuple, Union
 
 import geoopt
@@ -93,9 +94,9 @@ class HyperbolicProjection(nn.Module):
                     f"HyperbolicProjection: curvature must be > 0, got {c_val}"
                 )
 
-        if not (0.0 <= tangent_scale_init):
+        if tangent_scale_init <= 0:
             raise ValueError(
-                f"HyperbolicProjection: tangent_scale_init must be >= 0, got {tangent_scale_init}"
+                f"HyperbolicProjection: tangent_scale_init must be > 0, got {tangent_scale_init}"
             )
         if factored and radial_dims >= latent_dim:
             raise ValueError(
@@ -159,8 +160,10 @@ class HyperbolicProjection(nn.Module):
 
         # Tangent scale: in non-factored mode scales encoder outputs before expmap0.
         # In factored mode scales z_θ before direction residual network.
-        self.tangent_scale = nn.Parameter(
-            torch.tensor(tangent_scale_init, dtype=torch.float64)
+        # Stored in log-space so exp(log_tangent_scale) is always strictly positive,
+        # preventing the degenerate fixed point where scale→0 collapses all directions.
+        self.log_tangent_scale = nn.Parameter(
+            torch.tensor(math.log(tangent_scale_init), dtype=torch.float64)
         )
 
         if init_identity:
@@ -231,10 +234,10 @@ class HyperbolicProjection(nn.Module):
 
         # --- Non-factored mode (V6 expmap0 approach) ---
         # Scale tangent vectors + residual transform.
-        # tangent_scale is learned; init=0.1 prevents expmap0 saturation at init.
-        # Using self.manifold.expmap() instead of the global exp_map_zero() cache
-        # ensures gradients flow through self.manifold.c (learnable curvature).
-        z_scaled = self.tangent_scale * z_tangent
+        # log_tangent_scale is learned; exp(init=log(0.1)) prevents expmap0 saturation.
+        # Log-space storage ensures the effective scale is always > 0 and can never
+        # collapse to a degenerate fixed point.
+        z_scaled = self.log_tangent_scale.exp() * z_tangent
         z_transformed = z_scaled + self.tangent_net(z_scaled)
         z_hyp = self._expmap_and_clamp(z_transformed)
 
@@ -274,7 +277,7 @@ class HyperbolicProjection(nn.Module):
         r = torch.sigmoid(self.linear_r(z_r).squeeze(-1)) * self.max_radius  # (B,)
 
         # Direction: residual transform of z_θ, then normalize to unit sphere
-        z_theta_scaled = self.tangent_scale * z_theta
+        z_theta_scaled = self.log_tangent_scale.exp() * z_theta
         dir_unnorm = z_theta_scaled + self.tangent_net(z_theta_scaled)
         dir_norm = torch.norm(dir_unnorm, dim=-1, keepdim=True).clamp(min=1e-10)
         dir = dir_unnorm / dir_norm                     # (B, D-k), unit norm
@@ -305,7 +308,7 @@ class HyperbolicProjection(nn.Module):
             z_hyp, r = self._forward_factored(z_tangent.to(torch.float64))
             return z_hyp, z_hyp, r  # z_transformed approximated by z_hyp
         z_tangent = z_tangent.to(torch.float64)
-        z_scaled = self.tangent_scale * z_tangent
+        z_scaled = self.log_tangent_scale.exp() * z_tangent
         z_transformed = z_scaled + self.tangent_net(z_scaled)
         z_hyp = self._expmap_and_clamp(z_transformed)
         tangent_norm = torch.norm(z_transformed, dim=-1)

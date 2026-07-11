@@ -1,0 +1,262 @@
+# v24.0_tangent_fix.yaml
+#
+# Primary change: tangent_scale log-reparameterization fix (V24 key contribution)
+#
+#   In V23.0, tangent_scale_B collapsed from 0.042 (epoch 25) to ~6e-8 (epoch 75).
+#   Root cause: when tangent_scale → 0, the direction network receives a constant-zero
+#   input (tangent_net(0) = constant), so all z_B_hyp directions are identical.
+#   This is a stable degenerate fixed point: once at 0, the gradient through tangent_scale
+#   is also 0 and cannot recover. VAE-A was unaffected by chance of initialization.
+#
+#   Fix (in src/models/hyperbolic_projection.py):
+#     - Store log(tangent_scale_init) as log_tangent_scale nn.Parameter
+#     - Use exp(log_tangent_scale) as the effective scale everywhere
+#     - exp() is always > 0: no degenerate fixed point can exist
+#     - Validation: tangent_scale_init must be > 0 (strict, was >= 0)
+#
+#   Checkpoint key: tangent_scale → log_tangent_scale (fresh run; no migration needed)
+#   Monitoring: TensorBoard will now log log_tangent_scale_A/B (in log-space);
+#               effective scale = exp(logged value). Should stay in (-5, +1) range.
+#
+# All other config identical to V23.0 — isolates the tangent_scale fix effect.
+# Expected improvement: VAE-B develops diverse directions (ARI_B > 0), confirming fix.
+#
+anchor_checkpoint: null
+data:
+  indices_path: data/rosetta_indices.pt
+  valuation_type: index
+device:
+  cuda_device: 0
+  use_amp: false
+logging:
+  enhanced_metrics:
+    effective_rank: true
+    enabled: true
+    gradient_flow_analysis: true
+    log_activations: true
+    log_gradients: true
+    log_weights: true
+  histogram_every: 50
+  verbose: false
+loss:
+  # --- Option B: Dynamic Curriculum Gating ---
+  dynamic_curriculum:
+    enabled: true
+    coverage_threshold: 0.80
+
+  # --- Option B: Hyperbolic Contrastive ---
+  hyperbolic_contrastive:
+    enabled: true
+    weight: 2.0
+    temperature: 0.1
+    prefix_k: 3
+    phase_start_epoch: 0
+
+  surrogate_property:
+    enabled: false
+
+  # --- Stage 1: Algebraic Grounding ---
+  algebraic_addition:
+    enabled: true
+    n_pairs: 2048
+    phase_start_epoch: 0
+    weight: 15.0
+  algebraic_multiplication:
+    enabled: true
+    n_pairs: 2048
+    phase_start_epoch: 0
+    weight: 15.0
+  algebraic_coherence:
+    enabled: true
+    min_global_size: 2
+    n_pairs: 4000
+    phase_start_epoch: 0
+    target_sim: 0.90
+    weight: 15.0
+
+  angular_coherence:
+    enabled: true
+    level_prefix_k: [5, 4, 3, 2, 2, 1, 0, 0, 0, 0]
+    n_pairs: 4000
+    phase_start_epoch: 0
+    prefix_k: 2
+    target_sim: [1.0, 0.95, 0.9, 0.85, 0.8, 0.7, 0.0, 0.0, 0.0, 0.0]
+    weight: 20.0
+
+  # --- Stage 2: activated when coverage >= 0.80 ---
+  rich_hierarchy:
+    enabled: true
+    coverage_weight: 10.0
+    hierarchy_weight: 10.0
+    inner_radius: 0.05
+    outer_radius: 0.9
+    separation_margin: 0.1
+    separation_weight: 10.0
+    variance_weight: 5.0
+
+  radial:
+    enabled: true
+    inner_radius: 0.05
+    margin_step_factor: 0.01
+    margin_weight: 2.0
+    outer_radius: 0.95
+    valuation_weight_exponent: 0.3
+    weight: 5.0
+    phase_start_epoch: 20
+
+  geodesic:
+    curvature: 1.0
+    enabled: true
+    max_target_distance: 4.0
+    n_pairs: 4000
+    phase_start_epoch: 20
+    use_individual_valuation: true
+    use_smooth_l1: true
+    valuation_scale: 4.0
+    weight: 10.0
+
+  rank:
+    enabled: true
+    n_pairs: 4000
+    scatter_weight: 1.0
+    temperature: 0.1
+    use_all_pairs: false
+    weight: 2.0
+    phase_start_epoch: 20
+
+  monotonic:
+    enabled: true
+    inner_radius: 0.05
+    margin_scale: 1.0
+    min_margin: 0.02
+    outer_radius: 0.95
+    target_loss_weight: 0.5
+    temperature: 0.05
+    use_soft_margin: true
+    weight: 2.0
+    phase_start_epoch: 20
+
+  # --- Regularization ---
+  hyperbolic_kl:
+    beta: 0.1
+    enabled: true
+    free_bits: 0.5
+    variance_only: false
+    weight: 0.05
+  lagrangian:
+    enabled: true
+    lr: 0.05
+    max_lambda: 10.0
+    n_levels: 10
+    warmup_epochs: 100
+  learnable_weights: false
+
+model:
+  curvature: 1.0
+  decoder_type: improved
+  detach_radial: false
+  encoder_type: improved
+  factored: true
+  hidden_dim: 256
+  init_identity: true
+  latent_dim: 128
+  learnable_curvature: true
+  max_radius: 0.99
+  name: TernaryVAEV6Controllable
+  positional_encoding: true
+  projection_dropout: 0.1
+  projection_layers: 3
+  radial_dims: 16
+  tangent_scale: 0.1   # stored as log(0.1)=-2.303; exp() never reaches 0
+
+option_c:
+  enabled: true
+  encoder_a_lr_scale: 0.2
+  encoder_b_lr_scale: 0.1
+  projections_lr_scale: 1.0
+
+resume_checkpoint: null
+
+riemannian:
+  enabled: true
+  optimizer: adam
+  stabilize: 10
+
+statenet:
+  controller:
+    grad_patience: 10
+    grad_threshold: 0.0
+    patience_ceiling: 50
+    spike_multiplier: 2.0
+  coverage:
+    fix_threshold: 0.4
+    floor: 0.35
+    train_threshold: 0.5
+  enabled: true
+  hierarchy:
+    patience_ceiling: 50
+    plateau_patience: 30
+    plateau_threshold: 0.0002
+    stall_patience: 10
+  initial:
+    encoder_a_trainable: true
+    encoder_b_trainable: true
+    projections_trainable: true
+  lr_scales:
+    decoders: 1.0
+    encoder_a: 0.05
+    encoder_b: 0.1
+    projections: 1.0
+  timing:
+    hysteresis_epochs: 10
+    warmup_epochs: 200
+    window_size: 20
+
+training:
+  batch_size: 1024
+  epochs: 1000
+  eval_every: 10
+  grokking_detection:
+    accuracy_jump_threshold: 0.02
+    enabled: true
+    gradient_norm_track: true
+    monitor_window: 50
+    plateau_patience: 50
+    plateau_threshold: 0.0001
+    representation_analysis: true
+  hierarchy_threshold: -0.85
+  high_v_budget_ratio: 0.3
+  lr: 0.0005
+  max_grad_norm: 1.0
+  min_epochs: 300
+  num_workers: 4
+  patience: 500
+  print_every: 10
+  save_every: 25
+  scheduler:
+    T_0: 500
+    T_mult: 2
+    type: cosine_warmup_restart
+  use_adaptive: true
+  use_stratified: true
+  val_frac: 0.05
+  weight_decay: 0.0001
+
+version:
+  changes:
+  - 'V24.0: tangent_scale log-reparameterization fix — prevents directional collapse in VAE-B'
+  - 'log_tangent_scale = nn.Parameter(log(init)) so exp() is always > 0; no degenerate fixed point'
+  - 'Validation now requires tangent_scale_init > 0 (strict, was >= 0)'
+  - 'All other config identical to V23.0 — isolates fix effect'
+  - 'Expected: VAE-B develops diverse directions (ARI_B > 0); both VAEs contribute to hierarchy'
+  config: v24.0_tangent_fix
+  date: '2026-07-11'
+  model: '24.0'
+
+visualization:
+  curvature: 1.0
+  html_dir: visualizations
+  max_per_level: 1000
+  persist_every: 25
+  save_html: false
+  umap_neighbors: 30
