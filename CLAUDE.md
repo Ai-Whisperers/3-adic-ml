@@ -573,3 +573,65 @@ Now that ARI=1.0 and radial hierarchy is perfect, the next question is whether t
 The model currently operates near-deterministically (KL ≈ 0.024). If a proper VAE is desired, increase `hyperbolic_kl.weight` from 0.05 and reduce `free_bits` from 0.5. Trade-off: higher KL may hurt ARI.
 
 **Do NOT chase Spearman.** The 0.833 ceiling is architectural/data-intrinsic. Any attempt to raise it via loss tuning is futile based on V21 evidence.
+
+---
+
+## V23.0 Training Results (2026-07-11)
+
+### V23.0 Results (run: v23.0_algebraic_20260711_121743)
+
+Best checkpoint: **epoch 210** (`best_Q.pt`), trained for 1000 epochs (~4.3h on RTX 3050).
+
+V23 adds algebraic structure signal: 4-bit signature (comm+assoc+id+abs), 12 non-trivial classes, global lookup for rare classes via `model.get_hyperbolic_representations()`.
+
+| Metric | V21.0 (baseline) | V23.0 |
+|--------|-----------------|-------|
+| Val accuracy | 100% | **100%** |
+| Best Q | 1.9755 (ep230) | **1.9698 (ep210)** |
+| Spearman hierarchy A | 0.8335 | **0.8335** |
+| Spearman hierarchy B | 0.8335 | **0.8335** |
+| Monotonic ordering | PERFECT | **PERFECT** |
+| Grokking events | 0 | **0** |
+
+**Radial hierarchy (ep210):**
+
+| Level | Mean radius | Count |
+|-------|-------------|-------|
+| v=0 | 0.9083 | 13122 |
+| v=1 | 0.6566 | 4374 |
+| v=2 | 0.4761 | 1458 |
+| v=3 | 0.3465 | 486 |
+| v=4 | 0.2501 | 162 |
+| v=5 | 0.1858 | 54 |
+| v=6 | 0.1382 | 18 |
+| v=7 | 0.0978 | 6 |
+| v=8 | 0.0429 | 2 |
+| v=9 | 0.0009 | 1 |
+
+Perfect monotonic ordering across all 10 levels. v=9 essentially at the origin.
+
+### V23.0 Notes
+
+**Q slightly lower than V21 (1.9698 vs 1.9755):** Expected. Algebraic losses compete with hierarchy signal — trade-off between algebraic structure clustering and radial ordering. Both runs hit the 0.8335 Spearman ceiling identically.
+
+**Lagrangian dual ascent confirmed working:** 17/29 lambdas active at best checkpoint (ep 210). `lambda_margin` and `lambda_scatter` received gentle pressure (max ~0.003–0.010); `lambda_prior` stayed at zero (model satisfies μ-norm targets naturally). This was a critical fix — the dual ascent was silently broken in all prior runs due to `dual_state.update()` never being called.
+
+**Curriculum activated correctly:** Stage 2 losses (radial, geodesic, rank, monotonic) activated at the first evaluation (val_acc=0.9998 ≥ threshold=0.80). Coverage reaches 100% and stays there.
+
+**Best checkpoint early (ep 210):** Model converges geometrically within first ~200 epochs; subsequent training refines algebraic directions without improving Q further.
+
+### V23 Bugs Fixed (2026-07-11 audit)
+
+| Bug | Severity | Fix |
+|-----|----------|-----|
+| `min_class_size` schema key vs `min_global_size` in loss + YAML | HIGH | Renamed to `min_global_size` in `AlgebraicCoherenceLossConfig` |
+| `dual_state.update()` never called | CRITICAL | Fixed in `engine.py`: violations accumulated in `train_epoch()` and routed to dual ascent every epoch |
+| Fallback coverage loss crash when `logits=None` | CRITICAL | Added `and logits is not None` guard in `combined.py` |
+| `active` list missing `hyperbolic_contrastive` / `surrogate_loss` | HIGH | Added via `getattr` in `combined.py` |
+| `n_layers=0` silent shape mismatch in `HyperbolicProjection` | MEDIUM | Raises `ValueError` at `__init__` |
+
+### V24 Directions
+
+- **Measure algebraic clustering:** Now that the algebraic losses are active, evaluate whether same-signature operations are geometrically clustered in direction space. Use `AlgebraicCoherenceLoss._global_indices` to extract per-class embeddings and compute within-class vs between-class angular distances.
+- **ARI on algebraic classes:** Compute ARI using `algebraic_signature` as labels (instead of `digit_prefix_class`) to quantify whether the algebraic structure is encoded in the latent directions.
+- **KL enforcement (optional):** Model operates near-deterministically (KL ≈ 0.024). Increase `hyperbolic_kl.weight` and reduce `free_bits` if a proper VAE posterior is desired. Trade-off: higher KL may hurt Q.
