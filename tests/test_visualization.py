@@ -116,7 +116,7 @@ def test_visualization_pipeline_runs_expected_steps(monkeypatch, tmp_path) -> No
     monkeypatch.setattr(
         pipeline,
         "_run_umap_step",
-        lambda epoch, D, z_np, val_np, html_dir: calls.append("umap"),
+        lambda epoch, D, val_np, html_dir: calls.append("umap"),
     )
     monkeypatch.setattr(
         pipeline,
@@ -184,7 +184,7 @@ def test_projections_dir_created_without_plotly(monkeypatch, tmp_path) -> None:
     )
 
     # Stub out every rendering step so no real backend is invoked
-    def _noop_umap(epoch, D, z_np, val_np, html_dir): pass
+    def _noop_umap(epoch, D, val_np, html_dir): pass
     def _noop_pacmap(epoch, D, z_np, val_np, html_dir): pass
     def _noop_trimap(epoch, D, val_np, html_dir): pass
     def _noop_poincare3d(epoch, z_np, val_np, html_dir): pass

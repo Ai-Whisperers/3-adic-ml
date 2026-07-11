@@ -76,7 +76,7 @@ class GroupOrbitSymbolicSubsystem:
         return self.engine.canonicalize(indices)
 
     def choose_non_identity_partner(self, indices: torch.Tensor, seed: int | None = None) -> torch.Tensor:
-        return self.engine.choose_non_identity_partner(indices, seed=seed or self.config.seed)
+        return self.engine.choose_non_identity_partner(indices, seed=seed if seed is not None else self.config.seed)
 
     def sample_feedback_pairs(self, indices: torch.Tensor, sample_size: int | None = None) -> dict[str, Any]:
         return self.engine.sample_feedback_pairs(

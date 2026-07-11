@@ -70,15 +70,22 @@ class TrainingMetrics:
     hierarchy_b_collapsed: bool = False
 
     def __post_init__(self) -> None:
-        for name in ("coverage", "hierarchy_a", "hierarchy_b", "dist_corr_a"):
+        # coverage is accuracy ∈ [0, 1]; correlations are ∈ [-1, 1]
+        _ranges = {
+            "coverage": (0.0, 1.0),
+            "hierarchy_a": (-1.0, 1.0),
+            "hierarchy_b": (-1.0, 1.0),
+            "dist_corr_a": (-1.0, 1.0),
+        }
+        for name, (lo, hi) in _ranges.items():
             v = getattr(self, name)
             if not isinstance(v, (int, float)):
                 raise TypeError(
                     f"TrainingMetrics.{name} must be a scalar float, got {type(v).__name__}"
                 )
-            if not (-1.0 <= float(v) <= 1.0):
+            if not (lo <= float(v) <= hi):
                 raise ValueError(
-                    f"TrainingMetrics.{name}={v} is out of range [-1, 1]. "
+                    f"TrainingMetrics.{name}={v} is out of range [{lo}, {hi}]. "
                     f"Check that the metric is computed correctly and matches "
                     f"the expected scale (per-digit accuracy or correlation)."
                 )
@@ -242,6 +249,11 @@ class MetricBasedLR(LRController):
             return False
         return self._hierarchy_a_stall_count >= self.config.hierarchy.stall_patience
 
+    # Minimum net hierarchy decline over half-window to trigger encoder_b unfreeze.
+    # plateau_threshold is ~0.0005 (stagnation scale); 0.02 is a meaningful drop on
+    # the Spearman correlation scale that won't fire on noise.
+    _HIERARCHY_DEGRADATION_THRESHOLD: float = 0.02
+
     def _compute_hierarchy_gate(self, metrics: TrainingMetrics, delta: int) -> Tuple[float, Optional[str]]:
         """Compute soft hierarchy gate for encoder_b."""
         event = None
@@ -274,11 +286,8 @@ class MetricBasedLR(LRController):
                     event = f"encoder_b frozen (plateau {self._hierarchy_b_plateau_count} epochs)"
                     return (0.0, event)
         else:
-            # Unfreeze only on sustained degradation: net decline > 2% over window/2 steps.
-            # plateau_threshold is for stagnation (0.0005 scale), not decline — use a
-            # fixed meaningful threshold (0.02 on correlation scale) to avoid noise oscillation.
+            # Unfreeze only on sustained degradation: net decline > threshold over window/2 steps.
             # Also unfreeze IF collapsed (collapse is the ultimate degradation).
-            _DEGRADATION_THRESHOLD = 0.02
             half_win = max(2, self.config.timing.window_size // 2)
 
             if metrics.hierarchy_b_collapsed:
@@ -291,7 +300,7 @@ class MetricBasedLR(LRController):
             if len(self._hierarchy_b_history) >= half_win:
                 recent = list(self._hierarchy_b_history)[-half_win:]
                 net_change = abs(recent[-1]) - abs(recent[0])
-                if net_change < -_DEGRADATION_THRESHOLD:
+                if net_change < -self._HIERARCHY_DEGRADATION_THRESHOLD:
                     self._active['encoder_b'] = True
                     self._hierarchy_b_plateau_count = 0
                     self._last_change['encoder_b'] = metrics.epoch
@@ -468,7 +477,6 @@ class MetricBasedLR(LRController):
         ):
             buf.clear()
         self._init_state()
-
 
 
 def update_optimizer_lr_scales(

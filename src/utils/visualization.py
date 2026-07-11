@@ -704,7 +704,7 @@ class VisualizationPipeline:
         if self.logger is None and not self.save_html:
             return
 
-        self._validate_inputs(epoch, z_hyp, valuations)
+        self._validate_inputs(epoch, z_hyp, valuations, indices)
 
         # 1. Stratified subsample — runs entirely on CPU numpy
         z_np, val_np, idx_np = _stratified_subsample(
@@ -726,7 +726,7 @@ class VisualizationPipeline:
             os.makedirs(html_epoch_dir / "algebra", exist_ok=True)
 
         # 3. UMAP 3D (precomputed metric = Poincaré)
-        self._run_umap_step(epoch, D, z_np, val_np, html_epoch_dir / "topology")
+        self._run_umap_step(epoch, D, val_np, html_epoch_dir / "topology")
 
         # 4. PaCMAP 2D (Euclidean on raw coords — complementary view)
         self._run_pacmap_step(epoch, D, z_np, val_np, html_epoch_dir / "topology")
@@ -769,6 +769,7 @@ class VisualizationPipeline:
         epoch: int,
         z_hyp: torch.Tensor,
         valuations: torch.Tensor,
+        indices: torch.Tensor | None = None,
     ) -> None:
         """Validate runtime inputs before calling optional visualization backends."""
         if epoch < 1:
@@ -789,6 +790,11 @@ class VisualizationPipeline:
                 "VisualizationPipeline: z_hyp and valuations must have the same first "
                 f"dimension, got {z_hyp.shape[0]} and {valuations.shape[0]}"
             )
+        if indices is not None and indices.shape[0] != z_hyp.shape[0]:
+            raise ValueError(
+                "VisualizationPipeline: indices must have the same length as z_hyp, "
+                f"got {indices.shape[0]} and {z_hyp.shape[0]}"
+            )
 
     # ------------------------------------------------------------------
     # Step implementations
@@ -798,7 +804,6 @@ class VisualizationPipeline:
         self,
         epoch: int,
         D: np.ndarray,
-        z_np: np.ndarray,
         val_np: np.ndarray,
         html_dir: Path,
     ) -> None:
@@ -1006,8 +1011,6 @@ class VisualizationPipeline:
         html_dir: Path,
     ) -> None:
         """Render native SVG Poincaré disk (zero-dependency)."""
-        # Always generate SVG as it has no dependencies — ensure dir exists
-        os.makedirs(html_dir, exist_ok=True)
         svg_path = html_dir / "poincare_disk_native.svg"
 
         walks = _LANDMARK_WALKS

@@ -155,7 +155,7 @@ class StateNetConfig:
             'controller': {'grad_threshold', 'grad_patience', 'patience_ceiling', 'spike_multiplier'},
             'timing':     {'warmup_epochs', 'hysteresis_epochs', 'window_size'},
             'lr_scales':  {'encoder_a', 'encoder_b', 'projections', 'decoders'},
-            'initial':    {'encoder_a_trainable', 'encoder_b_trainable', 'projections_trainable', 'decoders_trainable'},
+            'initial':    {'encoder_a_trainable', 'encoder_b_trainable', 'projections_trainable'},
         }
         for section, known in _sub_keys.items():
             if section in d and isinstance(d[section], dict):

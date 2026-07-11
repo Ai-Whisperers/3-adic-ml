@@ -287,19 +287,19 @@ class AngularCoherenceLossConfig(StrictConfigModel):
 
     @field_validator("target_sim", mode="before")
     @classmethod
+    def validate_target_sim_length(cls, value: list[float] | None) -> list[float] | None:
+        if value is not None and len(value) != 10:
+            raise ValueError(f"target_sim must have 10 elements (v=0 to v=9), got {len(value)}")
+        return value
+
+    @field_validator("target_sim", mode="before")
+    @classmethod
     def validate_target_sim_v0(cls, value: list[float] | None) -> list[float] | None:
         if value is not None and len(value) > 0 and value[0] != 1.0:
             raise ValueError(
                 f"target_sim[0] must be 1.0, got {value[0]}. "
                 "Setting it lower causes ARI regression."
             )
-        return value
-
-    @field_validator("target_sim", mode="before")
-    @classmethod
-    def validate_target_sim_length(cls, value: list[float] | None) -> list[float] | None:
-        if value is not None and len(value) != 10:
-            raise ValueError(f"target_sim must have 10 elements (v=0 to v=9), got {len(value)}")
         return value
 
     @field_validator("target_sim", mode="before")
@@ -602,6 +602,7 @@ class DataConfig(StrictConfigModel):
         default=None,
         description="Path to custom indices .pt file for the Rosetta dataset.",
     )
+
 
 class EnhancedMetricsConfig(StrictConfigModel):
     """Enhanced metrics sub-config."""

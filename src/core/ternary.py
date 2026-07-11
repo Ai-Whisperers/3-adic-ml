@@ -131,7 +131,7 @@ class TernarySpace:
         self._level_counts = self._compute_level_counts()
 
         # Precompute algebraic properties LUT (binary-operation interpretation)
-        # Memory: 19,683 × 4 × 1 byte = ~79 KB (bool)
+        # Memory: 19,683 × 5 × 1 byte = ~98 KB (bool)
         self._algebraic_lut = self._build_algebraic_lut()
 
         # Device-cached versions (populated on first use)
@@ -887,6 +887,10 @@ class TernarySpace:
             bit 2: is_associative
             bit 1: has_identity_element
             bit 0: has_absorbing_element
+
+        Note: is_idempotent is in the LUT (PROP_ALG_IDEMPOTENT) but excluded here
+        because nearly all commutative ops are also idempotent — it adds no
+        discriminative power to the signature and would double the class count.
 
         Class 0 (0000) is the bulk (~94% of ops, none of the special properties).
         Classes 1–15 are algebraically significant sub-populations.

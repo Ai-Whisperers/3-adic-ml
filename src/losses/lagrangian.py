@@ -51,6 +51,12 @@ class LagrangianDualState:
 
     NOT a nn.Module. Updated by dual ascent (not gradient descent).
     Saved to/loaded from checkpoints separately from model.state_dict().
+
+    Required call order per epoch:
+        1. dual_state.step_epoch(epoch)   # at epoch start, before training
+        2. ... train + validate ...
+        3. dual_state.update(violations)  # after validation, with per-level metrics
+        4. dual_state.get_dual_weights()  # for next epoch's forward pass
     """
 
     def __init__(
@@ -167,11 +173,13 @@ class LagrangianDualState:
         n_active_m = sum(1 for x in self.lambda_margin if x > 0)
         n_active_s = sum(1 for x in self.lambda_scatter if x > 0)
         n_active_p = sum(1 for x in self.lambda_prior if x > 0)
+        n_margin = len(self.lambda_margin)
+        n_levels = len(self.lambda_scatter)
         return (
             f"Lagrangian ep={self._epoch} "
-            f"margin({n_active_m}/9 active, max={max_m:.3f}) "
-            f"scatter({n_active_s}/10 active, max={max_s:.3f}) "
-            f"prior({n_active_p}/10 active, max={max_p:.3f})"
+            f"margin({n_active_m}/{n_margin} active, max={max_m:.3f}) "
+            f"scatter({n_active_s}/{n_levels} active, max={max_s:.3f}) "
+            f"prior({n_active_p}/{n_levels} active, max={max_p:.3f})"
         )
 
     def state_dict(self) -> Dict[str, Any]:
