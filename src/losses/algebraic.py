@@ -13,7 +13,13 @@ import torch.nn.functional as F
 
 from ..core import TERNARY
 from .base import MetricsDict
-from .utils import make_zero_loss
+from .utils import make_zero_loss, normalize_to_direction
+
+
+def _make_generator(seed: int = 42) -> torch.Generator:
+    g = torch.Generator()
+    g.manual_seed(seed)
+    return g
 
 
 class AngularCoherenceLoss(nn.Module):
@@ -56,7 +62,7 @@ class AngularCoherenceLoss(nn.Module):
             metrics["angular_coherence_pairs"] = 0
             return zero, metrics
 
-        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=1e-10)
+        dir_vecs = normalize_to_direction(z_hyp, r)
 
         vals = self._valuation_fn(indices)
         B = dir_vecs.shape[0]
@@ -215,7 +221,7 @@ class AlgebraicCoherenceLoss(nn.Module):
             metrics["alg_coherence_pairs"] = 0
             return zero, metrics
 
-        dir_vecs = z_hyp / r.unsqueeze(-1).clamp(min=1e-10)
+        dir_vecs = normalize_to_direction(z_hyp, r)
         sigs = TERNARY.algebraic_signature(indices)
 
         total_loss = zero
@@ -293,8 +299,7 @@ class _AlgebraicBinaryLoss(nn.Module):
         self.weight = weight
         self.n_pairs = n_pairs
         self.phase_start_epoch = phase_start_epoch
-        self.generator = torch.Generator()
-        self.generator.manual_seed(42)
+        self.generator = _make_generator()
 
     def _ternary_op(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
@@ -391,8 +396,7 @@ class AlgebraicDistributiveLoss(nn.Module):
         self.weight = weight
         self.n_triplets = n_triplets
         self.phase_start_epoch = phase_start_epoch
-        self.generator = torch.Generator()
-        self.generator.manual_seed(42)
+        self.generator = _make_generator()
 
     def forward(
         self,

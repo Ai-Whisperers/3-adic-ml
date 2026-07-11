@@ -374,12 +374,10 @@ class CombinedLoss(nn.Module):
                 phase_start_epoch=alg_cfg.get('phase_start_epoch', 20),
                 min_global_size=alg_cfg.get('min_global_size', alg_cfg.get('min_class_size', 2)),
             )
-            self.alg_coherence_weight = alg_cfg.get('weight', 1.0)
             self._alg_warned_no_r = False
             self._alg_skip_count = 0
         else:
             self.algebraic_coherence_loss = None
-            self.alg_coherence_weight = 0.0
             self._alg_warned_no_r = True
             self._alg_skip_count = 0
 
@@ -490,9 +488,9 @@ class CombinedLoss(nn.Module):
                     raise ValueError(
                         f"CombinedLoss: rich_hierarchy.{k}_weight is negative ({w})."
                     )
-        if self.alg_coherence_weight < 0.0:
+        if self.algebraic_coherence_loss is not None and self.algebraic_coherence_loss.weight < 0.0:
             raise ValueError(
-                f"CombinedLoss: algebraic_coherence.weight is negative ({self.alg_coherence_weight})."
+                f"CombinedLoss: algebraic_coherence.weight is negative ({self.algebraic_coherence_loss.weight})."
             )
 
     def _init_learnable_weights(self) -> None:
@@ -775,6 +773,9 @@ class CombinedLoss(nn.Module):
             total = total + wlc_out
 
         # 10. Angular coherence (requires factored latent r)
+        # NOTE: weight is applied internally by AngularCoherenceLoss (unlike geodesic/rank/
+        # monotonic which return raw values and use _apply_weight here). ac_out is already
+        # weighted; do NOT pass it through _apply_weight.
         if self.angular_coherence is not None and r is not None:
             ac_out, ac_metrics = self.angular_coherence(z_hyp, r, indices, epoch)
             losses['angular_coherence'] = ac_out
@@ -796,6 +797,7 @@ class CombinedLoss(nn.Module):
                 self._ac_warned_no_r = True
 
         # 11. AlgebraicCoherenceLoss (requires factored latent r)
+        # Same weight-is-internal pattern as angular_coherence above.
         if self.algebraic_coherence_loss is not None and r is not None:
             alg_out, alg_metrics = self.algebraic_coherence_loss(z_hyp, r, indices, epoch, model=model)
             losses['algebraic_coherence'] = alg_out
@@ -917,7 +919,7 @@ class CombinedLoss(nn.Module):
             if self.kl_loss is not None:
                 weights['kl'] = self.kl_weight
             if self.algebraic_coherence_loss is not None:
-                weights['algebraic_coherence'] = self.alg_coherence_weight
+                weights['algebraic_coherence'] = self.algebraic_coherence_loss.weight
             if self.algebraic_addition_loss is not None:
                 weights['algebraic_addition'] = self.algebraic_addition_loss.weight
             return weights

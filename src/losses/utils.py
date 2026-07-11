@@ -53,6 +53,22 @@ def _exponential_target_radii(
     return inner_radius + (outer_radius - inner_radius) * (exp_levels - exp_max) / denom
 
 
+def normalize_to_direction(z_hyp: torch.Tensor, r: torch.Tensor) -> torch.Tensor:
+    """Return unit-direction vectors for Poincaré ball points.
+
+    Divides each point by its radius, clamping small radii to avoid division
+    by zero.  Used by angular losses that operate in direction space.
+
+    Args:
+        z_hyp: Points on Poincaré ball, shape (B, D)
+        r:     Euclidean radii, shape (B,)
+
+    Returns:
+        Unit-direction tensors, shape (B, D)
+    """
+    return z_hyp / r.unsqueeze(-1).clamp(min=1e-10)
+
+
 def _euclidean_to_hyperbolic_radius(
     r_euclid: torch.Tensor, c: Union[float, torch.Tensor] = 1.0
 ) -> torch.Tensor:
