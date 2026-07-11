@@ -122,6 +122,16 @@ def train_model(
         current_lr = scheduler.get_last_lr()[0]
         reporting.log_metrics({"LR/scheduled": current_lr}, epoch)
 
+        # Lagrangian dual ascent update — runs every epoch so dual variables
+        # track constraint violations without waiting for eval windows.
+        if dual_state and train_metrics.get("dual_violation_count", 0) > 0:
+            avg_violations = {
+                k: v / train_metrics["dual_violation_count"]
+                for k, v in train_metrics["dual_violation_acc"].items()
+            }
+            dual_state.update(avg_violations)
+            current_dual_weights = dual_state.get_dual_weights()
+
         # 2. Validation & Reporting Phase
         if epoch % eval_every == 0 or epoch == epochs - 1:
             val_metrics = validate_epoch(
@@ -147,7 +157,6 @@ def train_model(
                 grad_stats = get_optimizer_grad_stats(optimizer, "projections")
                 controller_grad_norm = grad_stats.get("grad_norm_estimate", 0.0)
 
-                # Sync logic from original monolith...
                 metrics = TrainingMetrics(
                     epoch=epoch,
                     coverage=val_metrics["avg_val_acc"],
@@ -182,15 +191,6 @@ def train_model(
                     "projections_lr_scale": new_scales.get("projections", 0),
                     "best_Q": controller_state.get("best_q", 0),
                 }, epoch, prefix="LRController")
-
-            # Lagrangian update
-            if dual_state and val_metrics.get("dual_violation_count", 0) > 0:
-                avg_violations = {
-                    k: v / val_metrics["dual_violation_count"]
-                    for k, v in val_metrics["dual_violation_acc"].items()
-                }
-                dual_state.update(avg_violations)
-                current_dual_weights = dual_state.get_dual_weights()
 
             # Grokking detection
             if grokking_detector:
@@ -329,13 +329,15 @@ def train_epoch(
     hw_monitor: Optional[HardwareMonitor],
     reporting: ReportingManager,
     global_step_start: int,
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     """Train for one epoch."""
     model.train()
     loss_sum = 0.0
     acc_sum = 0.0
     n_batches = 0
     loss_accums: Dict[str, float] = {}
+    # Violation floats for Lagrangian dual ascent; accumulated across batches.
+    viol_accums: Dict[str, float] = {}
 
     if dual_state:
         dual_state.step_epoch(epoch)
@@ -381,9 +383,7 @@ def train_epoch(
         scaler.update()
 
         loss_sum += loss.item()
-        logits_A = out.get("logits_A")
-        if logits_A is not None:
-            acc_sum += compute_accuracy(logits_A, batch_ops)
+        acc_sum += compute_accuracy(out["logits_A"], batch_ops)
 
         n_batches += 1
 
@@ -396,9 +396,24 @@ def train_epoch(
                     loss_accums[acc_key] = loss_accums.get(acc_key, 0.0) + val
                     step_metrics[f"Batch/Loss_{short_name}_{vae}"] = val
 
+        # Accumulate per-level float violations for Lagrangian dual ascent.
+        # Keys: gap_viol_v{v}, scatter_v{v}, vp_gap_v{v} (floats, not tensors).
+        for src_losses in (losses_A, losses_B):
+            for metric_key in ("monotonic_metrics", "rank_metrics", "valuation_prior_metrics"):
+                m = src_losses.get(metric_key)
+                if m is None:
+                    continue
+                for k, v in m.items():
+                    if isinstance(v, float) and (
+                        k.startswith("gap_viol_v") or
+                        k.startswith("scatter_v") or
+                        k.startswith("vp_gap_v")
+                    ):
+                        viol_accums[k] = viol_accums.get(k, 0.0) + v
+
         reporting.log_metrics(step_metrics, global_step_start + n_batches)
 
-    epoch_metrics: Dict[str, float] = {
+    epoch_metrics: Dict[str, Any] = {
         "avg_train_loss": loss_sum / n_batches,
         "avg_train_acc": acc_sum / n_batches,
     }
@@ -407,6 +422,9 @@ def train_epoch(
             acc_key = f"{loss_key}_{vae}"
             if acc_key in loss_accums:
                 epoch_metrics[f"avg_train_{short_name}_{vae}"] = loss_accums[acc_key] / n_batches
+    if viol_accums:
+        epoch_metrics["dual_violation_acc"] = {k: v / n_batches for k, v in viol_accums.items()}
+        epoch_metrics["dual_violation_count"] = n_batches
     return epoch_metrics
 
 
