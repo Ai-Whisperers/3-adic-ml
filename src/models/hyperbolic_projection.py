@@ -101,6 +101,13 @@ class HyperbolicProjection(nn.Module):
             raise ValueError(
                 f"HyperbolicProjection: radial_dims ({radial_dims}) must be < latent_dim ({latent_dim})"
             )
+        if n_layers == 0:
+            raise ValueError(
+                "HyperbolicProjection: n_layers=0 is not supported. "
+                "With 0 hidden layers the tangent_net output layer expects hidden_dim "
+                f"({hidden_dim}) inputs but z_tangent has {latent_dim if not factored else latent_dim - radial_dims} dims. "
+                "Use n_layers >= 1 (default: 1)."
+            )
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
         self.max_radius = max_radius

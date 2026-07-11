@@ -461,6 +461,8 @@ class CombinedLoss(nn.Module):
             self.wlc_loss, self.angular_coherence, self.algebraic_coherence_loss,
             self.algebraic_addition_loss, self.algebraic_multiplication_loss,
             self.algebraic_distributive_loss,
+            getattr(self, 'hyperbolic_contrastive', None),
+            getattr(self, 'surrogate_loss', None),
         ]
         if not any(x is not None for x in active):
             raise ValueError(
@@ -835,8 +837,11 @@ class CombinedLoss(nn.Module):
                 losses['alg_distributive_metrics'] = ad_metrics
                 total = total + ad_out
 
-        # 15. Fallback coverage loss when rich_hierarchy is absent or gated
-        if self.rich_hierarchy is None or not self.biological_losses_active:
+        # 15. Fallback coverage loss when rich_hierarchy is absent or gated.
+        # Guard logits is not None: loss_fn_b is called with logits=None because
+        # decode_b=False skips decoder_B; without the guard this crashes when
+        # dynamic_curriculum gates biological losses at the start of training.
+        if (self.rich_hierarchy is None or not self.biological_losses_active) and logits is not None:
             coverage_weight = self.config.get('rich_hierarchy', {}).get('coverage_weight', 1.0)
             if coverage_weight > 0.0:
                 coverage_loss = self._compute_coverage_loss(logits, targets)
