@@ -187,6 +187,17 @@ class HyperbolicProjection(nn.Module):
                 last_layer.weight.fill_(0)
                 last_layer.bias.fill_(0)
 
+    def _clamp_log_tangent_scale(self) -> None:
+        """Clamp log_tangent_scale to (-10, 3) — effective scale stays in (~5e-5, 20).
+
+        In non-factored mode a large exp(log_ts) saturates all embeddings to max_radius
+        via _expmap_and_clamp, killing the radial hierarchy gradient. In factored mode
+        the direction is normalized so upper saturation cannot occur, but clamping
+        prevents numerical instability in tangent_net with very large inputs.
+        """
+        with torch.no_grad():
+            self.log_tangent_scale.data.clamp_(-10.0, 3.0)
+
     def _clamp_curvature(self) -> None:
         """Enforce safe range on learnable curvature [0.1, 5.0]."""
         if self.learnable_curvature:
@@ -223,8 +234,9 @@ class HyperbolicProjection(nn.Module):
                       d(||r*dir||)/d(z_θ) = 0 because F.normalize Jacobian is
                       orthogonal to its output, and r*dir is collinear with dir.
         """
-        # Enforce safe curvature range
+        # Enforce safe parameter ranges
         self._clamp_curvature()
+        self._clamp_log_tangent_scale()
 
         # Enforce float64 precision
         z_tangent = z_tangent.to(torch.float64)
@@ -299,14 +311,15 @@ class HyperbolicProjection(nn.Module):
     def forward_with_components(
         self, z_tangent: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Project with diagnostic outputs (non-factored mode only).
+        """Project with diagnostic outputs.
 
         Returns:
-            Tuple of (z_hyp, z_transformed, tangent_norm)
+            Non-factored: (z_hyp, z_transformed, tangent_norm) — tangent_norm is L2 norm of z_transformed
+            Factored:     (z_hyp, z_hyp, r)                    — third element is Poincaré radius r, not a norm
         """
         if self.factored:
             z_hyp, r = self._forward_factored(z_tangent.to(torch.float64))
-            return z_hyp, z_hyp, r  # z_transformed approximated by z_hyp
+            return z_hyp, z_hyp, r  # third element is radius r, not tangent_norm
         z_tangent = z_tangent.to(torch.float64)
         z_scaled = self.log_tangent_scale.exp() * z_tangent
         z_transformed = z_scaled + self.tangent_net(z_scaled)

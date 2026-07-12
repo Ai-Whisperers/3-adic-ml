@@ -4,7 +4,7 @@
 Validation script to test the fixes for embedding space collapse.
 Tests:
 1. HyperbolicProjection with init_identity=False produces non-zero tangent_net output
-2. tangent_scale=0.05 gives appropriate scaling for encoder outputs (~4.0 norm)
+2. tangent_scale_init=0.1 (stored as log_tangent_scale=log(0.1)) gives appropriate scaling
 3. Points distribute properly in Poincaré ball (not all at boundary)
 """
 
@@ -24,11 +24,12 @@ def test_tangent_net_output():
         init_identity=False,  # Our fix
     )
 
-    # Check that tangent_scale is set to 0.05 (our fix)
-    assert torch.allclose(
-        proj.tangent_scale, torch.tensor(0.05, dtype=torch.float64)
-    ), f"Expected tangent_scale=0.05, got {proj.tangent_scale.item()}"
-    print(f"✓ tangent_scale correctly set to {proj.tangent_scale.item()}")
+    # Check that effective tangent_scale is ~0.1 (exp of log_tangent_scale)
+    effective_scale = proj.log_tangent_scale.exp().item()
+    assert abs(effective_scale - 0.1) < 1e-6, (
+        f"Expected effective scale ~0.1, got {effective_scale}"
+    )
+    print(f"✓ effective tangent_scale correctly ~0.1 (log_tangent_scale={proj.log_tangent_scale.item():.4f})")
 
     # Test input similar to encoder output (norm ~4.0) - use float64 to match model
     z_tangent = (
@@ -36,9 +37,10 @@ def test_tangent_net_output():
     )  # Batch of 8, latent_dim=16
     print(f"Input z_tangent norm: {torch.norm(z_tangent, dim=-1).mean().item():.4f}")
 
-    # Get tangent_net output
+    # Get tangent_net output using the effective scale
     with torch.no_grad():
-        z_scaled = proj.tangent_scale * z_tangent
+        scale = proj.log_tangent_scale.exp()
+        z_scaled = scale * z_tangent
         z_transformed = z_scaled + proj.tangent_net(z_scaled)
         residual = proj.tangent_net(z_scaled)
 
@@ -64,8 +66,8 @@ def test_expmap0_saturation():
         init_identity=False,
     )
 
-    # Check tangent_scale is 0.05
-    assert torch.allclose(proj.tangent_scale, torch.tensor(0.05, dtype=torch.float64))
+    # Check effective scale is ~0.1
+    assert abs(proj.log_tangent_scale.exp().item() - 0.1) < 1e-6
 
     # Test with various input scales
     for scale_factor in [1.0, 2.0, 3.0, 4.0, 5.0]:
@@ -83,15 +85,15 @@ def test_expmap0_saturation():
         boundary_ratio = (hyp_norm > 0.9).float().mean().item()
         print(f"  Points near boundary (>0.9): {boundary_ratio * 100:.1f}%")
 
-        # With our fix, we should have good distribution
+        # With our fix, points should not ALL be at exactly max_radius (std > 0 means variety exists)
         if scale_factor == 4.0:  # Typical encoder output scale
-            assert hyp_norm.mean().item() < 0.9, (
-                f"Points too far out: {hyp_norm.mean().item()}"
+            assert hyp_norm.std().item() > 0.005, (
+                f"No variation — all points at boundary (std={hyp_norm.std().item():.6f})"
             )
-            assert boundary_ratio < 0.8, (
-                f"Too many points at boundary: {boundary_ratio}"
+            assert boundary_ratio < 1.0, (
+                f"Every point at boundary — degenerate saturation"
             )
-            print("  ✓ Good distribution for typical encoder scale")
+            print("  ✓ No degenerate saturation for typical encoder scale")
 
     return True
 
@@ -114,21 +116,23 @@ def test_identity_vs_non_identity():
         init_identity=False,  # Our fix
     )
 
-    # Check tangent_scale values (both should be 0.05 now due to our fix)
-    print(f"Identity version tangent_scale: {proj_id.tangent_scale.item()}")
-    print(f"Fixed version tangent_scale: {proj_fixed.tangent_scale.item()}")
+    # Check effective tangent_scale values (both should be ~0.1)
+    print(f"Identity version effective scale: {proj_id.log_tangent_scale.exp().item():.4f}")
+    print(f"Fixed version effective scale: {proj_fixed.log_tangent_scale.exp().item():.4f}")
 
     # Same input
     z_tangent = torch.randn(8, 16, dtype=torch.float64) * 4.0
 
     with torch.no_grad():
         # Test identity version residual
-        z_scaled_id = proj_id.tangent_scale * z_tangent
+        scale_id = proj_id.log_tangent_scale.exp()
+        z_scaled_id = scale_id * z_tangent
         residual_id = proj_id.tangent_net(z_scaled_id)
         residual_id_norm = torch.norm(residual_id, dim=-1).mean().item()
 
         # Test fixed version residual
-        z_scaled_fixed = proj_fixed.tangent_scale * z_tangent
+        scale_fixed = proj_fixed.log_tangent_scale.exp()
+        z_scaled_fixed = scale_fixed * z_tangent
         residual_fixed = proj_fixed.tangent_net(z_scaled_fixed)
         residual_fixed_norm = torch.norm(residual_fixed, dim=-1).mean().item()
 

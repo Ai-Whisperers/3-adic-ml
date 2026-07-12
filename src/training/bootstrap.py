@@ -222,7 +222,7 @@ class ModelAuditor:
                     ckpt = load_checkpoint_compat(ckpt_path, map_location=self.device)
                     state_dict = get_model_state_dict(ckpt)
 
-                    # Load with strict=False (projections may not match)
+                    # Load with strict=False (projections may not match across versions)
                     missing, unexpected = model.load_state_dict(
                         state_dict, strict=False
                     )
@@ -230,6 +230,10 @@ class ModelAuditor:
                     print(
                         f"       Missing keys: {len(missing)}, Unexpected: {len(unexpected)}"
                     )
+                    if missing:
+                        print(f"       Missing: {missing[:5]}{'...' if len(missing) > 5 else ''}")
+                    if unexpected:
+                        print(f"       Unexpected: {unexpected[:5]}{'...' if len(unexpected) > 5 else ''}")
 
                     self.audit_log["checkpoint_loaded"] = True
                     self.audit_log["checkpoint_path"] = str(ckpt_path)

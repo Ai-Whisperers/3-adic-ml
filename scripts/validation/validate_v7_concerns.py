@@ -242,8 +242,8 @@ for epoch in range(1, EPOCHS + 1):
     f_sc_v0 = r_np[v0_mask].std() if v0_mask.sum() > 1 else float("nan")
     f_flag  = "ok" if f_sc_v0 < 0.02 else ("hi" if f_sc_v0 < V6_SCATTER_V0_REF else "V6")
 
-    # ── Concern 2: tangent_scale ──────────────────────────────────────────────
-    c2_tsc = model.projections.proj_A.tangent_scale.item()
+    # ── Concern 2: tangent_scale (effective = exp(log_tangent_scale)) ────────
+    c2_tsc = model.projections.proj_A.log_tangent_scale.exp().item()
 
     # ── Concern 3: KL + mu[:,4:] norm ────────────────────────────────────────
     with torch.no_grad():

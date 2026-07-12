@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check the effect of tangent_scale on the initial radius."""
 
+import math
 import torch
 
 from src.config import StateNetConfig
@@ -32,9 +33,9 @@ z_norm = torch.norm(z_hyp, dim=-1)
 
 print(f"Latent norm: {z_norm.mean().item():.6f} ± {z_norm.std().item():.6f}")
 
-# Change tangent_scale
-model.projection.proj_A.tangent_scale.data.fill_(10.0)
-model.projection.proj_B.tangent_scale.data.fill_(10.0)
+# Change effective tangent_scale to 10.0 (stored as log(10) in log_tangent_scale)
+model.projection.proj_A.log_tangent_scale.data.fill_(math.log(10.0))
+model.projection.proj_B.log_tangent_scale.data.fill_(math.log(10.0))
 
 # Forward pass again
 out2 = model(batch_ternary)
