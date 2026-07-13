@@ -362,26 +362,59 @@ class TestDataAuditorLeakageCheck:
         train_ds, val_ds, _ = auditor.prepare_data(val_frac=0.1)
         assert auditor.audit_log["data_leakage_count"] == 0
 
-    def test_leakage_detected_with_duplicate_indices(self, tmp_path):
-        """If all_indices contains repeats, overlap must be detected."""
+    def test_leakage_detected_with_duplicate_indices(self, tmp_path, monkeypatch):
+        """If all_indices contains repeats, overlap must be detected.
+
+        Regression: the original version of this test picked seed=0 on the
+        (unverified) assumption that it would split the duplicated index
+        value 0 across train/val. It does not — with seed=0 both copies of
+        index value 0 land in *train*, so data_leakage_count is 0 and the
+        test's try/except swallowed the no-op silently with zero assertions
+        on the success path. It never actually exercised the leakage-detection
+        branch it claims to cover.
+
+        Fixed by forcing the permutation deterministically instead of hoping
+        a seed happens to produce the right split.
+        """
+        import numpy as np
         import torch
         from src.training.bootstrap import DataAuditor
 
-        # Create indices where value 0 appears twice: one copy goes to train,
-        # one to val — so both splits share index 0 in their idx tensors.
-        # With torch.isin this shows up as leakage.
+        # Index value 0 appears at positions 0 and 1.
         dup_indices = torch.tensor([0, 0] + list(range(1, 50)), dtype=torch.long)
         idx_path = tmp_path / "dup_indices.pt"
         torch.save(dup_indices, idx_path)
+        n = len(dup_indices)
 
-        auditor = DataAuditor(seed=0)  # seed chosen so 0 lands in both splits
-        # Prepare with a small val_frac to guarantee the duplicate 0 ends in val
-        try:
-            train_ds, val_ds, _ = auditor.prepare_data(
-                val_frac=0.1, custom_indices_path=str(idx_path)
-            )
-        except Exception:
-            pytest.skip("Custom indices with dup values caused an upstream error")
+        # Force position 0 into val and position 1 into train, guaranteeing
+        # index value 0 appears in both splits regardless of RNG luck.
+        forced_perm = np.array([0] + list(range(2, n)) + [1])
+
+        class _FixedRNG:
+            def permutation(self, size):
+                assert size == n
+                return forced_perm
+
+        monkeypatch.setattr(np.random, "default_rng", lambda seed: _FixedRNG())
+
+        auditor = DataAuditor(seed=0)
+        train_ds, val_ds, _ = auditor.prepare_data(
+            val_frac=0.1, custom_indices_path=str(idx_path)
+        )
+
+        assert auditor.audit_log["data_leakage_count"] > 0, (
+            "Duplicate index value split across train/val was not flagged as "
+            f"leakage: audit_log={auditor.audit_log}"
+        )
+
+        # Verify directly against the returned datasets too, not just the
+        # audit_log bookkeeping, in case the log and the actual split diverge.
+        idx_train = train_ds.tensors[1]
+        idx_val = val_ds.tensors[1]
+        assert torch.isin(idx_val, idx_train).any(), (
+            "audit_log reported leakage but the returned train/val datasets "
+            "share no index values"
+        )
 
     def test_uses_torch_isin_not_set_of_tuples(self):
         import src.training.bootstrap as bootstrap_mod
