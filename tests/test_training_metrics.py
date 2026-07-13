@@ -11,6 +11,16 @@ version:
 
   - compute_hyperbolic_coverage is dead code (no caller anywhere in the
     codebase) and is intentionally NOT covered here.
+
+  - compute_hierarchy_metrics has an inconsistent return-dict contract: the
+    n<2 early-exit path returns only 5 keys, while the normal path returns
+    13 (including "mean_radius"). src/training/engine.py reads
+    hier_metrics_A["mean_radius"] with direct bracket access (not .get()),
+    so a validation split with 0 or 1 samples would raise KeyError and
+    crash training. This is a real, currently-unfixed latent bug -- flagged
+    to and confirmed with the user, who asked to document it with a test
+    for now rather than change production code. See
+    TestComputeHierarchyMetrics.test_early_exit_dict_is_missing_keys_the_full_path_provides.
 """
 
 from __future__ import annotations
@@ -22,6 +32,7 @@ from src.geometry import hyperbolic_radius, poincare_distance
 from src.training.metrics import (
     compute_accuracy,
     compute_coverage,
+    compute_hierarchy_metrics,
     compute_level_stratified_hierarchy,
     compute_tree_coherence,
 )
@@ -54,7 +65,7 @@ class TestComputeAccuracy:
     def test_one_wrong_position_out_of_nine(self):
         targets = torch.tensor([[-1, 0, 1, -1, 0, 1, -1, 0, 1]])
         logits = _one_hot_logits(targets, wrong_positions={0: 0})
-        assert compute_accuracy(logits, targets) == torch.tensor(8 / 9).item()
+        assert compute_accuracy(logits, targets) == pytest.approx(8 / 9)
 
     def test_flat_27_logits_equivalent_to_9x3(self):
         """The (B, 27) code path must decode identically to (B, 9, 3)."""
@@ -106,7 +117,7 @@ class TestComputeCoverage:
             [-1, 0, 1, -1, 0, 1, -1, 0, 1],
         ])
         logits = _one_hot_logits(targets, wrong_positions={2: 0})
-        assert compute_coverage(logits, targets) == torch.tensor(2 / 3).item()
+        assert compute_coverage(logits, targets) == pytest.approx(2 / 3)
 
     def test_flat_27_logits_equivalent_to_9x3(self):
         targets = torch.tensor([[-1, 0, 1, -1, 0, 1, -1, 0, 1]])
@@ -235,3 +246,121 @@ class TestComputeLevelStratifiedHierarchy:
         z = torch.tensor([[0.3, 0.0], [0.5, 0.0]], dtype=torch.float64)
         result = compute_level_stratified_hierarchy(z, idx, curvature=1.0)
         assert set(result.keys()) == set(range(10))
+
+
+# ---------------------------------------------------------------------------
+# compute_hierarchy_metrics
+# ---------------------------------------------------------------------------
+
+class TestComputeHierarchyMetrics:
+    def test_perfect_monotonic_radius_gives_hierarchy_one(self):
+        """Radius strictly decreasing with valuation (the target structure
+        every hierarchy loss in this codebase optimizes toward) must yield
+        hierarchy == 1.0 exactly (perfect Spearman correlation)."""
+        idx = torch.arange(0, 200)
+        from src.core import TERNARY
+        vals = TERNARY.valuation(idx)
+        direction = torch.tensor([1.0, 0.0], dtype=torch.float64)
+        radius = 0.9 * (0.5 ** vals.double())
+        z = direction.unsqueeze(0) * radius.unsqueeze(1)
+
+        m = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=42)
+        assert m["hierarchy"] == pytest.approx(1.0, abs=1e-9)
+        assert m["hierarchy_collapsed"] is False
+
+    def test_q_equals_dist_corr_plus_1_5x_hierarchy(self):
+        torch.manual_seed(0)
+        z = torch.randn(50, 4, dtype=torch.float64) * 0.3
+        idx = torch.arange(50)
+        m = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=7)
+        assert m["Q"] == pytest.approx(m["dist_corr"] + 1.5 * m["hierarchy"], rel=1e-9)
+
+    def test_level_radii_matches_hand_computed_per_level_mean(self):
+        idx = torch.tensor([1, 2, 4, 5, 3, 6, 12, 15])  # 4x v=0, 4x v=1
+        direction = torch.tensor([1.0, 0.0], dtype=torch.float64)
+        r0 = torch.tensor([0.60, 0.601, 0.599, 0.6005], dtype=torch.float64)
+        r1 = torch.tensor([0.1, 0.3, 0.05, 0.4], dtype=torch.float64)
+        z = direction.unsqueeze(0) * torch.cat([r0, r1]).unsqueeze(1)
+
+        m = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=1)
+        hr = hyperbolic_radius(z, c=1.0).numpy()
+        assert m["level_radii"][0] == pytest.approx(hr[:4].mean(), rel=1e-9)
+        assert m["level_radii"][1] == pytest.approx(hr[4:].mean(), rel=1e-9)
+        assert m["level_radii"][2] != m["level_radii"][2]  # unpopulated level -> NaN
+
+    def test_worst_level_picks_least_consistent_populated_level(self):
+        """level 0 has near-identical radii (consistent); level 1 has
+        widely spread radii (inconsistent). worst_level must point at the
+        inconsistent one -- 'worst' means least-negative level_hierarchy
+        value, i.e. the docstring's own definition."""
+        idx = torch.tensor([1, 2, 4, 5, 3, 6, 12, 15])
+        direction = torch.tensor([1.0, 0.0], dtype=torch.float64)
+        r0 = torch.tensor([0.60, 0.601, 0.599, 0.6005], dtype=torch.float64)  # tight
+        r1 = torch.tensor([0.1, 0.3, 0.05, 0.4], dtype=torch.float64)          # spread
+        z = direction.unsqueeze(0) * torch.cat([r0, r1]).unsqueeze(1)
+
+        m = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=1)
+        assert m["worst_level"] == 1
+        assert m["level_hierarchy"][0] < m["level_hierarchy"][1], (
+            "level 0 (tight) should score more negative (better) than "
+            "level 1 (spread)"
+        )
+
+    def test_mean_level_hierarchy_averages_only_populated_levels(self):
+        idx = torch.tensor([1, 2, 4, 5, 3, 6, 12, 15])
+        direction = torch.tensor([1.0, 0.0], dtype=torch.float64)
+        r0 = torch.tensor([0.60, 0.601, 0.599, 0.6005], dtype=torch.float64)
+        r1 = torch.tensor([0.1, 0.3, 0.05, 0.4], dtype=torch.float64)
+        z = direction.unsqueeze(0) * torch.cat([r0, r1]).unsqueeze(1)
+
+        m = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=1)
+        expected = (m["level_hierarchy"][0] + m["level_hierarchy"][1]) / 2
+        assert m["mean_level_hierarchy"] == pytest.approx(expected, rel=1e-9)
+
+    def test_small_n_uses_all_pairs_deterministically(self):
+        """n<=100 must exhaustively use every pair (np.triu_indices), so the
+        result must be identical across different `seed` values -- sampling
+        is only supposed to kick in above the n=100 threshold."""
+        torch.manual_seed(0)
+        z = torch.randn(50, 4, dtype=torch.float64) * 0.3
+        idx = torch.arange(50)
+        m1 = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=1)
+        m2 = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=999)
+        assert m1["dist_corr"] == m2["dist_corr"]
+
+    def test_large_n_pair_sampling_is_seed_reproducible(self):
+        """n>100 samples pairs randomly -- same seed must give the exact
+        same dist_corr (reproducible eval runs), different seed generally
+        won't."""
+        torch.manual_seed(0)
+        z = torch.randn(150, 4, dtype=torch.float64) * 0.3
+        idx = torch.arange(150)
+        m_a = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=1)
+        m_b = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=1)
+        m_c = compute_hierarchy_metrics(z, idx, curvature=1.0, seed=2)
+        assert m_a["dist_corr"] == m_b["dist_corr"]
+        assert m_a["dist_corr"] != m_c["dist_corr"]
+
+    def test_early_exit_dict_is_missing_keys_the_full_path_provides(self):
+        """KNOWN GAP (not fixed, documented on purpose -- see module
+        docstring): the n<2 early-exit path returns only 5 keys, while the
+        normal path returns 13, including 'mean_radius'.
+        src/training/engine.py reads hier_metrics_A["mean_radius"] with
+        direct bracket access (not .get()), so a validation split with 0 or
+        1 samples would raise KeyError and crash training. This test
+        documents the current (inconsistent) contract so a future fix is a
+        deliberate, visible change rather than an accidental one.
+        """
+        z_small = torch.randn(1, 8, dtype=torch.float64)
+        idx_small = torch.tensor([0])
+        small = compute_hierarchy_metrics(z_small, idx_small, curvature=1.0)
+
+        z_full = torch.randn(50, 8, dtype=torch.float64) * 0.3
+        idx_full = torch.arange(50)
+        full = compute_hierarchy_metrics(z_full, idx_full, curvature=1.0)
+
+        assert set(small.keys()) == {
+            "hierarchy", "dist_corr", "Q", "hierarchy_collapsed", "dist_corr_collapsed",
+        }
+        assert "mean_radius" in full.keys()
+        assert "mean_radius" not in small.keys()
