@@ -62,7 +62,7 @@ class ModelConfig(StrictConfigModel):
     projection_layers: int = Field(default=2, ge=1, le=5, description="Projection network layers")
     projection_dropout: float = Field(default=0.0, ge=0, lt=1.0, description="Dropout rate")
     init_identity: bool = True
-    tangent_scale: float = Field(default=0.1, gt=0, le=10.0, description="Initial tangent scale (stored as log internally)")
+    tangent_scale: float = Field(default=0.1, gt=0, description="Initial tangent scale (stored as log internally; clamped to exp(-10..3) during training)")
     encoder_type: Literal["standard", "improved"] = "improved"
     decoder_type: Literal["standard", "improved"] = "improved"
     learnable_curvature: bool = True

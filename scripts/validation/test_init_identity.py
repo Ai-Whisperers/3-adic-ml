@@ -16,7 +16,7 @@ proj = HyperbolicProjection(
 )
 
 # Check tangent_scale
-print(f"tangent_scale: {proj.log_tangent_scale.exp().item()}")
+print(f"tangent_scale: {proj.tangent_scale.item()}")
 
 # Test with encoder-like input (norm ~4.0 for the deterministic part, but let's use
 # the full stochastic sample which has higher norm)
@@ -26,7 +26,7 @@ z_tangent = torch.randn(8, 16, dtype=torch.float64) * 4.0  # This gives norm ~16
 print(f"Input z_tangent norm: {torch.norm(z_tangent, dim=-1).mean().item():.4f}")
 
 with torch.no_grad():
-    z_scaled = proj.log_tangent_scale.exp() * z_tangent
+    z_scaled = proj.tangent_scale * z_tangent
     z_transformed = z_scaled + proj.tangent_net(z_scaled)
     residual = proj.tangent_net(z_scaled)
 
@@ -53,7 +53,7 @@ proj_orig = HyperbolicProjection(
 )
 
 with torch.no_grad():
-    z_scaled_orig = proj_orig.log_tangent_scale.exp() * z_tangent
+    z_scaled_orig = proj_orig.tangent_scale * z_tangent
     # With init_identity=True, residual = 0
     z_transformed_orig = z_scaled_orig  # + 0
     z_hyp_orig = proj_orig(z_tangent, as_manifold=False)

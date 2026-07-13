@@ -243,7 +243,7 @@ for epoch in range(1, EPOCHS + 1):
     f_flag  = "ok" if f_sc_v0 < 0.02 else ("hi" if f_sc_v0 < V6_SCATTER_V0_REF else "V6")
 
     # ── Concern 2: tangent_scale (effective = exp(log_tangent_scale)) ────────
-    c2_tsc = model.projections.proj_A.log_tangent_scale.exp().item()
+    c2_tsc = model.projections.proj_A.tangent_scale.item()
 
     # ── Concern 3: KL + mu[:,4:] norm ────────────────────────────────────────
     with torch.no_grad():

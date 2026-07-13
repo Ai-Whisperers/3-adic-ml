@@ -187,16 +187,16 @@ class HyperbolicProjection(nn.Module):
                 last_layer.weight.fill_(0)
                 last_layer.bias.fill_(0)
 
-    def _clamp_log_tangent_scale(self) -> None:
-        """Clamp log_tangent_scale to (-10, 3) — effective scale stays in (~5e-5, 20).
+    @property
+    def tangent_scale(self) -> torch.Tensor:
+        """Effective tangent scale = exp(log_tangent_scale), clamped to (~5e-5, 20).
 
-        In non-factored mode a large exp(log_ts) saturates all embeddings to max_radius
-        via _expmap_and_clamp, killing the radial hierarchy gradient. In factored mode
-        the direction is normalized so upper saturation cannot occur, but clamping
-        prevents numerical instability in tangent_net with very large inputs.
+        Clamping here (not in forward) ensures the bound is enforced on every access,
+        including forward_with_components and any future entry points.
         """
         with torch.no_grad():
             self.log_tangent_scale.data.clamp_(-10.0, 3.0)
+        return self.log_tangent_scale.exp()
 
     def _clamp_curvature(self) -> None:
         """Enforce safe range on learnable curvature [0.1, 5.0]."""
@@ -234,9 +234,8 @@ class HyperbolicProjection(nn.Module):
                       d(||r*dir||)/d(z_θ) = 0 because F.normalize Jacobian is
                       orthogonal to its output, and r*dir is collinear with dir.
         """
-        # Enforce safe parameter ranges
+        # Enforce safe curvature range
         self._clamp_curvature()
-        self._clamp_log_tangent_scale()
 
         # Enforce float64 precision
         z_tangent = z_tangent.to(torch.float64)
@@ -245,11 +244,7 @@ class HyperbolicProjection(nn.Module):
             return self._forward_factored(z_tangent)
 
         # --- Non-factored mode (V6 expmap0 approach) ---
-        # Scale tangent vectors + residual transform.
-        # log_tangent_scale is learned; exp(init=log(0.1)) prevents expmap0 saturation.
-        # Log-space storage ensures the effective scale is always > 0 and can never
-        # collapse to a degenerate fixed point.
-        z_scaled = self.log_tangent_scale.exp() * z_tangent
+        z_scaled = self.tangent_scale * z_tangent
         z_transformed = z_scaled + self.tangent_net(z_scaled)
         z_hyp = self._expmap_and_clamp(z_transformed)
 
@@ -289,7 +284,7 @@ class HyperbolicProjection(nn.Module):
         r = torch.sigmoid(self.linear_r(z_r).squeeze(-1)) * self.max_radius  # (B,)
 
         # Direction: residual transform of z_θ, then normalize to unit sphere
-        z_theta_scaled = self.log_tangent_scale.exp() * z_theta
+        z_theta_scaled = self.tangent_scale * z_theta
         dir_unnorm = z_theta_scaled + self.tangent_net(z_theta_scaled)
         dir_norm = torch.norm(dir_unnorm, dim=-1, keepdim=True).clamp(min=1e-10)
         dir = dir_unnorm / dir_norm                     # (B, D-k), unit norm
@@ -321,7 +316,7 @@ class HyperbolicProjection(nn.Module):
             z_hyp, r = self._forward_factored(z_tangent.to(torch.float64))
             return z_hyp, z_hyp, r  # third element is radius r, not tangent_norm
         z_tangent = z_tangent.to(torch.float64)
-        z_scaled = self.log_tangent_scale.exp() * z_tangent
+        z_scaled = self.tangent_scale * z_tangent
         z_transformed = z_scaled + self.tangent_net(z_scaled)
         z_hyp = self._expmap_and_clamp(z_transformed)
         tangent_norm = torch.norm(z_transformed, dim=-1)
