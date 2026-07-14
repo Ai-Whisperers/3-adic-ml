@@ -32,6 +32,13 @@ class AnomalyDetector:
         self.z_norm: torch.Tensor | None = None
         self.threshold: float | None = None
 
+    @staticmethod
+    def _knn_mean_dist(dist_matrix: torch.Tensor, k: int) -> np.ndarray:
+        """Mean distance to the k nearest neighbors, per row of a (rows, cols) distance matrix."""
+        k_actual = min(k, dist_matrix.shape[1])
+        knn_dists, _ = dist_matrix.topk(k_actual, dim=1, largest=False)
+        return knn_dists.mean(dim=1).cpu().numpy()
+
     def fit(self, normal_embeddings: torch.Tensor, k: int = 5, sigma_factor: float = 3.0) -> None:
         """Calibrate threshold = mean + sigma_factor * std of mean-kNN distances over normal_embeddings."""
         self.z_norm = normal_embeddings.to(self.device)
@@ -45,8 +52,7 @@ class AnomalyDetector:
         dist_matrix = dist_matrix.masked_fill(eye, float("inf"))
 
         k_actual = min(k, n_norm - 1)
-        knn_dists, _ = dist_matrix.topk(k_actual, dim=1, largest=False)  # (N, k)
-        mean_knn = knn_dists.mean(dim=1).cpu().numpy()  # (N,)
+        mean_knn = self._knn_mean_dist(dist_matrix, k_actual)  # (N,)
 
         self.threshold = float(mean_knn.mean() + sigma_factor * mean_knn.std())
         print(f"[AnomalyDetector] Fitted: threshold={self.threshold:.4f} "
@@ -58,7 +64,6 @@ class AnomalyDetector:
             raise ValueError("AnomalyDetector must be fitted before calling detect().")
 
         queries = query_embeddings.to(self.device)   # (M, D)
-        n_norm = self.z_norm.shape[0]
 
         # Cross-distance matrix (M, N) via geoopt broadcasting.
         manifold = get_manifold(self.curvature, device=self.device)
@@ -66,9 +71,7 @@ class AnomalyDetector:
         n_exp = self.z_norm.unsqueeze(0)      # (1, N, D)
         cross_dists = manifold.dist(q_exp, n_exp, keepdim=False)  # (M, N)
 
-        k_actual = min(k, n_norm)
-        knn_dists, _ = cross_dists.topk(k_actual, dim=1, largest=False)  # (M, k)
-        mean_knn = knn_dists.mean(dim=1).cpu().numpy()  # (M,)
+        mean_knn = self._knn_mean_dist(cross_dists, k)  # (M,)
 
         return {
             "is_anomaly": mean_knn > self.threshold,

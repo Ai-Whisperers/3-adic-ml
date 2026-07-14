@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..geometry import poincare_distance
 from .base import HierarchyLossBase, MetricsDict
-from .utils import make_zero_loss
+from .utils import default_valuation_fn, make_zero_loss, safe_corrcoef, sample_random_pairs
 
 
 class PAdicGeodesicLoss(HierarchyLossBase):
@@ -45,7 +45,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         self.n_pairs = n_pairs
         self.use_smooth_l1 = use_smooth_l1
         self.use_individual_valuation = use_individual_valuation
-        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
+        self._valuation_fn = default_valuation_fn(valuation_fn, TERNARY.valuation)
         self.max_valuation = float(TERNARY.MAX_VALUATION)
         # No CPU generator — randint uses device=device directly to avoid
         # the index-tensor transfer from CPU to training device each forward pass.
@@ -68,11 +68,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
             return make_zero_loss(device), {"n_pairs": 0}
 
         n_pairs = min(self.n_pairs, batch_size * (batch_size - 1) // 2)
-        i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
-        j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
-
-        same_mask = i_idx == j_idx
-        j_idx[same_mask] = (j_idx[same_mask] + 1) % batch_size
+        i_idx, j_idx = sample_random_pairs(batch_size, n_pairs, device)
 
         d_actual = poincare_distance(z_hyp[i_idx], z_hyp[j_idx], cur_c)
 
@@ -98,12 +94,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
             loss = F.mse_loss(d_actual, d_target)
 
         with torch.no_grad():
-            if d_actual.numel() >= 2:
-                corr = torch.corrcoef(torch.stack([d_actual, d_target]))[0, 1]
-                if torch.isnan(corr):
-                    corr = make_zero_loss(device)
-            else:
-                corr = torch.tensor(float("nan"), device=device, dtype=torch.float64)
+            corr = safe_corrcoef(d_actual, d_target, nan_if_insufficient=True)
 
             mean_d_low_v = d_actual[valuation < 2].mean() if (valuation < 2).any() else make_zero_loss(device)
             mean_d_high_v = d_actual[valuation >= 4].mean() if (valuation >= 4).any() else make_zero_loss(device)

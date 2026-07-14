@@ -61,6 +61,12 @@ def get_manifold(c: Union[float, torch.Tensor] = 1.0, device: torch.device | str
     return _manifold_cache[cache_key]
 
 
+def clamp_to_max_norm(x: torch.Tensor, max_norm: Union[float, torch.Tensor]) -> torch.Tensor:
+    """Scale x down (never up) so its last-dim norm does not exceed max_norm."""
+    norm = torch.norm(x, dim=-1, keepdim=True).clamp(min=1e-10)
+    return x * (max_norm / norm).clamp(max=1.0)
+
+
 def poincare_distance(x: torch.Tensor, y: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, keepdim: bool = False) -> torch.Tensor:
     """Poincaré geodesic distance between x and y."""
     return get_manifold(c, device=x.device).dist(x, y, keepdim=keepdim)
@@ -75,8 +81,7 @@ def project_to_poincare(z: torch.Tensor, max_norm: float = 0.95, c: Union[float,
     """Project points onto the Poincaré ball with optional max_norm constraint."""
     manifold = get_manifold(c, device=z.device)
     z_proj = manifold.projx(z)
-    norm = torch.norm(z_proj, dim=-1, keepdim=True).clamp(min=1e-10)
-    return z_proj * (max_norm / norm).clamp(max=1.0)
+    return clamp_to_max_norm(z_proj, max_norm)
 
 
 def exp_map_zero(v: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> torch.Tensor:
@@ -96,8 +101,7 @@ def log_map_zero(z: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, max_norm:
         max_norm if max_norm is not None else ball_radius - 1e-5,
         ball_radius - 1e-5,
     )
-    norm = torch.norm(z, dim=-1, keepdim=True).clamp(min=1e-10)
-    z_clamped = z * (effective_max_norm / norm).clamp(max=1.0)
+    z_clamped = clamp_to_max_norm(z, effective_max_norm)
     manifold = get_manifold(c, device=z.device)
     return manifold.logmap(torch.zeros_like(z_clamped), z_clamped)
 

@@ -4,21 +4,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-import yaml
 
 from src.config import N_TERNARY_OPERATIONS
 from src.config.schema import normalize_config, validate_config
 from src.core import TERNARY
-
-PRESETS_DIR = Path(__file__).parent.parent / "src" / "presets"
-
-
-def _load_preset(name: str) -> dict:
-    with open(PRESETS_DIR / name) as f:
-        return yaml.safe_load(f)
+from tests.conftest import _load_preset
 
 
 def test_normalize_config_preserves_visualization_block() -> None:

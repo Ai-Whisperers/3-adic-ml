@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..geometry import hyperbolic_radius
 from .base import HierarchyLossBase, MetricsDict
-from .utils import make_zero_loss
+from .utils import default_valuation_fn, make_zero_loss, sample_random_pairs
 
 
 class GlobalRankLoss(HierarchyLossBase):
@@ -34,7 +34,7 @@ class GlobalRankLoss(HierarchyLossBase):
         self.n_pairs = n_pairs
         self.use_all_pairs = use_all_pairs
         self.curvature = curvature
-        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
+        self._valuation_fn = default_valuation_fn(valuation_fn, TERNARY.valuation)
         self.scatter_weight = scatter_weight
         # No CPU generator — randint uses device=device directly.
 
@@ -58,10 +58,7 @@ class GlobalRankLoss(HierarchyLossBase):
             i_idx, j_idx = torch.triu_indices(batch_size, batch_size, offset=1, device=device)
         else:
             n_pairs = min(self.n_pairs, batch_size * (batch_size - 1) // 2)
-            i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
-            j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
-            same = i_idx == j_idx
-            j_idx[same] = (j_idx[same] + 1) % batch_size
+            i_idx, j_idx = sample_random_pairs(batch_size, n_pairs, device)
 
         v_i, v_j = cast(torch.Tensor, valuations[i_idx]), cast(torch.Tensor, valuations[j_idx])
         r_i, r_j = actual_radius[i_idx], actual_radius[j_idx]

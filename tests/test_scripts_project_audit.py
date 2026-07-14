@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 from scripts.analysis.project_audit import (
-    PROJECT_ROOT,
     build_model_kwargs,
     collect_run_results,
     monte_carlo_scenarios,
@@ -15,16 +14,9 @@ from scripts.analysis.project_audit import (
     summarize_scalar_series,
 )
 import torch
-import yaml
 
 from src.core import TERNARY
-
-PRESETS_DIR = PROJECT_ROOT / "src" / "presets"
-
-
-def _load_preset(name: str) -> dict:
-    with open(PRESETS_DIR / name) as handle:
-        return yaml.safe_load(handle)
+from tests.conftest import _load_preset
 
 
 def test_build_model_kwargs_respects_legacy_factored_presets() -> None:

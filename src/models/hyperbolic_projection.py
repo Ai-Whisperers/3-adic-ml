@@ -28,7 +28,7 @@ import geoopt
 import torch
 import torch.nn as nn
 
-from src.geometry import ManifoldParameter
+from src.geometry import ManifoldParameter, clamp_to_max_norm
 
 
 class HyperbolicProjection(nn.Module):
@@ -176,8 +176,21 @@ class HyperbolicProjection(nn.Module):
         """Apply expmap0 and enforce max_radius constraint."""
         origin = torch.zeros_like(z_transformed)
         z_hyp = self.manifold.expmap(origin, z_transformed)
-        norm = torch.norm(z_hyp, dim=-1, keepdim=True).clamp(min=1e-10)
-        return z_hyp * (self.max_radius / norm).clamp(max=1.0)
+        return clamp_to_max_norm(z_hyp, self.max_radius)
+
+    def _transform_and_project(
+        self, z_tangent: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Non-factored tangent transform + expmap0 projection.
+
+        Returns (z_hyp, z_transformed, tangent_norm), shared by forward() and
+        forward_with_components().
+        """
+        z_scaled = self.tangent_scale * z_tangent
+        z_transformed = z_scaled + self.tangent_net(z_scaled)
+        z_hyp = self._expmap_and_clamp(z_transformed)
+        tangent_norm = torch.norm(z_transformed, dim=-1)
+        return z_hyp, z_transformed, tangent_norm
 
     def _init_identity_manual(self):
         """Initialize tangent_net as identity (zero residual)."""
@@ -244,9 +257,7 @@ class HyperbolicProjection(nn.Module):
             return self._forward_factored(z_tangent)
 
         # --- Non-factored mode (V6 expmap0 approach) ---
-        z_scaled = self.tangent_scale * z_tangent
-        z_transformed = z_scaled + self.tangent_net(z_scaled)
-        z_hyp = self._expmap_and_clamp(z_transformed)
+        z_hyp, _, _ = self._transform_and_project(z_tangent)
 
         if as_manifold:
             z_hyp = self.manifold.projx(z_hyp)
@@ -315,12 +326,7 @@ class HyperbolicProjection(nn.Module):
         if self.factored:
             z_hyp, r = self._forward_factored(z_tangent.to(torch.float64))
             return z_hyp, z_hyp, r  # third element is radius r, not tangent_norm
-        z_tangent = z_tangent.to(torch.float64)
-        z_scaled = self.tangent_scale * z_tangent
-        z_transformed = z_scaled + self.tangent_net(z_scaled)
-        z_hyp = self._expmap_and_clamp(z_transformed)
-        tangent_norm = torch.norm(z_transformed, dim=-1)
-        return z_hyp, z_transformed, tangent_norm
+        return self._transform_and_project(z_tangent.to(torch.float64))
 
 
 class DualHyperbolicProjection(nn.Module):
@@ -364,36 +370,30 @@ class DualHyperbolicProjection(nn.Module):
         self.learnable_curvature = learnable_curvature
         self.factored = factored
 
+        def _make_proj(
+            proj_curvature: Union[float, geoopt.PoincareBall], proj_learnable_curvature: bool
+        ) -> HyperbolicProjection:
+            return HyperbolicProjection(
+                latent_dim,
+                hidden_dim,
+                max_radius,
+                curvature=proj_curvature,
+                n_layers=n_layers,
+                dropout=dropout,
+                learnable_curvature=proj_learnable_curvature,
+                init_identity=init_identity,
+                tangent_scale_init=tangent_scale_init,
+                factored=factored,
+                radial_dims=radial_dims,
+            )
+
         # VAE-A projection
-        self.proj_A = HyperbolicProjection(
-            latent_dim,
-            hidden_dim,
-            max_radius,
-            curvature,
-            n_layers=n_layers,
-            dropout=dropout,
-            learnable_curvature=learnable_curvature,
-            init_identity=init_identity,
-            tangent_scale_init=tangent_scale_init,
-            factored=factored,
-            radial_dims=radial_dims,
-        )
+        self.proj_A = _make_proj(curvature, learnable_curvature)
 
         # VAE-B projection (shares the exact same manifold instance from proj_A)
         # This ensures they share the same curvature parameter and manifold logic.
-        self.proj_B = HyperbolicProjection(
-            latent_dim,
-            hidden_dim,
-            max_radius,
-            curvature=self.proj_A.manifold,
-            n_layers=n_layers,
-            dropout=dropout,
-            learnable_curvature=False,  # Ignored when manifold is passed
-            init_identity=init_identity,
-            tangent_scale_init=tangent_scale_init,
-            factored=factored,
-            radial_dims=radial_dims,
-        )
+        # learnable_curvature is ignored when a manifold (not a raw float) is passed.
+        self.proj_B = _make_proj(self.proj_A.manifold, False)
 
     def forward(
         self, z_A: torch.Tensor, z_B: torch.Tensor, as_manifold: bool = False

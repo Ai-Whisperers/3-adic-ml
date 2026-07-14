@@ -16,7 +16,14 @@ from ..core import TERNARY
 from ..geometry import hyperbolic_radius, poincare_distance
 from ..utils.scatter_utils import level_has_data, level_scatter_mean
 from .base import HierarchyLossBase, MetricsDict, RichHierarchyLossBase
-from .utils import _euclidean_to_hyperbolic_radius, _exponential_target_radii, compute_coverage_loss, make_zero_loss
+from .utils import (
+    compute_coverage_loss,
+    compute_target_radii,
+    default_valuation_fn,
+    make_zero_loss,
+    safe_corrcoef,
+    sample_random_pairs,
+)
 
 
 class RadialHierarchyLoss(HierarchyLossBase):
@@ -49,7 +56,7 @@ class RadialHierarchyLoss(HierarchyLossBase):
         self.margin_weight = margin_weight
         self.use_margin_loss = use_margin_loss
         self.curvature = curvature
-        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
+        self._valuation_fn = default_valuation_fn(valuation_fn, TERNARY.valuation)
         self.valuation_weight_exponent = valuation_weight_exponent
         self.margin_step_factor = margin_step_factor
         # No CPU generator — randint uses device=device directly to avoid
@@ -68,9 +75,8 @@ class RadialHierarchyLoss(HierarchyLossBase):
         valuations = cast(torch.Tensor, v_raw).double()
         actual_radius = hyperbolic_radius(z_hyp, c=cur_c)
 
-        target_radii_all = _euclidean_to_hyperbolic_radius(
-            _exponential_target_radii(self.max_valuation, self.inner_radius, self.outer_radius, scale=3.0).to(device),
-            c=cur_c
+        target_radii_all = compute_target_radii(
+            self.max_valuation, self.inner_radius, self.outer_radius, cur_c, device
         )
         v_clamped = valuations.long().clamp(0, self.max_valuation)
         target_radius = target_radii_all[v_clamped]
@@ -86,10 +92,7 @@ class RadialHierarchyLoss(HierarchyLossBase):
         margin_loss = make_zero_loss(device)
         if self.use_margin_loss and batch_size >= 2:
             n_pairs = min(1000, batch_size * (batch_size - 1) // 2)
-            i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
-            j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
-            same = i_idx == j_idx
-            j_idx[same] = (j_idx[same] + 1) % batch_size
+            i_idx, j_idx = sample_random_pairs(batch_size, n_pairs, device)
 
             v_i, v_j = valuations[i_idx], valuations[j_idx]
             r_i, r_j = actual_radius[i_idx], actual_radius[j_idx]
@@ -109,12 +112,7 @@ class RadialHierarchyLoss(HierarchyLossBase):
         total_loss = primary_loss + self.margin_weight * margin_loss
 
         with torch.no_grad():
-            if valuations.numel() >= 2:
-                radial_corr = torch.corrcoef(torch.stack([valuations, -actual_radius]))[0, 1]
-                if torch.isnan(radial_corr):
-                    radial_corr = make_zero_loss(device)
-            else:
-                radial_corr = make_zero_loss(device)
+            radial_corr = safe_corrcoef(valuations, -actual_radius)
             radius_range = actual_radius.max() - actual_radius.min()
 
         metrics = {
@@ -160,7 +158,7 @@ class MonotonicRadialLoss(HierarchyLossBase):
         self.use_soft_margin = use_soft_margin
         self.temperature = temperature
         self.target_loss_weight = target_loss_weight
-        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
+        self._valuation_fn = default_valuation_fn(valuation_fn, TERNARY.valuation)
 
     def forward(
         self,
@@ -178,9 +176,8 @@ class MonotonicRadialLoss(HierarchyLossBase):
         valuations = cast(torch.Tensor, self._valuation_fn(batch_indices))
         radii = hyperbolic_radius(z_hyp, c=cur_c)
 
-        target_radii_all = _euclidean_to_hyperbolic_radius(
-            _exponential_target_radii(self.max_valuation, self.inner_radius, self.outer_radius, scale=3.0).to(device),
-            c=cur_c
+        target_radii_all = compute_target_radii(
+            self.max_valuation, self.inner_radius, self.outer_radius, cur_c, device
         )
 
         dim_size = self.max_valuation + 1
@@ -264,7 +261,7 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         self.separation_margin = separation_margin
         self.variance_weight = variance_weight
         self.max_valuation = max_valuation
-        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
+        self._valuation_fn = default_valuation_fn(valuation_fn, TERNARY.valuation)
 
     def forward(  # type: ignore[override]
         self,
@@ -276,11 +273,8 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         targets: Optional[torch.Tensor] = kwargs.get("targets")
         device, cur_c = z_hyp.device, kwargs.get("curvature", self.curvature)
         radii = hyperbolic_radius(z_hyp, c=cur_c)
-        target_radii_adj = _euclidean_to_hyperbolic_radius(
-            _exponential_target_radii(
-                self.max_valuation, self.inner_radius, self.outer_radius, scale=3.0
-            ).to(device),
-            c=cur_c
+        target_radii_adj = compute_target_radii(
+            self.max_valuation, self.inner_radius, self.outer_radius, cur_c, device
         )
         valuations = cast(torch.LongTensor, self._valuation_fn(batch_indices).long().to(device))
 
@@ -344,7 +338,7 @@ class WithinLevelContrastiveLoss(nn.Module):
         self.curvature = curvature
         self.max_pairs_per_level = max_pairs_per_level
         self.weight = weight
-        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
+        self._valuation_fn = default_valuation_fn(valuation_fn, TERNARY.valuation)
 
     def forward(
         self,

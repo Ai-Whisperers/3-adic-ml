@@ -28,6 +28,7 @@ from src.losses import (
     RichHierarchyLoss,
 )
 from src.losses.utils import _exponential_target_radii
+from tests.conftest import assert_valid_loss
 
 # =============================================================================
 # Fixtures
@@ -807,19 +808,16 @@ class TestEdgeCasesBatchSize:
         assert torch.isfinite(out["coverage"])
         assert torch.isfinite(out["separation"])
 
-    def test_batch_size_two(self):
+    @pytest.mark.parametrize(
+        "LossClass", [PAdicGeodesicLoss, RadialHierarchyLoss, GlobalRankLoss, MonotonicRadialLoss]
+    )
+    def test_batch_size_two(self, LossClass):
         """Verify batch_size=2 works for pair-based losses."""
         z_hyp = torch.randn(2, 16, dtype=torch.float64) * 0.5
         indices = torch.tensor([0, 100])
 
-        for LossClass in [
-            PAdicGeodesicLoss,
-            RadialHierarchyLoss,
-            GlobalRankLoss,
-            MonotonicRadialLoss,
-        ]:
-            loss, _ = LossClass()(z_hyp, indices)
-            assert torch.isfinite(loss), f"{LossClass.__name__} failed on batch_size=2"
+        loss, _ = LossClass()(z_hyp, indices)
+        assert torch.isfinite(loss), f"{LossClass.__name__} failed on batch_size=2"
 
 
 class TestEdgeCasesSameValuation:
@@ -857,44 +855,44 @@ class TestEdgeCasesSameValuation:
 class TestEdgeCasesNearBoundary:
     """Test edge cases with points near Poincaré ball boundary."""
 
-    def test_boundary_points_all_losses(self):
+    @pytest.mark.parametrize(
+        "LossClass", [PAdicGeodesicLoss, RadialHierarchyLoss, GlobalRankLoss, MonotonicRadialLoss]
+    )
+    def test_boundary_points_all_losses(self, LossClass):
         """Verify boundary points don't cause numerical issues."""
         torch.manual_seed(42)
         # Points very close to boundary
         z_hyp = torch.randn(32, 16, dtype=torch.float64)
         z_hyp = 0.999 * z_hyp / z_hyp.norm(dim=-1, keepdim=True)
         indices = torch.randint(0, 19683, (32,))
+
+        loss, _ = LossClass()(z_hyp, indices)
+        assert torch.isfinite(loss), f"{LossClass.__name__} not finite at boundary"
+
+    def test_boundary_points_rich_hierarchy(self):
+        """Verify RichHierarchyLoss components don't blow up near the boundary."""
+        torch.manual_seed(42)
+        z_hyp = torch.randn(32, 16, dtype=torch.float64)
+        z_hyp = 0.999 * z_hyp / z_hyp.norm(dim=-1, keepdim=True)
+        indices = torch.randint(0, 19683, (32,))
         logits = torch.randn(32, 27, dtype=torch.float64)
         targets = torch.randint(-1, 2, (32, 9))
-
-        # Test all losses
-        for LossClass in [
-            PAdicGeodesicLoss,
-            RadialHierarchyLoss,
-            GlobalRankLoss,
-            MonotonicRadialLoss,
-        ]:
-            loss, _ = LossClass()(z_hyp, indices)
-            assert torch.isfinite(loss), f"{LossClass.__name__} not finite at boundary"
 
         out, _ = RichHierarchyLoss()(z_hyp, indices, logits=logits, targets=targets)
         assert torch.isfinite(out["hierarchy"])
         assert torch.isfinite(out["coverage"])
         assert torch.isfinite(out["separation"])
 
-    def test_origin_points(self):
+    @pytest.mark.parametrize(
+        "LossClass", [PAdicGeodesicLoss, RadialHierarchyLoss, GlobalRankLoss, MonotonicRadialLoss]
+    )
+    def test_origin_points(self, LossClass):
         """Verify points at origin work correctly."""
         z_hyp = torch.zeros(32, 16, dtype=torch.float64)
         indices = torch.randint(0, 19683, (32,))
 
-        for LossClass in [
-            PAdicGeodesicLoss,
-            RadialHierarchyLoss,
-            GlobalRankLoss,
-            MonotonicRadialLoss,
-        ]:
-            loss, _ = LossClass()(z_hyp, indices)
-            assert torch.isfinite(loss), f"{LossClass.__name__} not finite at origin"
+        loss, _ = LossClass()(z_hyp, indices)
+        assert torch.isfinite(loss), f"{LossClass.__name__} not finite at origin"
 
 
 # =============================================================================
@@ -949,8 +947,7 @@ class TestReproducibility:
         # so two calls on the same input give slightly different values.
         # The invariant we test is that the loss is finite and in a sane range.
         loss, metrics = loss_fn(z_hyp, indices)
-        assert torch.isfinite(loss)
-        assert loss.item() >= 0.0
+        assert_valid_loss(loss)
         assert metrics["n_pairs"] > 0
 
     def test_radial_margin_reproducible(self, sample_batch):
@@ -959,5 +956,4 @@ class TestReproducibility:
 
         loss_fn = RadialHierarchyLoss(seed=42, use_margin_loss=True)
         loss, _ = loss_fn(z_hyp, indices)
-        assert torch.isfinite(loss)
-        assert loss.item() >= 0.0
+        assert_valid_loss(loss)

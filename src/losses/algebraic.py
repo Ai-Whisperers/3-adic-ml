@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 from ..core import TERNARY
 from .base import MetricsDict
-from .utils import make_zero_loss, normalize_to_direction
+from .utils import default_valuation_fn, make_zero_loss, normalize_to_direction, phase_gated_zero
 
 
 def _make_generator(seed: int = 42) -> torch.Generator:
@@ -41,7 +41,7 @@ class AngularCoherenceLoss(nn.Module):
         self.prefix_k = prefix_k
         self.phase_start_epoch = phase_start_epoch
         self.level_prefix_k = level_prefix_k
-        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
+        self._valuation_fn = default_valuation_fn(valuation_fn, TERNARY.valuation)
         if isinstance(target_sim, (int, float)):
             self.target_sim: List[float] = [float(target_sim)] * 10
         else:
@@ -54,22 +54,17 @@ class AngularCoherenceLoss(nn.Module):
         indices: torch.Tensor,
         epoch: int = 0,
     ) -> Tuple[torch.Tensor, MetricsDict]:
+        if epoch < self.phase_start_epoch:
+            return phase_gated_zero(z_hyp, {"angular_coherence_loss": 0.0, "angular_coherence_pairs": 0})
+
         metrics: MetricsDict = {}
         zero = make_zero_loss(z_hyp.device, z_hyp.dtype)
-
-        if epoch < self.phase_start_epoch:
-            metrics["angular_coherence_loss"] = 0.0
-            metrics["angular_coherence_pairs"] = 0
-            return zero, metrics
-
         dir_vecs = normalize_to_direction(z_hyp, r)
 
         vals = self._valuation_fn(indices)
         B = dir_vecs.shape[0]
         if B < 4:
-            metrics["angular_coherence_loss"] = 0.0
-            metrics["angular_coherence_pairs"] = 0
-            return zero, metrics
+            return phase_gated_zero(z_hyp, {"angular_coherence_loss": 0.0, "angular_coherence_pairs": 0})
 
         if self.level_prefix_k is not None:
             total_loss = zero
@@ -115,9 +110,7 @@ class AngularCoherenceLoss(nn.Module):
                 metrics[f"ac_loss_v{v}"] = level_loss.item()
 
             if n_active_levels == 0:
-                metrics["angular_coherence_loss"] = 0.0
-                metrics["angular_coherence_pairs"] = 0
-                return zero, metrics
+                return phase_gated_zero(z_hyp, {"angular_coherence_loss": 0.0, "angular_coherence_pairs": 0})
 
             loss = self.weight * (total_loss / n_active_levels)
             metrics["angular_coherence_loss"] = loss.item()
@@ -135,9 +128,7 @@ class AngularCoherenceLoss(nn.Module):
         n_same = same_cls.sum().item()
 
         if n_same < 4:
-            metrics["angular_coherence_loss"] = 0.0
-            metrics["angular_coherence_pairs"] = int(n_same)
-            return zero, metrics
+            return phase_gated_zero(z_hyp, {"angular_coherence_loss": 0.0, "angular_coherence_pairs": int(n_same)})
 
         di = dir_vecs[i_idx[same_cls]]
         dj = dir_vecs[j_idx[same_cls]]
@@ -213,14 +204,11 @@ class AlgebraicCoherenceLoss(nn.Module):
         epoch: int = 0,
         model: Optional[nn.Module] = None,
     ) -> Tuple[torch.Tensor, MetricsDict]:
+        if epoch < self.phase_start_epoch:
+            return phase_gated_zero(z_hyp, {"alg_coherence_loss": 0.0, "alg_coherence_pairs": 0})
+
         metrics: MetricsDict = {}
         zero = make_zero_loss(z_hyp.device, z_hyp.dtype)
-
-        if epoch < self.phase_start_epoch:
-            metrics["alg_coherence_loss"] = 0.0
-            metrics["alg_coherence_pairs"] = 0
-            return zero, metrics
-
         dir_vecs = normalize_to_direction(z_hyp, r)
         sigs = TERNARY.algebraic_signature(indices)
 
@@ -269,9 +257,7 @@ class AlgebraicCoherenceLoss(nn.Module):
             metrics[f"alg_loss_sig{sig_val}"] = cls_loss.item()
 
         if n_active == 0:
-            metrics["alg_coherence_loss"] = 0.0
-            metrics["alg_coherence_pairs"] = 0
-            return zero, metrics
+            return phase_gated_zero(z_hyp, {"alg_coherence_loss": 0.0, "alg_coherence_pairs": 0})
 
         loss = self.weight * (total_loss / n_active)
         metrics["alg_coherence_loss"] = loss.item()
@@ -316,18 +302,15 @@ class _AlgebraicBinaryLoss(nn.Module):
         model: nn.Module,
         epoch: int = 0,
     ) -> Tuple[torch.Tensor, MetricsDict]:
-        metrics: MetricsDict = {}
-        zero = make_zero_loss(mu_A.device, mu_A.dtype)
-
         if epoch < self.phase_start_epoch or self.weight <= 0:
-            metrics[self._loss_key] = 0.0
-            return zero, metrics
+            return phase_gated_zero(mu_A, {self._loss_key: 0.0})
 
         B = mu_A.shape[0]
         n_triplets = min(self.n_pairs, B // 2)
         if B < 2 or n_triplets < 1:
-            metrics[self._loss_key] = 0.0
-            return zero, metrics
+            return phase_gated_zero(mu_A, {self._loss_key: 0.0})
+
+        metrics: MetricsDict = {}
 
         perm = torch.randperm(B, generator=self.generator).to(mu_A.device)
         idx_a_local = perm[:n_triplets]
@@ -405,18 +388,15 @@ class AlgebraicDistributiveLoss(nn.Module):
         model: nn.Module,
         epoch: int = 0,
     ) -> Tuple[torch.Tensor, MetricsDict]:
-        metrics: MetricsDict = {}
-        zero = make_zero_loss(mu_A.device, mu_A.dtype)
-
         if epoch < self.phase_start_epoch or self.weight <= 0:
-            metrics["alg_distributive_loss"] = 0.0
-            return zero, metrics
+            return phase_gated_zero(mu_A, {"alg_distributive_loss": 0.0})
 
         B = mu_A.shape[0]
         n_samples = min(self.n_triplets, B // 3)
         if B < 3 or n_samples < 1:
-            metrics["alg_distributive_loss"] = 0.0
-            return zero, metrics
+            return phase_gated_zero(mu_A, {"alg_distributive_loss": 0.0})
+
+        metrics: MetricsDict = {}
 
         perm = torch.randperm(B, generator=self.generator).to(mu_A.device)
         idx_a = perm[:n_samples]

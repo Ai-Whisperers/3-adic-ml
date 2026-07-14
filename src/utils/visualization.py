@@ -74,6 +74,7 @@ except ImportError:
     _HAS_MPL = False
 
 from src.geometry import log_map_zero, poincare_distance_matrix
+from src.utils.geodesic_utils import project_to_poincare_disk_2d
 from src.utils.poincare_renderer import save_poincare_disk
 from src.utils.svg_renderer import save_poincare_disk_svg
 
@@ -800,6 +801,49 @@ class VisualizationPipeline:
     # Step implementations
     # ------------------------------------------------------------------
 
+    def _run_projection_step(
+        self,
+        epoch: int,
+        compute_fn: Callable[[], Optional[np.ndarray]],
+        val_np: np.ndarray,
+        title: str,
+        html_dir: Path,
+        html_name: str,
+        tb_tag: str,
+        is_3d: bool = False,
+        embedding_tag: Optional[str] = None,
+    ) -> None:
+        """Compute one dimensionality-reduction projection, then log it to TB/HTML.
+
+        Shared by the UMAP (3D + TensorBoard embedding), PaCMAP, and TriMAP (2D)
+        steps below — they differ only in how `coords` is computed and in naming.
+        """
+        coords = compute_fn()
+        if coords is None:
+            return
+
+        if embedding_tag is not None and self.logger is not None:
+            metadata = [[str(v)] for v in val_np.tolist()]
+            self.logger.add_embedding(
+                torch.from_numpy(coords),
+                metadata=metadata,
+                metadata_header=["valuation"],
+                global_step=epoch,
+                tag=embedding_tag,
+            )
+
+        if self.logger is not None and _HAS_MPL:
+            scatter_fn = _scatter_3d_by_level_mpl if is_3d else _scatter_2d_by_level
+            fig = scatter_fn(coords, val_np, title)
+            self.logger.add_figure(tb_tag, fig, global_step=epoch)
+            plt.close(fig)
+
+        if self.save_html and _HAS_PLOTLY:
+            plotly_scatter_fn = _plotly_scatter_3d if is_3d else _plotly_scatter_2d
+            plotly_fig = plotly_scatter_fn(coords, val_np, title)
+            if plotly_fig is not None:
+                plotly_fig.write_html(str(html_dir / f"{html_name}.html"))
+
     def _run_umap_step(
         self,
         epoch: int,
@@ -807,33 +851,14 @@ class VisualizationPipeline:
         val_np: np.ndarray,
         html_dir: Path,
     ) -> None:
-        coords = _run_umap(D, n_components=3, n_neighbors=self.umap_neighbors)
-        if coords is None:
-            return
-
-        # TensorBoard add_embedding (replaces the Euclidean one from tensorboard_logger)
-        if self.logger is not None:
-            # Build metadata matching TensorBoard's expected format
-            metadata = [[str(v)] for v in val_np.tolist()]
-            self.logger.add_embedding(
-                torch.from_numpy(coords),
-                metadata=metadata,
-                metadata_header=["valuation"],
-                global_step=epoch,
-                tag="Embedding/UMAP3D_HyperbolicMetric_A",
-            )
-
-        # TensorBoard 3D scatter figure
-        if self.logger is not None and _HAS_MPL:
-            fig = _scatter_3d_by_level_mpl(coords, val_np, f"UMAP 3D — Poincaré metric (epoch {epoch})")
-            self.logger.add_figure("Topology/UMAP3D", fig, global_step=epoch)
-            plt.close(fig)
-
-        # Plotly HTML
-        if self.save_html and _HAS_PLOTLY:
-            plotly_fig = _plotly_scatter_3d(coords, val_np, f"UMAP 3D — Poincaré metric (epoch {epoch})")
-            if plotly_fig is not None:
-                plotly_fig.write_html(str(html_dir / "umap_3d.html"))
+        self._run_projection_step(
+            epoch,
+            lambda: _run_umap(D, n_components=3, n_neighbors=self.umap_neighbors),
+            val_np,
+            f"UMAP 3D — Poincaré metric (epoch {epoch})",
+            html_dir, "umap_3d", "Topology/UMAP3D",
+            is_3d=True, embedding_tag="Embedding/UMAP3D_HyperbolicMetric_A",
+        )
 
     def _run_pacmap_step(
         self,
@@ -843,19 +868,13 @@ class VisualizationPipeline:
         val_np: np.ndarray,
         html_dir: Path,
     ) -> None:
-        coords = _run_pacmap(z_np, D, n_components=2, n_neighbors=self.umap_neighbors)
-        if coords is None:
-            return
-
-        if self.logger is not None and _HAS_MPL:
-            fig = _scatter_2d_by_level(coords, val_np, f"PaCMAP 2D — mid-range structure (epoch {epoch})")
-            self.logger.add_figure("Topology/PaCMAP2D", fig, global_step=epoch)
-            plt.close(fig)
-
-        if self.save_html and _HAS_PLOTLY:
-            plotly_fig = _plotly_scatter_2d(coords, val_np, f"PaCMAP 2D (epoch {epoch})")
-            if plotly_fig is not None:
-                plotly_fig.write_html(str(html_dir / "pacmap_2d.html"))
+        self._run_projection_step(
+            epoch,
+            lambda: _run_pacmap(z_np, D, n_components=2, n_neighbors=self.umap_neighbors),
+            val_np,
+            f"PaCMAP 2D — mid-range structure (epoch {epoch})",
+            html_dir, "pacmap_2d", "Topology/PaCMAP2D",
+        )
 
     def _run_trimap_step(
         self,
@@ -864,19 +883,13 @@ class VisualizationPipeline:
         val_np: np.ndarray,
         html_dir: Path,
     ) -> None:
-        coords = _run_trimap(D, n_components=2)
-        if coords is None:
-            return
-
-        if self.logger is not None and _HAS_MPL:
-            fig = _scatter_2d_by_level(coords, val_np, f"TriMAP 2D — distance ordering (epoch {epoch})")
-            self.logger.add_figure("Topology/TriMAP2D", fig, global_step=epoch)
-            plt.close(fig)
-
-        if self.save_html and _HAS_PLOTLY:
-            plotly_fig = _plotly_scatter_2d(coords, val_np, f"TriMAP 2D (epoch {epoch})")
-            if plotly_fig is not None:
-                plotly_fig.write_html(str(html_dir / "trimap_2d.html"))
+        self._run_projection_step(
+            epoch,
+            lambda: _run_trimap(D, n_components=2),
+            val_np,
+            f"TriMAP 2D — distance ordering (epoch {epoch})",
+            html_dir, "trimap_2d", "Topology/TriMAP2D",
+        )
 
     def _run_poincare3d_step(
         self,
@@ -1015,18 +1028,8 @@ class VisualizationPipeline:
 
         walks = _LANDMARK_WALKS
 
-        # 1. Project to 2D disk (r-theta) exactly like the renderer
-        r_euclidean = np.linalg.norm(z_np, axis=1)
-        z_torch = torch.from_numpy(z_np).double()
-        with torch.no_grad():
-            v_tangent = log_map_zero(z_torch, c=self.curvature).float().numpy()
-
-        from sklearn.decomposition import PCA
-        pca = PCA(n_components=2)
-        v_2d = pca.fit_transform(v_tangent)
-        v_norms = np.clip(np.linalg.norm(v_2d, axis=1, keepdims=True), 1e-10, None)
-        v_dir = v_2d / v_norms
-        z_2d = r_euclidean[:, np.newaxis] * v_dir
+        # 1. Project to 2D disk (r-theta), same geometry as the mpl/plotly renderers
+        z_2d = project_to_poincare_disk_2d(z_np, c=self.curvature)
 
         colors = _level_colors(10)
         save_poincare_disk_svg(

@@ -134,9 +134,16 @@ class TestAnomalyDetectorNoLoop:
     def test_detect_uses_topk_not_sorted_loop(self):
         import inspect
         from src.analysis.anomaly_detector import AnomalyDetector
-        src = inspect.getsource(AnomalyDetector.detect)
+        detect_src = inspect.getsource(AnomalyDetector.detect)
+        # kNN selection may be inlined or delegated to the shared _knn_mean_dist
+        # helper — check wherever the topk call actually lives.
+        src = (
+            inspect.getsource(AnomalyDetector._knn_mean_dist)
+            if "_knn_mean_dist" in detect_src
+            else detect_src
+        )
         assert "topk" in src, "AnomalyDetector.detect must use .topk() for kNN selection"
-        assert "for q in" not in src and "for i in" not in src, (
+        assert "for q in" not in detect_src and "for i in" not in detect_src, (
             "AnomalyDetector.detect must not loop over individual query points"
         )
 

@@ -18,7 +18,6 @@ Features:
 from typing import Any, List, Optional
 
 import numpy as np
-import torch
 import plotly.graph_objects as go
 
 try:
@@ -27,8 +26,11 @@ try:
 except ImportError:
     _HAS_MPL = False
 
-from src.core import TERNARY
-from src.geometry import log_map_zero
+from src.utils.geodesic_utils import (
+    compute_prefix_hulls,
+    compute_tree_edge_arcs,
+    project_to_poincare_disk_2d,
+)
 
 
 def render_poincare_disk_mpl(
@@ -45,20 +47,7 @@ def render_poincare_disk_mpl(
     if not _HAS_MPL:
         return None
 
-    r_euclidean = np.linalg.norm(z_hyp, axis=1)
-
-    z_torch = torch.from_numpy(z_hyp).double()
-    with torch.no_grad():
-        v_tangent = log_map_zero(z_torch, c=c).float().numpy()
-
-    from sklearn.decomposition import PCA
-    pca = PCA(n_components=2)
-    v_2d = pca.fit_transform(v_tangent)
-
-    v_norms = np.linalg.norm(v_2d, axis=1, keepdims=True)
-    v_norms = np.clip(v_norms, 1e-10, None)
-    v_dir = v_2d / v_norms
-    z_2d = r_euclidean[:, np.newaxis] * v_dir
+    z_2d = project_to_poincare_disk_2d(z_hyp, c=c)
 
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100)
 
@@ -71,18 +60,11 @@ def render_poincare_disk_mpl(
 
     # 1. Draw Tree Edges (Cayley Graph)
     if show_tree and indices is not None:
-        from src.utils.geodesic_utils import get_geodesic_arc
-        idx_map = {idx: i for i, idx in enumerate(indices)}
-
-        parents = TERNARY.parent(torch.from_numpy(indices)).numpy()
-        for i, p_idx in enumerate(parents):
-            if p_idx in idx_map:
-                p_i = idx_map[p_idx]
-                arc = get_geodesic_arc(z_2d[i], z_2d[p_i], n_points=10)
-                ax.plot(
-                    arc[:, 0], arc[:, 1],
-                    color='gray', alpha=0.1, linewidth=0.5, zorder=1
-                )
+        for arc in compute_tree_edge_arcs(z_2d, indices, n_points=10):
+            ax.plot(
+                arc[:, 0], arc[:, 1],
+                color='gray', alpha=0.1, linewidth=0.5, zorder=1
+            )
 
     # 2. Draw Algebraic Walks (Flow lines)
     if walks is not None:
@@ -99,19 +81,9 @@ def render_poincare_disk_mpl(
 
     # 3. Draw Prefix Territory Shading
     if indices is not None:
-        prefix_classes = TERNARY.digit_prefix_class(torch.from_numpy(indices), k=3).numpy()
-        unique_prefixes = np.unique(prefix_classes)
-        for p in unique_prefixes:
-            mask = prefix_classes == p
-            if mask.sum() >= 3:
-                from scipy.spatial import ConvexHull
-                try:
-                    hull = ConvexHull(z_2d[mask])
-                    polygon = z_2d[mask][hull.vertices]
-                    poly_patch = plt.Polygon(polygon, facecolor=plt.cm.tab20(p % 20), alpha=0.05, edgecolor='none', zorder=0)
-                    ax.add_patch(poly_patch)
-                except Exception:
-                    pass
+        for p, polygon in compute_prefix_hulls(z_2d, indices, k=3, min_points=3):
+            poly_patch = plt.Polygon(polygon, facecolor=plt.cm.tab20(p % 20), alpha=0.05, edgecolor='none', zorder=0)
+            ax.add_patch(poly_patch)
 
     # 4. Draw Scatter Points
     for v in range(10):
@@ -146,29 +118,36 @@ def render_poincare_disk(
     query_z: Optional[np.ndarray] = None,
 ) -> Any:
     """Render embeddings in a 2D Poincaré disk with interactive Plotly."""
-    _N, _D = z_hyp.shape
-    r_euclidean = np.linalg.norm(z_hyp, axis=1)
-    z_torch = torch.from_numpy(z_hyp).double()
-    with torch.no_grad():
-        v_tangent = log_map_zero(z_torch, c=c).float().numpy()
-
-    from sklearn.decomposition import PCA
-    pca = PCA(n_components=2)
-    v_2d = pca.fit_transform(v_tangent)
-
-    v_norms = np.linalg.norm(v_2d, axis=1, keepdims=True)
-    v_norms = np.clip(v_norms, 1e-10, None)
-    v_dir = v_2d / v_norms
-    z_2d = r_euclidean[:, np.newaxis] * v_dir
+    z_2d = project_to_poincare_disk_2d(z_hyp, c=c)
 
     fig = go.Figure()
     theta = np.linspace(0, 2*np.pi, 100)
-    
+
     # Boundary
     fig.add_trace(go.Scatter(
         x=np.cos(theta), y=np.sin(theta), mode='lines',
         line={"color": 'rgba(255,255,255,0.6)', "width": 2}, showlegend=False
     ))
+
+    # Tree edges (Cayley graph) — same geometry as the mpl renderer
+    if show_tree and indices is not None:
+        for arc in compute_tree_edge_arcs(z_2d, indices, n_points=20):
+            fig.add_trace(go.Scatter(
+                x=arc[:, 0], y=arc[:, 1], mode='lines',
+                line={"color": 'rgba(150,150,150,0.15)', "width": 0.5},
+                showlegend=False, hoverinfo='skip',
+            ))
+
+    # Prefix territory shading — same geometry as the mpl renderer
+    if indices is not None:
+        for p, polygon in compute_prefix_hulls(z_2d, indices, k=3, min_points=3):
+            fig.add_trace(go.Scatter(
+                x=np.append(polygon[:, 0], polygon[0, 0]),
+                y=np.append(polygon[:, 1], polygon[0, 1]),
+                mode='lines', fill='toself',
+                fillcolor=f"hsla({(p * 37) % 360}, 60%, 50%, 0.05)",
+                line={"width": 0}, showlegend=False, hoverinfo='skip',
+            ))
 
     # Decision Boundary
     if decision_threshold is not None:

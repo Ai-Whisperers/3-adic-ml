@@ -28,6 +28,8 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
+from tests.conftest import assert_valid_loss
+
 
 # ---------------------------------------------------------------------------
 # 1. Lagrangian tensor keys are present and in-graph
@@ -169,7 +171,7 @@ class TestDeadBuffersRemoved:
         idx = torch.arange(32)
         fn = RadialHierarchyLoss(inner_radius=0.1, outer_radius=0.85)
         loss, _ = fn(z, idx)
-        assert torch.isfinite(loss) and loss.item() >= 0.0
+        assert_valid_loss(loss)
 
 
 # ---------------------------------------------------------------------------
@@ -340,11 +342,19 @@ class TestNoCPUGenerator:
             "RadialHierarchyLoss must not create a CPU generator in __init__"
 
     def test_geodesic_randint_uses_device_param(self):
-        src_text = inspect.getsource(__import__(
-            "src.losses.geodesic", fromlist=["PAdicGeodesicLoss"]
-        ).PAdicGeodesicLoss.forward)
+        from src.losses.geodesic import PAdicGeodesicLoss
+        from src.losses.utils import sample_random_pairs
+
+        forward_src = inspect.getsource(PAdicGeodesicLoss.forward)
+        # Pair sampling may be inlined or delegated to the shared
+        # sample_random_pairs() helper — check wherever the randint call lives.
+        src_text = (
+            inspect.getsource(sample_random_pairs)
+            if "sample_random_pairs" in forward_src
+            else forward_src
+        )
         assert "device=device" in src_text or "device=" in src_text, \
-            "PAdicGeodesicLoss.forward must pass device= to randint"
+            "PAdicGeodesicLoss pair sampling must pass device= to randint"
 
 
 # ---------------------------------------------------------------------------

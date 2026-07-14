@@ -40,6 +40,12 @@ def sample_tangent():
     return torch.randn(50, 16, dtype=torch.float64) * 0.5
 
 
+def assert_valid_loss(loss: torch.Tensor) -> None:
+    """Assert a loss tensor is finite and non-negative (the common loss-output contract)."""
+    assert torch.isfinite(loss).all(), f"loss must be finite, got {loss}"
+    assert loss.item() >= 0.0, f"loss must be non-negative, got {loss.item()}"
+
+
 # Markers for conditional tests
 def pytest_configure(config):
     config.addinivalue_line(
@@ -54,6 +60,13 @@ import subprocess
 # Get all YAML files in presets
 PRESETS_DIR = Path(__file__).parent.parent / "src" / "presets"
 YAML_FILES = list(PRESETS_DIR.glob("*.yaml"))
+
+
+def _load_preset(name: str) -> dict:
+    """Load and parse a preset YAML file by name (e.g. 'v7_large.yaml')."""
+    import yaml
+    with open(PRESETS_DIR / name) as f:
+        return yaml.safe_load(f)
 
 
 @pytest.mark.parametrize("yaml_file", YAML_FILES)

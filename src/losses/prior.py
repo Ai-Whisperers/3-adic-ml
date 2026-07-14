@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..utils.scatter_utils import level_has_data, level_scatter_mean
 from .base import HierarchyLossBase, MetricsDict
-from .utils import _exponential_target_radii, make_zero_loss
+from .utils import _exponential_target_radii, default_valuation_fn, make_zero_loss
 
 
 class ValuationPriorLoss(HierarchyLossBase):
@@ -39,7 +39,7 @@ class ValuationPriorLoss(HierarchyLossBase):
         self.sigma_base = sigma_base
         self.sigma_scale = sigma_scale
         self.max_valuation = max_valuation
-        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation
+        self._valuation_fn = default_valuation_fn(valuation_fn, TERNARY.valuation)
 
         target_r_euclid = _exponential_target_radii(
             max_valuation, inner_radius, outer_radius, scale

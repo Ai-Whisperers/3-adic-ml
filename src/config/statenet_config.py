@@ -20,7 +20,7 @@ Usage:
     print(config.coverage.fix_threshold)
 """
 
-from dataclasses import dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict
 
 
@@ -141,76 +141,35 @@ class StateNetConfig:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "StateNetConfig":
         """Create StateNetConfig from a nested YAML config dict."""
-        _known_keys = {'enabled', 'coverage', 'hierarchy', 'controller', 'timing', 'lr_scales', 'initial'}
-        unknown = set(d.keys()) - _known_keys
+        config = cls()
+
+        # Valid key whitelists are derived from the dataclass fields themselves,
+        # so they can't drift from the actual schema as fields are added/renamed.
+        known_keys = {f.name for f in fields(config)}
+        unknown = set(d.keys()) - known_keys
         if unknown:
             raise ValueError(
                 f"StateNetConfig.from_dict: unknown config keys {unknown}. "
-                f"Valid keys: {_known_keys}. Check for typos in your YAML."
+                f"Valid keys: {known_keys}. Check for typos in your YAML."
             )
 
-        _sub_keys: Dict[str, set] = {
-            'coverage':   {'fix_threshold', 'train_threshold', 'floor'},
-            'hierarchy':  {'plateau_threshold', 'plateau_patience', 'patience_ceiling', 'stall_patience'},
-            'controller': {'grad_threshold', 'grad_patience', 'patience_ceiling', 'spike_multiplier'},
-            'timing':     {'warmup_epochs', 'hysteresis_epochs', 'window_size'},
-            'lr_scales':  {'encoder_a', 'encoder_b', 'projections', 'decoders'},
-            'initial':    {'encoder_a_trainable', 'encoder_b_trainable', 'projections_trainable'},
-        }
-        for section, known in _sub_keys.items():
-            if section in d and isinstance(d[section], dict):
-                unknown_sub = set(d[section].keys()) - known
-                if unknown_sub:
-                    raise ValueError(
-                        f"StateNetConfig.from_dict: unknown keys in '{section}': {unknown_sub}. "
-                        f"Valid keys: {known}. Check for typos in your YAML."
-                    )
-
-        config = cls()
-        config.enabled = d.get('enabled', config.enabled)
         for attr in ('coverage', 'hierarchy', 'controller', 'timing', 'lr_scales', 'initial'):
             if attr in d and isinstance(d[attr], dict):
+                known_sub = {f.name for f in fields(getattr(config, attr))}
+                unknown_sub = set(d[attr].keys()) - known_sub
+                if unknown_sub:
+                    raise ValueError(
+                        f"StateNetConfig.from_dict: unknown keys in '{attr}': {unknown_sub}. "
+                        f"Valid keys: {known_sub}. Check for typos in your YAML."
+                    )
                 _apply_section(getattr(config, attr), d[attr])
+
+        config.enabled = d.get('enabled', config.enabled)
         return config
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary for YAML/JSON export."""
-        return {
-            'enabled': self.enabled,
-            'coverage': {
-                'fix_threshold': self.coverage.fix_threshold,
-                'train_threshold': self.coverage.train_threshold,
-                'floor': self.coverage.floor,
-            },
-            'hierarchy': {
-                'plateau_threshold': self.hierarchy.plateau_threshold,
-                'plateau_patience': self.hierarchy.plateau_patience,
-                'patience_ceiling': self.hierarchy.patience_ceiling,
-                'stall_patience': self.hierarchy.stall_patience,
-            },
-            'controller': {
-                'grad_threshold': self.controller.grad_threshold,
-                'grad_patience': self.controller.grad_patience,
-                'patience_ceiling': self.controller.patience_ceiling,
-                'spike_multiplier': self.controller.spike_multiplier,
-            },
-            'timing': {
-                'warmup_epochs': self.timing.warmup_epochs,
-                'hysteresis_epochs': self.timing.hysteresis_epochs,
-                'window_size': self.timing.window_size,
-            },
-            'lr_scales': {
-                'encoder_a': self.lr_scales.encoder_a,
-                'encoder_b': self.lr_scales.encoder_b,
-                'projections': self.lr_scales.projections,
-                'decoders': self.lr_scales.decoders,
-            },
-            'initial': {
-                'encoder_a_trainable': self.initial.encoder_a_trainable,
-                'encoder_b_trainable': self.initial.encoder_b_trainable,
-                'projections_trainable': self.initial.projections_trainable,
-            },
-        }
+        return asdict(self)
 
     def summary(self) -> str:
         """Human-readable summary."""

@@ -3,6 +3,7 @@ from .poincare import (
     ManifoldTensor,
     RiemannianAdam,
     RiemannianSGD,
+    clamp_to_max_norm,
     create_manifold_parameter,
     create_manifold_tensor,
     exp_map_zero,
@@ -22,6 +23,7 @@ from .poincare import (
 
 __all__ = [
     "get_manifold",
+    "clamp_to_max_norm",
     "poincare_distance",
     "hyperbolic_radius",
     "exp_map_zero",

@@ -5,6 +5,7 @@
 
 """Core training engine for p-adic VAE."""
 
+from functools import partial
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -95,6 +96,15 @@ def train_model(
 
     ckpt_dir = reporting.log_dir / "checkpoints"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    # Common args shared by every checkpoint save site below; only epoch/extra vary.
+    build_checkpoint = partial(
+        _build_checkpoint_payload,
+        model=model, optimizer=optimizer, scheduler=scheduler,
+        lr_controller=lr_controller, dual_state=dual_state,
+        loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
+        grokking_detector=grokking_detector,
+    )
 
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     current_dual_weights = None
@@ -258,11 +268,8 @@ def train_model(
             if hier_metrics_A["Q"] > best_Q:
                 best_Q = hier_metrics_A["Q"]
                 torch.save(
-                    _build_checkpoint_payload(
-                        epoch, model, optimizer, scheduler,
-                        lr_controller=lr_controller, dual_state=dual_state,
-                        loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
-                        grokking_detector=grokking_detector,
+                    build_checkpoint(
+                        epoch,
                         extra={
                             "Q": best_Q,
                             "hierarchy_A": hier_metrics_A["hierarchy"],
@@ -279,15 +286,7 @@ def train_model(
 
         # Periodic checkpoint
         if epoch % save_every == 0 and epoch > 0:
-            torch.save(
-                _build_checkpoint_payload(
-                    epoch, model, optimizer, scheduler,
-                    lr_controller=lr_controller, dual_state=dual_state,
-                    loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
-                    grokking_detector=grokking_detector,
-                ),
-                ckpt_dir / f"epoch_{epoch}.pt",
-            )
+            torch.save(build_checkpoint(epoch), ckpt_dir / f"epoch_{epoch}.pt")
 
     # Final results
     results: TrainingResults = {
@@ -299,16 +298,7 @@ def train_model(
     }
 
     # Save final checkpoint
-    torch.save(
-        _build_checkpoint_payload(
-            epochs, model, optimizer, scheduler,
-            lr_controller=lr_controller, dual_state=dual_state,
-            loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
-            grokking_detector=grokking_detector,
-            extra=results,
-        ),
-        ckpt_dir / "final.pt",
-    )
+    torch.save(build_checkpoint(epochs, extra=results), ckpt_dir / "final.pt")
 
     return results
 

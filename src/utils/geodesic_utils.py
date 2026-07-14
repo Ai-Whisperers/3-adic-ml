@@ -5,10 +5,18 @@
 
 """Hyperbolic Geodesic Utilities.
 
-Calculates circular arc paths for geodesics in the Poincaré disk.
+Calculates circular arc paths for geodesics in the Poincaré disk, and shared
+2D-projection / tree / territory geometry reused by the mpl, plotly, and SVG
+Poincaré disk renderers.
 """
 
+from typing import List, Tuple
+
 import numpy as np
+import torch
+
+from src.core import TERNARY
+from src.geometry import log_map_zero
 
 
 def get_geodesic_arc(u: np.ndarray, v: np.ndarray, n_points: int = 30) -> np.ndarray:
@@ -82,3 +90,61 @@ def get_geodesic_arc(u: np.ndarray, v: np.ndarray, n_points: int = 30) -> np.nda
     arc[:, 1] = center[1] + radius * np.sin(angles)
 
     return arc
+
+
+def project_to_poincare_disk_2d(z_hyp: np.ndarray, c: float = 1.0) -> np.ndarray:
+    """Project (N, D) Poincaré-ball points to 2D disk coordinates.
+
+    Preserves the original Euclidean radius (meaningful hierarchy distance);
+    direction comes from a 2-component PCA of the log-mapped tangent vectors.
+    """
+    from sklearn.decomposition import PCA
+
+    r_euclidean = np.linalg.norm(z_hyp, axis=1)
+    z_torch = torch.from_numpy(z_hyp).double()
+    with torch.no_grad():
+        v_tangent = log_map_zero(z_torch, c=c).float().numpy()
+
+    pca = PCA(n_components=2)
+    v_2d = pca.fit_transform(v_tangent)
+    v_norms = np.clip(np.linalg.norm(v_2d, axis=1, keepdims=True), 1e-10, None)
+    v_dir = v_2d / v_norms
+    return r_euclidean[:, np.newaxis] * v_dir
+
+
+def compute_tree_edge_arcs(
+    z_2d: np.ndarray, indices: np.ndarray, n_points: int = 10
+) -> List[np.ndarray]:
+    """Return geodesic arcs (n_points, 2) connecting each index to its 3-adic parent.
+
+    Only edges whose parent index is itself present in `indices` are included.
+    """
+    idx_map = {idx: i for i, idx in enumerate(indices)}
+    parents = TERNARY.parent(torch.from_numpy(indices)).numpy()
+    arcs = []
+    for i, p_idx in enumerate(parents):
+        if p_idx in idx_map:
+            arcs.append(get_geodesic_arc(z_2d[i], z_2d[idx_map[p_idx]], n_points=n_points))
+    return arcs
+
+
+def compute_prefix_hulls(
+    z_2d: np.ndarray, indices: np.ndarray, k: int = 3, min_points: int = 3
+) -> List[Tuple[int, np.ndarray]]:
+    """Return (prefix_class, hull_polygon) pairs for digit-prefix classes with enough points.
+
+    Classes with fewer than `min_points` members, or a degenerate (non-hull-able)
+    point set, are silently skipped.
+    """
+    prefix_classes = TERNARY.digit_prefix_class(torch.from_numpy(indices), k=k).numpy()
+    hulls = []
+    for p in np.unique(prefix_classes):
+        mask = prefix_classes == p
+        if mask.sum() >= min_points:
+            from scipy.spatial import ConvexHull
+            try:
+                hull = ConvexHull(z_2d[mask])
+                hulls.append((int(p), z_2d[mask][hull.vertices]))
+            except Exception:
+                pass
+    return hulls

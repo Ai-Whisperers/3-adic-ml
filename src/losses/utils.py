@@ -6,7 +6,7 @@
 """Internal utilities for p-adic VAE losses."""
 
 import math
-from typing import Union
+from typing import Callable, Optional, Tuple, Union
 
 import torch
 
@@ -16,6 +16,42 @@ def make_zero_loss(
 ) -> torch.Tensor:
     """Return a scalar zero tensor on the given device, suitable as a loss value."""
     return torch.tensor(0.0, device=device, dtype=dtype)
+
+
+def default_valuation_fn(fn: Optional[Callable], default_fn: Callable) -> Callable:
+    """Return fn if explicitly provided, else default_fn (e.g. TERNARY.valuation)."""
+    return fn if fn is not None else default_fn
+
+
+def sample_random_pairs(
+    batch_size: int, n_pairs: int, device: torch.device
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Sample n_pairs random index pairs (i, j), guaranteeing i != j via cyclic shift."""
+    i_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
+    j_idx = torch.randint(0, batch_size, (n_pairs,), device=device)
+    same = i_idx == j_idx
+    j_idx[same] = (j_idx[same] + 1) % batch_size
+    return i_idx, j_idx
+
+
+def safe_corrcoef(
+    a: torch.Tensor, b: torch.Tensor, nan_if_insufficient: bool = False
+) -> torch.Tensor:
+    """Pearson correlation between two 1-D tensors.
+
+    With fewer than 2 elements the correlation is mathematically undefined:
+    returns NaN when nan_if_insufficient=True (F-08: makes the "undefined"
+    case visibly distinct from an actual zero correlation), else 0.0. If
+    corrcoef itself produces NaN (e.g. constant input), always returns 0.0.
+    """
+    if a.numel() < 2:
+        if nan_if_insufficient:
+            return torch.tensor(float("nan"), device=a.device, dtype=a.dtype)
+        return make_zero_loss(a.device, a.dtype)
+    corr = torch.corrcoef(torch.stack([a, b]))[0, 1]
+    if torch.isnan(corr):
+        return make_zero_loss(a.device, a.dtype)
+    return corr
 
 
 def weight_to_log_sigma(w: float) -> float:
@@ -83,3 +119,23 @@ def _euclidean_to_hyperbolic_radius(
     else:
         sqrt_c_float = math.sqrt(max(c, 1e-6))
         return (2.0 / sqrt_c_float) * torch.atanh(sqrt_c_float * r_safe)
+
+
+def compute_target_radii(
+    max_valuation: int,
+    inner_radius: float,
+    outer_radius: float,
+    c: Union[float, torch.Tensor],
+    device: torch.device,
+    scale: float = 3.0,
+) -> torch.Tensor:
+    """Target hyperbolic radii per valuation level (exponential decay, then hyperbolic-mapped)."""
+    return _euclidean_to_hyperbolic_radius(
+        _exponential_target_radii(max_valuation, inner_radius, outer_radius, scale=scale).to(device),
+        c=c,
+    )
+
+
+def phase_gated_zero(z_ref: torch.Tensor, metrics: dict) -> Tuple[torch.Tensor, dict]:
+    """Build a (zero_loss, metrics) pair for a phase-gated loss that hasn't activated yet."""
+    return make_zero_loss(z_ref.device, z_ref.dtype), dict(metrics)

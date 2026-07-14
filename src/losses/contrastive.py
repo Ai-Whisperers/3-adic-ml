@@ -12,7 +12,7 @@ import torch
 from ..core import TERNARY
 from ..geometry.poincare import get_manifold
 from .base import HierarchyLossBase, MetricsDict
-from .utils import make_zero_loss
+from .utils import default_valuation_fn, make_zero_loss
 
 
 class HyperbolicContrastiveLoss(HierarchyLossBase):
@@ -38,7 +38,7 @@ class HyperbolicContrastiveLoss(HierarchyLossBase):
         self.temperature = temperature
         self.prefix_k = prefix_k
         self.curvature = curvature
-        self._valuation_fn = valuation_fn if valuation_fn is not None else TERNARY.valuation_of_difference
+        self._valuation_fn = default_valuation_fn(valuation_fn, TERNARY.valuation_of_difference)
 
     def forward(
         self,

@@ -12,10 +12,8 @@ Zero dependencies beyond numpy.
 from typing import List, Optional
 
 import numpy as np
-import torch
 
-from src.core import TERNARY
-from src.utils.geodesic_utils import get_geodesic_arc
+from src.utils.geodesic_utils import compute_prefix_hulls, compute_tree_edge_arcs
 
 
 def render_poincare_disk_svg(
@@ -67,21 +65,15 @@ def render_poincare_disk_svg(
     # 1. Tree Edges (Geodesic Arcs)
     idx_map = {idx: i for i, idx in enumerate(indices)} if indices is not None else None
     if show_tree and indices is not None and idx_map:
-        parents = TERNARY.parent(torch.from_numpy(indices)).numpy()
+        for arc in compute_tree_edge_arcs(z_2d, indices, n_points=12):
+            path_data = []
+            for k, pt in enumerate(arc):
+                sx, sy = to_svg(pt)
+                cmd = "M" if k == 0 else "L"
+                path_data.append(f"{cmd}{sx:.2f},{sy:.2f}")
 
-        for i, p_idx in enumerate(parents):
-            if p_idx in idx_map:
-                p_i = idx_map[p_idx]
-                # True Hyperbolic Geodesic
-                arc = get_geodesic_arc(z_2d[i], z_2d[p_i], n_points=12)
-                path_data = []
-                for k, pt in enumerate(arc):
-                    sx, sy = to_svg(pt)
-                    cmd = "M" if k == 0 else "L"
-                    path_data.append(f"{cmd}{sx:.2f},{sy:.2f}")
-
-                path_str = " ".join(path_data)
-                svg.append(f'<path d="{path_str}" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>')
+            path_str = " ".join(path_data)
+            svg.append(f'<path d="{path_str}" fill="none" stroke="#4a4e57" stroke-width="0.5" stroke-opacity="0.15"/>')
 
     # 2. Algebraic Walks (Flow lines)
     if walks is not None and idx_map:
@@ -103,20 +95,10 @@ def render_poincare_disk_svg(
 
     # 3. Prefix Territory Shading
     if indices is not None:
-        prefix_classes = TERNARY.digit_prefix_class(torch.from_numpy(indices), k=3).numpy()
-        unique_prefixes = np.unique(prefix_classes)
-        for p in unique_prefixes:
-            mask = prefix_classes == p
-            if mask.sum() >= 3:
-                from scipy.spatial import ConvexHull
-                try:
-                    hull = ConvexHull(z_2d[mask])
-                    polygon = z_2d[mask][hull.vertices]
-                    points_str = " ".join([f"{to_svg(pt)[0]:.2f},{to_svg(pt)[1]:.2f}" for pt in polygon])
-                    color = colors[p % 10]
-                    svg.append(f'<polygon points="{points_str}" fill="{color}" fill-opacity="0.05" stroke="none"/>')
-                except Exception:
-                    pass
+        for p, polygon in compute_prefix_hulls(z_2d, indices, k=3, min_points=3):
+            points_str = " ".join([f"{to_svg(pt)[0]:.2f},{to_svg(pt)[1]:.2f}" for pt in polygon])
+            color = colors[p % 10]
+            svg.append(f'<polygon points="{points_str}" fill="{color}" fill-opacity="0.05" stroke="none"/>')
 
     # Markers for flow lines
     svg.append('<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#00f2ff" /></marker></defs>')

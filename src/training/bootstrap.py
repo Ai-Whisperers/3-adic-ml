@@ -161,7 +161,13 @@ class ModelAuditor:
             Validated model ready for training
         """
         print("\n[AUDIT] Model Health Check...")
+        model = self._instantiate_model()
+        self._load_anchor_checkpoint(model, force)
+        self._check_gradient_flow(model, force)
+        return model
 
+    def _instantiate_model(self) -> nn.Module:
+        """Build the VAE from the `model` / `option_c` / `statenet` config sections."""
         model_cfg = self.config.get("model", {})
         option_c_cfg = self.config.get("option_c", {})
         model_name = model_cfg.get("name", "TernaryVAEV6Controllable")
@@ -210,53 +216,54 @@ class ModelAuditor:
         n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"  [OK] Model created: {model_name}")
         print(f"       Parameters: {n_params:,} total, {n_trainable:,} trainable")
+        return model
 
-        # Load anchor checkpoint if specified
+    def _load_anchor_checkpoint(self, model: nn.Module, force: bool) -> None:
+        """Load `anchor_checkpoint.path` into `model` in place, if configured."""
         anchor_cfg = self.config.get("anchor_checkpoint") or {}
         ckpt_path_str = anchor_cfg.get("path")
 
-        if ckpt_path_str and ckpt_path_str != "null":
-            ckpt_path = PROJECT_ROOT / ckpt_path_str
-            if ckpt_path.exists():
-                try:
-                    ckpt = load_checkpoint_compat(ckpt_path, map_location=self.device)
-                    state_dict = get_model_state_dict(ckpt)
-
-                    # Load with strict=False (projections may not match across versions)
-                    missing, unexpected = model.load_state_dict(
-                        state_dict, strict=False
-                    )
-                    print(f"  [OK] Loaded checkpoint: {ckpt_path.name}")
-                    print(
-                        f"       Missing keys: {len(missing)}, Unexpected: {len(unexpected)}"
-                    )
-                    if missing:
-                        print(f"       Missing: {missing[:5]}{'...' if len(missing) > 5 else ''}")
-                    if unexpected:
-                        print(f"       Unexpected: {unexpected[:5]}{'...' if len(unexpected) > 5 else ''}")
-
-                    self.audit_log["checkpoint_loaded"] = True
-                    self.audit_log["checkpoint_path"] = str(ckpt_path)
-
-                except Exception as e:
-                    print(f"  [WARN] Checkpoint load failed: {e}")
-                    self.audit_log["checkpoint_loaded"] = False
-                    self.audit_log["checkpoint_error"] = str(e)
-                    if not force:
-                        raise
-                    print("  [WARN] --force active: proceeding with RANDOM INIT (checkpoint ignored)")
-            else:
-                print(f"  [WARN] Checkpoint not found: {ckpt_path}")
-                self.audit_log["checkpoint_loaded"] = False
-                self.audit_log["checkpoint_error"] = f"not found: {ckpt_path}"
-                if not force:
-                    raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
-                print("  [WARN] --force active: proceeding with RANDOM INIT (checkpoint not found)")
-        else:
+        if not ckpt_path_str or ckpt_path_str == "null":
             print("  [INFO] No anchor checkpoint specified (training from scratch)")
             self.audit_log["checkpoint_loaded"] = False
+            return
 
-        # Gradient flow check
+        ckpt_path = PROJECT_ROOT / ckpt_path_str
+        if not ckpt_path.exists():
+            print(f"  [WARN] Checkpoint not found: {ckpt_path}")
+            self.audit_log["checkpoint_loaded"] = False
+            self.audit_log["checkpoint_error"] = f"not found: {ckpt_path}"
+            if not force:
+                raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+            print("  [WARN] --force active: proceeding with RANDOM INIT (checkpoint not found)")
+            return
+
+        try:
+            ckpt = load_checkpoint_compat(ckpt_path, map_location=self.device)
+            state_dict = get_model_state_dict(ckpt)
+
+            # Load with strict=False (projections may not match across versions)
+            missing, unexpected = model.load_state_dict(state_dict, strict=False)
+            print(f"  [OK] Loaded checkpoint: {ckpt_path.name}")
+            print(f"       Missing keys: {len(missing)}, Unexpected: {len(unexpected)}")
+            if missing:
+                print(f"       Missing: {missing[:5]}{'...' if len(missing) > 5 else ''}")
+            if unexpected:
+                print(f"       Unexpected: {unexpected[:5]}{'...' if len(unexpected) > 5 else ''}")
+
+            self.audit_log["checkpoint_loaded"] = True
+            self.audit_log["checkpoint_path"] = str(ckpt_path)
+
+        except Exception as e:
+            print(f"  [WARN] Checkpoint load failed: {e}")
+            self.audit_log["checkpoint_loaded"] = False
+            self.audit_log["checkpoint_error"] = str(e)
+            if not force:
+                raise
+            print("  [WARN] --force active: proceeding with RANDOM INIT (checkpoint ignored)")
+
+    def _check_gradient_flow(self, model: nn.Module, force: bool) -> None:
+        """Run one dummy forward/backward pass and flag dead or exploding gradients."""
         model.train()
         dummy_input = torch.randint(-1, 2, (32, 9)).double().to(self.device)
 
@@ -305,5 +312,3 @@ class ModelAuditor:
                 raise
         finally:
             model.zero_grad()
-
-        return model
