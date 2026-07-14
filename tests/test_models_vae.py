@@ -316,8 +316,12 @@ class TestTernaryVAEV6Controllable:
             elif g["name"] == "decoders":
                 assert g["lr"] == 0.1 * 1.0
 
-    def test_get_param_groups_excludes_frozen(self):
-        """get_param_groups excludes frozen component params."""
+    def test_get_param_groups_always_registers_frozen_components(self):
+        """get_param_groups must register a group for every component, even frozen
+        ones — update_optimizer_lr_scales can only mutate lr/requires_grad on
+        existing groups (it never calls optimizer.add_param_group()), so a
+        component missing its group here could never be unfrozen later by the
+        LR controller."""
         model = TernaryVAEV6Controllable(
             latent_dim=16,
             hidden_dim=64,
@@ -327,12 +331,18 @@ class TestTernaryVAEV6Controllable:
         ).to(torch.float64)
 
         groups = model.get_param_groups(base_lr=0.1)
-        names = [g["name"] for g in groups]
+        by_name = {g["name"]: g for g in groups}
 
-        assert "encoder_a" not in names
-        assert "encoder_b" in names
-        assert "projections" not in names
-        assert "decoders" in names
+        assert "encoder_a" in by_name
+        assert "encoder_b" in by_name
+        assert "projections" in by_name
+        assert "decoders" in by_name
+
+        # Frozen components' params still have requires_grad=False even though
+        # they're registered with the optimizer.
+        assert all(not p.requires_grad for p in by_name["encoder_a"]["params"])
+        assert all(p.requires_grad for p in by_name["encoder_b"]["params"])
+        assert all(not p.requires_grad for p in by_name["projections"]["params"])
 
     def test_apply_statenet_state(self):
         """apply_statenet_state correctly sets all three components."""

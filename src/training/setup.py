@@ -92,7 +92,7 @@ def setup_losses(
     curvature = model_cfg.get("curvature", 1.0)
     valuation_type = (config.get("data") or {}).get("valuation_type", "index")
 
-    latent_dim = model_cfg.get("latent_dim", 128)
+    latent_dim = model_cfg.get("latent_dim", 64)
 
     loss_fn = CombinedLoss(
         loss_cfg, curvature=curvature, device=device, valuation_type=valuation_type, latent_dim=latent_dim
@@ -118,8 +118,8 @@ def setup_optimizer(
     """Setup Riemannian or standard optimizer."""
     train_cfg = config.get("training") or {}
     riemannian_cfg = config.get("riemannian") or {}
-    base_lr = train_cfg.get("lr", 1e-3)
-    weight_decay = train_cfg.get("weight_decay", 1e-4)
+    base_lr = train_cfg.get("lr", 8e-4)
+    weight_decay = train_cfg.get("weight_decay", 1e-5)
 
     param_groups = model.get_param_groups(base_lr)
     if loss_params:
@@ -127,7 +127,7 @@ def setup_optimizer(
             {"params": loss_params, "lr": base_lr, "name": "loss_weights"}
         )
 
-    if riemannian_cfg.get("enabled", False):
+    if riemannian_cfg.get("enabled", True):
         stabilize = riemannian_cfg.get("stabilize", 10)
         optimizer = get_riemannian_optimizer(
             param_groups,

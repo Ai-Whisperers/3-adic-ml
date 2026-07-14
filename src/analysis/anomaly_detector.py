@@ -43,6 +43,13 @@ class AnomalyDetector:
         """Calibrate threshold = mean + sigma_factor * std of mean-kNN distances over normal_embeddings."""
         self.z_norm = normal_embeddings.to(self.device)
         n_norm = self.z_norm.shape[0]
+        if n_norm < 2:
+            raise ValueError(
+                f"AnomalyDetector.fit() needs at least 2 normal embeddings to compute "
+                f"a k-NN distance, got {n_norm}. Below that count, k_actual becomes 0 "
+                f"and the threshold silently becomes NaN, making detect() report zero "
+                f"anomalies on every query with no warning."
+            )
 
         # Full N×N pairwise Poincaré distance matrix — one vectorized call.
         dist_matrix = poincare_distance_matrix(self.z_norm, c=self.curvature)  # (N, N)

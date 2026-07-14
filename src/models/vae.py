@@ -587,27 +587,31 @@ class TernaryVAEV6Controllable(TernaryVAEV6):
     def get_param_groups(self, base_lr: float) -> List[Dict[str, Any]]:
         """Return parameter groups with differential learning rates.
 
-        Only includes parameters that currently require gradients.
+        Always includes one group per component, even if currently frozen
+        (requires_grad=False). A component whose group is never registered
+        with the optimizer can never be activated later: update_optimizer_lr_scales
+        only mutates lr/requires_grad on existing param groups and cannot call
+        optimizer.add_param_group(), so a group missing from the start would
+        make that component permanently untrainable regardless of what the LR
+        controller decides. Frozen params are harmless to register early —
+        with requires_grad=False their .grad stays None and the optimizer
+        step simply skips them until requires_grad is flipped True.
         Groups are named for logging/debugging.
         """
-        groups = []
+        groups = [
+            self._make_param_group(
+                list(self.head_A.parameters()), base_lr * self.encoder_a_lr_scale, "encoder_a"
+            ),
+            self._make_param_group(
+                list(self.head_B.parameters()), base_lr * self.encoder_b_lr_scale, "encoder_b"
+            ),
+            self._make_param_group(
+                list(self.projections.parameters()), base_lr * self.projections_lr_scale, "projections"
+            ),
+        ]
 
-        enc_a_params = self.head_A.get_trainable_params()
-        if enc_a_params:
-            groups.append(self._make_param_group(enc_a_params, base_lr * self.encoder_a_lr_scale, "encoder_a"))
-
-        enc_b_params = self.head_B.get_trainable_params()
-        if enc_b_params:
-            groups.append(self._make_param_group(enc_b_params, base_lr * self.encoder_b_lr_scale, "encoder_b"))
-
-        proj_params = [p for p in self.projections.parameters() if p.requires_grad]
-        if proj_params:
-            groups.append(self._make_param_group(proj_params, base_lr * self.projections_lr_scale, "projections"))
-
-        dec_params = [p for p in self.decoder_A.parameters() if p.requires_grad]
-        dec_params += [p for p in self.decoder_B.parameters() if p.requires_grad]
-        if dec_params:
-            groups.append(self._make_param_group(dec_params, base_lr, "decoders"))
+        dec_params = list(self.decoder_A.parameters()) + list(self.decoder_B.parameters())
+        groups.append(self._make_param_group(dec_params, base_lr, "decoders"))
 
         return groups
 

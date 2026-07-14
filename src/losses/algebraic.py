@@ -217,6 +217,13 @@ class AlgebraicCoherenceLoss(nn.Module):
         n_active = 0
 
         for sig_val, global_idx in (self._global_indices or {}).items():
+            # _global_indices is a class-level cache shared by every instance and
+            # built once with a floor of >=2 members; apply this instance's own
+            # min_global_size here so a stricter per-instance threshold is actually
+            # honored instead of silently falling back to the shared >=2 floor.
+            if len(global_idx) < self.min_global_size:
+                continue
+
             # --- Anchor side: sample from the current batch ---
             batch_mask = (sigs == sig_val)
             n_batch = int(batch_mask.sum().item())

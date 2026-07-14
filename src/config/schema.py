@@ -98,7 +98,7 @@ class OptionCConfig(StrictConfigModel):
     """Differential learning rate scales per component."""
 
     enabled: bool = True
-    encoder_a_lr_scale: float = Field(default=0.1, gt=0, le=1.0)
+    encoder_a_lr_scale: float = Field(default=0.05, gt=0, le=1.0)
     encoder_b_lr_scale: float = Field(default=0.1, gt=0, le=1.0)
     projections_lr_scale: float = Field(default=1.0, gt=0, le=1.0)
 
@@ -406,7 +406,11 @@ class AlgebraicCoherenceLossConfig(StrictConfigModel):
     n_pairs: int = Field(default=2000, ge=10)
     target_sim: float = Field(default=0.70, ge=0.0, le=1.0)
     phase_start_epoch: int = Field(default=20, ge=0)
-    min_global_size: int = Field(default=2, ge=2)
+    min_global_size: int = Field(
+        default=2,
+        ge=2,
+        validation_alias=AliasChoices("min_global_size", "min_class_size"),
+    )
 
 
 class AlgebraicAdditionLossConfig(StrictConfigModel):

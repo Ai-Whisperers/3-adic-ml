@@ -981,10 +981,9 @@ class VisualizationPipeline:
 
         # 1. Always try to save image via Matplotlib
         if _HAS_MPL:
-            img_path = html_dir / "poincare_disk_native.png"
-            save_poincare_disk(
+            from src.utils.poincare_renderer import render_poincare_disk_mpl
+            fig = render_poincare_disk_mpl(
                 z_np, val_np,
-                output_path=str(img_path),
                 indices=indices_np,
                 title=f"Native Poincaré Disk (epoch {epoch})",
                 c=self.curvature,
@@ -992,19 +991,12 @@ class VisualizationPipeline:
                 show_tree=True,
                 walks=walks
             )
-            # Add to TensorBoard if logger is present
-            if self.logger is not None:
-                from src.utils.poincare_renderer import render_poincare_disk_mpl
-                fig = render_poincare_disk_mpl(
-                    z_np, val_np,
-                    indices=indices_np,
-                    title=f"Native Poincaré Disk (epoch {epoch})",
-                    c=self.curvature,
-                    colors=colors,
-                    show_tree=True,
-                    walks=walks
-                )
-                self.logger.add_figure("Topology/PoincareDiskNative", fig, global_step=epoch)
+            if fig is not None:
+                img_path = html_dir / "poincare_disk_native.png"
+                fig.savefig(str(img_path), dpi=100)
+                # Add to TensorBoard if logger is present
+                if self.logger is not None:
+                    self.logger.add_figure("Topology/PoincareDiskNative", fig, global_step=epoch)
                 plt.close(fig)
 
         # 2. Try to save interactive HTML if Plotly available

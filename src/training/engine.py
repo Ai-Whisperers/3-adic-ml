@@ -135,11 +135,9 @@ def train_model(
         # Lagrangian dual ascent update — runs every epoch so dual variables
         # track constraint violations without waiting for eval windows.
         if dual_state and train_metrics.get("dual_violation_count", 0) > 0:
-            avg_violations = {
-                k: v / train_metrics["dual_violation_count"]
-                for k, v in train_metrics["dual_violation_acc"].items()
-            }
-            dual_state.update(avg_violations)
+            # dual_violation_acc is already the per-epoch mean (train_epoch divides
+            # by n_batches once, line ~416) — do not divide again here.
+            dual_state.update(train_metrics["dual_violation_acc"])
             current_dual_weights = dual_state.get_dual_weights()
 
         # 2. Validation & Reporting Phase

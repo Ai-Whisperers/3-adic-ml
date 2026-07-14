@@ -96,7 +96,12 @@ def log_map_zero(z: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, max_norm:
     Clamps z to max_norm before logmap to avoid arctanh divergence near the
     boundary. Defaults to ball_radius - 1e-5 = 1/sqrt(c) - 1e-5.
     """
-    ball_radius = 1.0 / (c ** 0.5)
+    # Clamp c the same way get_manifold() does before using it in 1/sqrt(c) —
+    # c<=0 would otherwise give a complex/inf ball_radius (e.g. c**0.5 on a
+    # negative float returns a complex number in Python) ahead of get_manifold's
+    # own defensive clamp below.
+    c_safe = c.clamp(min=1e-6) if isinstance(c, torch.Tensor) else max(float(c), 1e-6)
+    ball_radius = 1.0 / (c_safe ** 0.5)
     effective_max_norm = min(
         max_norm if max_norm is not None else ball_radius - 1e-5,
         ball_radius - 1e-5,

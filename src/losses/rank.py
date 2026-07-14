@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 from ..core import TERNARY
 from ..geometry import hyperbolic_radius
+from ..utils.scatter_utils import level_scatter_mean
 from .base import HierarchyLossBase, MetricsDict
 from .utils import default_valuation_fn, make_zero_loss, phase_gated_zero, sample_random_pairs
 
@@ -30,6 +31,8 @@ class GlobalRankLoss(HierarchyLossBase):
         scatter_weight: float = 0.0,
     ):
         super().__init__()
+        self._validate_positive(temperature, "temperature", self.__class__.__name__)
+        self._validate_positive(curvature, "curvature", self.__class__.__name__)
         self.temperature = temperature
         self.n_pairs = n_pairs
         self.use_all_pairs = use_all_pairs
@@ -100,7 +103,6 @@ class GlobalRankLoss(HierarchyLossBase):
 
         # Per-level scatter diagnostics
         if same_v_mask.any():
-            from ..utils.scatter_utils import level_scatter_mean
             v_same = v_i[same_v_mask].long()
             v_same_long = cast(torch.LongTensor, v_same)
             r_diff_sq = (r_i[same_v_mask] - r_j[same_v_mask])**2
