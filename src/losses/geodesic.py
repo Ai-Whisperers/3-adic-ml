@@ -13,7 +13,13 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..geometry import poincare_distance
 from .base import HierarchyLossBase, MetricsDict
-from .utils import default_valuation_fn, make_zero_loss, safe_corrcoef, sample_random_pairs
+from .utils import (
+    default_valuation_fn,
+    make_zero_loss,
+    phase_gated_zero,
+    safe_corrcoef,
+    sample_random_pairs,
+)
 
 
 class PAdicGeodesicLoss(HierarchyLossBase):
@@ -65,7 +71,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
         cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
-            return make_zero_loss(device), {"n_pairs": 0}
+            return phase_gated_zero(z_hyp, {"n_pairs": 0})
 
         n_pairs = min(self.n_pairs, batch_size * (batch_size - 1) // 2)
         i_idx, j_idx = sample_random_pairs(batch_size, n_pairs, device)
@@ -78,7 +84,7 @@ class PAdicGeodesicLoss(HierarchyLossBase):
             val_diff = torch.abs(v_i - v_j)
             cross_mask = val_diff > 0
             if not cross_mask.any():
-                return make_zero_loss(device), {"n_pairs": 0}
+                return phase_gated_zero(z_hyp, {"n_pairs": 0})
             d_actual = d_actual[cross_mask]
             val_diff = val_diff[cross_mask]
             d_target = self.max_target * val_diff / self.max_valuation

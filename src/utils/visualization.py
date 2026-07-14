@@ -812,11 +812,15 @@ class VisualizationPipeline:
         tb_tag: str,
         is_3d: bool = False,
         embedding_tag: Optional[str] = None,
+        html_title: Optional[str] = None,
     ) -> None:
         """Compute one dimensionality-reduction projection, then log it to TB/HTML.
 
         Shared by the UMAP (3D + TensorBoard embedding), PaCMAP, and TriMAP (2D)
         steps below — they differ only in how `coords` is computed and in naming.
+
+        `html_title` defaults to `title` (matches UMAP, whose two titles were
+        always identical); PaCMAP/TriMAP pass a shorter one for the HTML export.
         """
         coords = compute_fn()
         if coords is None:
@@ -840,7 +844,7 @@ class VisualizationPipeline:
 
         if self.save_html and _HAS_PLOTLY:
             plotly_scatter_fn = _plotly_scatter_3d if is_3d else _plotly_scatter_2d
-            plotly_fig = plotly_scatter_fn(coords, val_np, title)
+            plotly_fig = plotly_scatter_fn(coords, val_np, html_title if html_title is not None else title)
             if plotly_fig is not None:
                 plotly_fig.write_html(str(html_dir / f"{html_name}.html"))
 
@@ -874,6 +878,7 @@ class VisualizationPipeline:
             val_np,
             f"PaCMAP 2D — mid-range structure (epoch {epoch})",
             html_dir, "pacmap_2d", "Topology/PaCMAP2D",
+            html_title=f"PaCMAP 2D (epoch {epoch})",
         )
 
     def _run_trimap_step(
@@ -889,6 +894,7 @@ class VisualizationPipeline:
             val_np,
             f"TriMAP 2D — distance ordering (epoch {epoch})",
             html_dir, "trimap_2d", "Topology/TriMAP2D",
+            html_title=f"TriMAP 2D (epoch {epoch})",
         )
 
     def _run_poincare3d_step(

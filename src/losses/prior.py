@@ -5,7 +5,6 @@
 
 """Valuation-conditioned prior losses for p-adic VAE."""
 
-import math
 from typing import Any, cast, Optional, Tuple, Union
 
 import torch
@@ -14,7 +13,12 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..utils.scatter_utils import level_has_data, level_scatter_mean
 from .base import HierarchyLossBase, MetricsDict
-from .utils import _exponential_target_radii, default_valuation_fn, make_zero_loss
+from .utils import (
+    _euclidean_to_hyperbolic_radius,
+    _exponential_target_radii,
+    default_valuation_fn,
+    make_zero_loss,
+)
 
 
 class ValuationPriorLoss(HierarchyLossBase):
@@ -76,13 +80,7 @@ class ValuationPriorLoss(HierarchyLossBase):
         mu = mu.to(torch.float64)
         device = mu.device
         target_r = self.target_r_euclid.to(device)
-
-        if isinstance(curvature, torch.Tensor):
-            sqrt_c = torch.sqrt(curvature.clamp(min=1e-6))
-            target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c
-        else:
-            sqrt_c_float = math.sqrt(max(curvature, 1e-6))
-            target_tangent_norms = torch.atanh(target_r.clamp(max=0.9999)) / sqrt_c_float
+        target_tangent_norms = _euclidean_to_hyperbolic_radius(target_r, c=curvature)
 
         vals_raw = self._valuation_fn(batch_indices)
         valuations = cast(torch.Tensor, vals_raw).long().clamp(0, self.max_valuation)

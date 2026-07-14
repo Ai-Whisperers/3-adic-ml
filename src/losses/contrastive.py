@@ -12,7 +12,7 @@ import torch
 from ..core import TERNARY
 from ..geometry.poincare import get_manifold
 from .base import HierarchyLossBase, MetricsDict
-from .utils import default_valuation_fn, make_zero_loss
+from .utils import default_valuation_fn, phase_gated_zero
 
 
 class HyperbolicContrastiveLoss(HierarchyLossBase):
@@ -51,11 +51,11 @@ class HyperbolicContrastiveLoss(HierarchyLossBase):
         cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
-            return make_zero_loss(device), {
+            return phase_gated_zero(z_hyp, {
                 "n_pairs": 0,
                 "n_pos_pairs": 0,
                 "contrastive_loss": 0.0,
-            }
+            })
 
         # 1. Compute pairwise valuations of difference to determine prefix similarity
         # batch_indices has shape (N,) -> idx_i (1, N), idx_j (N, 1)

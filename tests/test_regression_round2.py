@@ -346,15 +346,11 @@ class TestNoCPUGenerator:
         from src.losses.utils import sample_random_pairs
 
         forward_src = inspect.getsource(PAdicGeodesicLoss.forward)
-        # Pair sampling may be inlined or delegated to the shared
-        # sample_random_pairs() helper — check wherever the randint call lives.
-        src_text = (
-            inspect.getsource(sample_random_pairs)
-            if "sample_random_pairs" in forward_src
-            else forward_src
-        )
-        assert "device=device" in src_text or "device=" in src_text, \
-            "PAdicGeodesicLoss pair sampling must pass device= to randint"
+        assert "sample_random_pairs" in forward_src, \
+            "PAdicGeodesicLoss.forward must delegate pair sampling to sample_random_pairs()"
+        helper_src = inspect.getsource(sample_random_pairs)
+        assert "device=device" in helper_src or "device=" in helper_src, \
+            "sample_random_pairs must pass device= to randint"
 
 
 # ---------------------------------------------------------------------------

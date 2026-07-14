@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from ..core import TERNARY
 from ..geometry import hyperbolic_radius
 from .base import HierarchyLossBase, MetricsDict
-from .utils import default_valuation_fn, make_zero_loss, sample_random_pairs
+from .utils import default_valuation_fn, make_zero_loss, phase_gated_zero, sample_random_pairs
 
 
 class GlobalRankLoss(HierarchyLossBase):
@@ -49,7 +49,7 @@ class GlobalRankLoss(HierarchyLossBase):
         cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
-            return make_zero_loss(device), {}
+            return phase_gated_zero(z_hyp, {})
 
         actual_radius = hyperbolic_radius(z_hyp, c=cur_c)
         valuations = self._valuation_fn(batch_indices).double()

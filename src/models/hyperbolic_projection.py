@@ -179,17 +179,18 @@ class HyperbolicProjection(nn.Module):
         return clamp_to_max_norm(z_hyp, self.max_radius)
 
     def _transform_and_project(
-        self, z_tangent: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self, z_tangent: torch.Tensor, need_tangent_norm: bool = True
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Non-factored tangent transform + expmap0 projection.
 
         Returns (z_hyp, z_transformed, tangent_norm), shared by forward() and
-        forward_with_components().
+        forward_with_components(). forward() doesn't use tangent_norm, so it
+        passes need_tangent_norm=False to skip that extra norm on every call.
         """
         z_scaled = self.tangent_scale * z_tangent
         z_transformed = z_scaled + self.tangent_net(z_scaled)
         z_hyp = self._expmap_and_clamp(z_transformed)
-        tangent_norm = torch.norm(z_transformed, dim=-1)
+        tangent_norm = torch.norm(z_transformed, dim=-1) if need_tangent_norm else None
         return z_hyp, z_transformed, tangent_norm
 
     def _init_identity_manual(self):
@@ -257,7 +258,7 @@ class HyperbolicProjection(nn.Module):
             return self._forward_factored(z_tangent)
 
         # --- Non-factored mode (V6 expmap0 approach) ---
-        z_hyp, _, _ = self._transform_and_project(z_tangent)
+        z_hyp, _, _ = self._transform_and_project(z_tangent, need_tangent_norm=False)
 
         if as_manifold:
             z_hyp = self.manifold.projx(z_hyp)

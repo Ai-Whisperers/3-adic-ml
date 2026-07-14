@@ -21,6 +21,7 @@ from .utils import (
     compute_target_radii,
     default_valuation_fn,
     make_zero_loss,
+    phase_gated_zero,
     safe_corrcoef,
     sample_random_pairs,
 )
@@ -171,7 +172,7 @@ class MonotonicRadialLoss(HierarchyLossBase):
         cur_c = kwargs.get("curvature", self.curvature)
 
         if batch_size < 2:
-            return make_zero_loss(device), {"n_levels": 0}
+            return phase_gated_zero(z_hyp, {"n_levels": 0})
 
         valuations = cast(torch.Tensor, self._valuation_fn(batch_indices))
         radii = hyperbolic_radius(z_hyp, c=cur_c)
@@ -186,10 +187,10 @@ class MonotonicRadialLoss(HierarchyLossBase):
         levels_present = present_mask.nonzero(as_tuple=False).squeeze(-1).tolist()
 
         if len(levels_present) < 2:
-            return make_zero_loss(device), {
+            return phase_gated_zero(z_hyp, {
                 "n_levels": len(levels_present),
                 "margin_violations": 0,
-            }
+            })
 
         level_means_all = level_scatter_mean(radii, vals_long, dim_size=dim_size)
         level_means = level_means_all[present_mask]
