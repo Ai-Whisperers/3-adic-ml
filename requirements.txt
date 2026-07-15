@@ -27,9 +27,6 @@ tensorboard>=2.13.0
 # Progress Bars
 tqdm>=4.65.0
 
-# System Monitoring
-psutil>=5.9.0  # RAM/GPU monitoring for HardwareMonitor
-
 # Visualization (used by diagnose_direction_geometry.py and VisualizationPipeline)
 matplotlib>=3.7.0
 umap-learn>=0.5.0  # UMAP; metric='precomputed' for Poincaré distance matrix input

@@ -71,30 +71,6 @@ class TensorBoardLogger:
                 tag = f"{prefix}/{name}" if prefix else name
                 self.writer.add_scalar(tag, val, step)
 
-    def log_histogram(self, tag: str, values: torch.Tensor, step: int) -> None:
-        if self.writer:
-            self.writer.add_histogram(tag, values, step)
-
-    def log_model_weights(self, model: torch.nn.Module, step: int) -> None:
-        if self.writer:
-            for name, param in model.named_parameters():
-                if param.requires_grad:
-                    self.writer.add_histogram(f"Weights/{name}", param, step)
-
-    def log_hparams(
-        self, hparams: Mapping[str, Any], metrics: Mapping[str, float]
-    ) -> None:
-        if self.writer:
-            # SummaryWriter.add_hparams expects specific types; ensure consistency
-            clean_hparams = {}
-            for k, v in hparams.items():
-                if isinstance(v, (int, float, str, bool, torch.Tensor)):
-                    clean_hparams[k] = v
-                else:
-                    clean_hparams[k] = str(v)
-
-            self.writer.add_hparams(clean_hparams, dict(metrics))
-
     def close(self) -> None:
         """Close the TensorBoard writer."""
         if self.writer:
