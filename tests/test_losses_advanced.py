@@ -439,11 +439,21 @@ class TestAlgebraicCoherenceLossWithRealModel:
         z_hyp = out["z_A_hyp"].detach().requires_grad_(True)
         r = out["r_A"].detach()
 
+        # target_sim=1.0 (not e.g. 0.9): tiny_vae's init is unseeded here, so its
+        # weights depend on whatever RNG state prior tests left behind. With a
+        # margin threshold like 0.9, an untrained model's direction vectors can
+        # coincidentally already satisfy cos_sim >= 0.9, F.relu clamps the loss to
+        # exactly 0, and the gradient this test asserts on is exactly 0 too --
+        # observed to flake on roughly half of random model-init seeds when run
+        # outside the full suite. relu(1.0 - cos_sim) is zero only if the two
+        # direction vectors are exactly identical, a measure-zero event for
+        # untrained continuous embeddings, making the assertion robust regardless
+        # of init.
         loss_fn = AlgebraicCoherenceLoss(
             weight=1.0,
             phase_start_epoch=0,
             min_global_size=2,
-            target_sim=0.9,
+            target_sim=1.0,
         )
 
         loss, metrics = loss_fn(z_hyp, r, batch_idx, epoch=1, model=model)

@@ -22,6 +22,32 @@ def _make_generator(seed: int = 42) -> torch.Generator:
     return g
 
 
+def _homomorphism_loss_tail(
+    mu_result: torch.Tensor,
+    mu_target: torch.Tensor,
+    weight: float,
+    loss_key: str,
+    sim_key: str,
+    metrics: MetricsDict,
+    cls_name: str,
+) -> torch.Tensor:
+    """Shared tail for homomorphism-style algebraic losses (addition,
+    multiplication, distributive): shape check, weighted smooth-L1 loss, and
+    a no-grad cosine-similarity diagnostic.
+    """
+    if mu_result.shape != mu_target.shape:
+        raise RuntimeError(
+            f"{cls_name}: shape mismatch — mu_result {mu_result.shape} vs "
+            f"mu_target {mu_target.shape}. model.get_mu_representations must "
+            f"return a tensor matching mu_target's shape."
+        )
+    loss = weight * F.smooth_l1_loss(mu_result, mu_target)
+    metrics[loss_key] = loss.item()
+    with torch.no_grad():
+        metrics[sim_key] = F.cosine_similarity(mu_result, mu_target).mean().item()
+    return loss
+
+
 class AngularCoherenceLoss(nn.Module):
     """Pull same-digit-prefix operations together angularly within each valuation level."""
 
@@ -70,6 +96,9 @@ class AngularCoherenceLoss(nn.Module):
             total_loss = zero
             total_pairs = 0
             n_active_levels = 0
+            # Number of pairs budgeted per active level; independent of the loop
+            # variable `v`, so compute once instead of every iteration.
+            num_v_pairs = self.n_pairs // max(1, sum(kk > 0 for kk in self.level_prefix_k))
 
             for v in range(10):
                 k = self.level_prefix_k[v]
@@ -84,7 +113,6 @@ class AngularCoherenceLoss(nn.Module):
                 idx_v = mask_v.nonzero(as_tuple=True)[0]
                 nv = idx_v.shape[0]
                 perm = torch.randperm(nv, device=z_hyp.device)
-                num_v_pairs = self.n_pairs // max(1, sum(kk > 0 for kk in self.level_prefix_k))
                 half = min(num_v_pairs, nv // 2)
                 if half < 2:
                     continue
@@ -215,6 +243,10 @@ class AlgebraicCoherenceLoss(nn.Module):
         total_loss = zero
         total_pairs = 0
         n_active = 0
+        # Per-class pair budget; independent of the loop variable sig_val, so
+        # compute once instead of on every iteration (both branches below used
+        # to recompute the identical expression).
+        n_pairs_per_class = self.n_pairs // max(1, len(self._global_indices or {}))
 
         for sig_val, global_idx in (self._global_indices or {}).items():
             # _global_indices is a class-level cache shared by every instance and
@@ -231,7 +263,7 @@ class AlgebraicCoherenceLoss(nn.Module):
             if n_batch >= 2:
                 # Enough in batch: use batch pairs
                 batch_local = batch_mask.nonzero(as_tuple=True)[0]
-                n_pairs_cls = min(len(batch_local) // 2, self.n_pairs // max(1, len(self._global_indices)))
+                n_pairs_cls = min(len(batch_local) // 2, n_pairs_per_class)
                 if n_pairs_cls < 1:
                     continue
                 perm = torch.randperm(len(batch_local), device=z_hyp.device)
@@ -241,7 +273,7 @@ class AlgebraicCoherenceLoss(nn.Module):
                 # Rare class: 1 anchor from batch, counterpart from global population
                 batch_local = batch_mask.nonzero(as_tuple=True)[0]
                 n_global = len(global_idx)
-                n_pairs_cls = min(len(batch_local), self.n_pairs // max(1, len(self._global_indices)))
+                n_pairs_cls = min(len(batch_local), n_pairs_per_class)
                 if n_pairs_cls < 1:
                     continue
                 di = dir_vecs[batch_local[:n_pairs_cls]]
@@ -327,19 +359,10 @@ class _AlgebraicBinaryLoss(nn.Module):
         mu_result = model.get_mu_representations(idx_result, mu_A.device)
         mu_target = self._mu_target(mu_A, idx_a_local, idx_b_local)
 
-        if mu_result.shape != mu_target.shape:
-            raise RuntimeError(
-                f"{type(self).__name__}: shape mismatch — "
-                f"mu_result {mu_result.shape} vs mu_target {mu_target.shape}. "
-                f"model.get_mu_representations must return (n_pairs, latent_dim)."
-            )
-
-        loss = self.weight * F.smooth_l1_loss(mu_result, mu_target)
-        metrics[self._loss_key] = loss.item()
-
-        with torch.no_grad():
-            metrics[self._sim_key] = F.cosine_similarity(mu_result, mu_target).mean().item()
-
+        loss = _homomorphism_loss_tail(
+            mu_result, mu_target, self.weight, self._loss_key, self._sim_key,
+            metrics, type(self).__name__,
+        )
         return loss, metrics
 
 
@@ -415,17 +438,8 @@ class AlgebraicDistributiveLoss(nn.Module):
         mu_res = model.get_mu_representations(idx_dist_gt, mu_A.device)
         mu_target = mu_A[idx_a] * (mu_A[idx_b] + mu_A[idx_c])
 
-        if mu_res.shape != mu_target.shape:
-            raise RuntimeError(
-                f"AlgebraicDistributiveLoss: shape mismatch — "
-                f"mu_res {mu_res.shape} vs mu_target {mu_target.shape}. "
-                f"model.get_mu_representations must return (n_samples, latent_dim)."
-            )
-
-        loss = self.weight * F.smooth_l1_loss(mu_res, mu_target)
-        metrics["alg_distributive_loss"] = loss.item()
-
-        with torch.no_grad():
-            metrics["alg_distributive_sim"] = F.cosine_similarity(mu_res, mu_target).mean().item()
-
+        loss = _homomorphism_loss_tail(
+            mu_res, mu_target, self.weight, "alg_distributive_loss", "alg_distributive_sim",
+            metrics, "AlgebraicDistributiveLoss",
+        )
         return loss, metrics
