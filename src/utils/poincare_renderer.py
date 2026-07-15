@@ -68,8 +68,9 @@ def render_poincare_disk_mpl(
 
     # 2. Draw Algebraic Walks (Flow lines)
     if walks is not None:
+        # Independent of walk_indices; build once instead of on every iteration.
+        idx_map_local: dict[Any, int] = {idx: i for i, idx in enumerate(indices)} if indices is not None else {}
         for walk_indices in walks:
-            idx_map_local: dict[Any, int] = {idx: i for i, idx in enumerate(indices)} if indices is not None else {}
             if idx_map_local:
                 pts = []
                 for idx in walk_indices:
