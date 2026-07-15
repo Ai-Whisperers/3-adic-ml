@@ -31,6 +31,19 @@ class StrictConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _check_radius_ordering(inner_radius: float | None, outer_radius: float | None) -> None:
+    """Shared inner_radius < outer_radius check, reused by every radial loss config.
+
+    No-op when either bound is None (fields that fall back to a shared default
+    elsewhere, e.g. ValuationPriorConfig) — callers only invoke this once both
+    are known to be set.
+    """
+    if inner_radius is not None and outer_radius is not None and inner_radius >= outer_radius:
+        raise ValueError(
+            f"inner_radius={inner_radius} must be < outer_radius={outer_radius}"
+        )
+
+
 # =============================================================================
 # Device Configuration
 # =============================================================================
@@ -193,10 +206,7 @@ class RichHierarchyLossConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def validate_radius_ordering(self) -> RichHierarchyLossConfig:
-        if self.inner_radius >= self.outer_radius:
-            raise ValueError(
-                f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
-            )
+        _check_radius_ordering(self.inner_radius, self.outer_radius)
         return self
 
 
@@ -218,10 +228,7 @@ class RadialLossConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def validate_radius_ordering(self) -> RadialLossConfig:
-        if self.inner_radius >= self.outer_radius:
-            raise ValueError(
-                f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
-            )
+        _check_radius_ordering(self.inner_radius, self.outer_radius)
         return self
 
 
@@ -267,10 +274,7 @@ class MonotonicLossConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def validate_radius_ordering(self) -> MonotonicLossConfig:
-        if self.inner_radius >= self.outer_radius:
-            raise ValueError(
-                f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
-            )
+        _check_radius_ordering(self.inner_radius, self.outer_radius)
         return self
 
 
@@ -364,14 +368,7 @@ class ValuationPriorConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def validate_radius_ordering(self) -> ValuationPriorConfig:
-        if (
-            self.inner_radius is not None
-            and self.outer_radius is not None
-            and self.inner_radius >= self.outer_radius
-        ):
-            raise ValueError(
-                f"inner_radius={self.inner_radius} must be < outer_radius={self.outer_radius}"
-            )
+        _check_radius_ordering(self.inner_radius, self.outer_radius)
         return self
 
 
