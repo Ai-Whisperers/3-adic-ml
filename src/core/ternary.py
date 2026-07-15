@@ -442,6 +442,29 @@ class TernarySpace:
         # Compute index as base-3 number
         return (digits * weights).sum(dim=-1)
 
+    def _ternary_digitwise_modular_op(
+        self, idx_a: torch.Tensor, idx_b: torch.Tensor, op
+    ) -> torch.Tensor:
+        """Shared digit-wise Z_3 arithmetic for ternary_add/ternary_mul.
+
+        Converts both indices to ternary, maps {-1,0,1} digits to standard
+        Z_3 representation {2,0,1} via `% 3`, applies `op` digit-wise mod 3,
+        then maps the {0,1,2} result back to {-1,0,1} (2 → -1) before
+        converting back to an index.
+
+        Args:
+            idx_a, idx_b: Tensors of indices, shape (N,)
+            op: Digit-wise combination, e.g. torch.add or torch.mul
+
+        Returns:
+            Tensor of indices of the result, shape (N,)
+        """
+        d_a = self.to_ternary(idx_a) % 3
+        d_b = self.to_ternary(idx_b) % 3
+        d_result = op(d_a, d_b) % 3
+        t_result = d_result - 3.0 * (d_result == 2.0).to(d_result.dtype)
+        return self.from_ternary(t_result)
+
     def ternary_add(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
         """Perform 3-adic modular addition of two indices.
 
@@ -459,18 +482,7 @@ class TernarySpace:
         Returns:
             Tensor of indices of the sums, shape (N,)
         """
-        t_a = self.to_ternary(idx_a) # (N, 9)
-        t_b = self.to_ternary(idx_b) # (N, 9)
-
-        # Map {-1, 0, 1} to {2, 0, 1} which is standard Z_3
-        d_a = t_a % 3
-        d_b = t_b % 3
-
-        # Modular addition in {0, 1, 2}, then map 2 → -1 via arithmetic.
-        # d - 3*(d==2): 0→0, 1→1, 2→2-3=-1
-        d_sum = (d_a + d_b) % 3
-        t_sum = d_sum - 3.0 * (d_sum == 2.0).to(d_sum.dtype)
-        return self.from_ternary(t_sum)
+        return self._ternary_digitwise_modular_op(idx_a, idx_b, torch.add)
 
     def ternary_mul(self, idx_a: torch.Tensor, idx_b: torch.Tensor) -> torch.Tensor:
         """Perform 3-adic modular multiplication of two indices.
@@ -488,17 +500,7 @@ class TernarySpace:
         Returns:
             Tensor of indices of the products, shape (N,)
         """
-        t_a = self.to_ternary(idx_a)
-        t_b = self.to_ternary(idx_b)
-
-        # Standard multiplication in Z_3 {0, 1, 2}
-        # (-1) maps to 2 in % 3
-        d_a = t_a % 3
-        d_b = t_b % 3
-
-        d_prod = (d_a * d_b) % 3
-        t_prod = d_prod - 3.0 * (d_prod == 2.0).to(d_prod.dtype)
-        return self.from_ternary(t_prod)
+        return self._ternary_digitwise_modular_op(idx_a, idx_b, torch.mul)
 
     # =========================================================================
     # Convenience Methods

@@ -5,8 +5,7 @@
 
 """Type-safe contracts for p-adic VAE components."""
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, TypedDict, Union
+from typing import Any, Dict, List, Optional, TypedDict
 
 import torch
 
@@ -82,39 +81,6 @@ class TrainingResults(TypedDict):
     best_hierarchy: float
     best_coverage: float
     grokking_events: List[Dict[str, Any]]
-
-
-@dataclass
-class EpochMetrics:
-    """Metrics for a single training/validation epoch."""
-    epoch: int
-    train_loss: float
-    train_acc: float
-    val_acc: float
-    val_coverage: float
-    hierarchy_A: float
-    hierarchy_B: float
-    Q_A: float
-    Q_B: float
-    dist_corr: float
-    mean_radius_A: float
-    tree_coherence_A: float
-    tree_coherence_B: float
-    # Optional detailed metrics
-    level_hierarchy: Optional[Dict[int, float]] = None
-    ari_per_level: Optional[Dict[int, float]] = None
-    ari_composite: Optional[float] = None
-    aq_value: Optional[float] = None
-    intra_sim: Optional[float] = None
-    inter_sim: Optional[float] = None
-
-
-class ControllerState(TypedDict):
-    """Output from the MetricBasedLR controller."""
-    lr_scales: Dict[str, float]
-    events: List[Dict[str, Any]]
-    status: Dict[str, Union[bool, float, int, str]]
-    best_q: float
 
 
 class GrokkingState(TypedDict):
