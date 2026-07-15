@@ -178,6 +178,17 @@ class HyperbolicProjection(nn.Module):
         z_hyp = self.manifold.expmap(origin, z_transformed)
         return clamp_to_max_norm(z_hyp, self.max_radius)
 
+    def _residual_tangent_transform(self, z: torch.Tensor) -> torch.Tensor:
+        """Scale by tangent_scale, then add the residual tangent_net output.
+
+        z_scaled = tangent_scale * z; return z_scaled + tangent_net(z_scaled).
+        Shared by the non-factored path (applied to the full z_tangent) and
+        the factored path (applied to z_theta only) — identical operation,
+        different slice of the input.
+        """
+        z_scaled = self.tangent_scale * z
+        return z_scaled + self.tangent_net(z_scaled)
+
     def _transform_and_project(
         self, z_tangent: torch.Tensor, need_tangent_norm: bool = True
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
@@ -187,8 +198,7 @@ class HyperbolicProjection(nn.Module):
         forward_with_components(). forward() doesn't use tangent_norm, so it
         passes need_tangent_norm=False to skip that extra norm on every call.
         """
-        z_scaled = self.tangent_scale * z_tangent
-        z_transformed = z_scaled + self.tangent_net(z_scaled)
+        z_transformed = self._residual_tangent_transform(z_tangent)
         z_hyp = self._expmap_and_clamp(z_transformed)
         tangent_norm = torch.norm(z_transformed, dim=-1) if need_tangent_norm else None
         return z_hyp, z_transformed, tangent_norm
@@ -296,8 +306,7 @@ class HyperbolicProjection(nn.Module):
         r = torch.sigmoid(self.linear_r(z_r).squeeze(-1)) * self.max_radius  # (B,)
 
         # Direction: residual transform of z_θ, then normalize to unit sphere
-        z_theta_scaled = self.tangent_scale * z_theta
-        dir_unnorm = z_theta_scaled + self.tangent_net(z_theta_scaled)
+        dir_unnorm = self._residual_tangent_transform(z_theta)
         dir_norm = torch.norm(dir_unnorm, dim=-1, keepdim=True).clamp(min=1e-10)
         dir = dir_unnorm / dir_norm                     # (B, D-k), unit norm
 

@@ -480,10 +480,7 @@ class TernaryVAEV6(nn.Module):
         populations, not just the current batch. Gradients flow through.
         Deterministic (uses mu, no reparameterization).
         """
-        x = TERNARY.to_ternary(indices).to(device).to(torch.float64)
-        if self.positional_encoding:
-            x = torch.cat([x, x * self.pos_weights], dim=-1)
-        mu_A, _ = self.head_A(x)
+        mu_A = self.get_mu_representations(indices, device)
         # projections expects (z_A_tangent, z_B_tangent); pass mu_A for both,
         # return only z_A_hyp (first output).
         z_A_hyp, _, _, _ = self.projections(mu_A, mu_A, as_manifold=False)
