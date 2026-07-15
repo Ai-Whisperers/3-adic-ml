@@ -24,7 +24,7 @@ These tests target the wiring specifically:
 from __future__ import annotations
 
 from typing import Any, Dict
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -319,3 +319,66 @@ class TestDualStateWiredIntoTrainModel:
             "All Lagrangian dual variables are still zero after training — "
             f"get_dual_weights()={weights}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 3. Unit test: _apply_controller_update, in isolation.
+#
+# No existing test exercised the lr_controller path through train_model
+# (TestDualStateWiredIntoTrainModel above always passes lr_controller=None).
+# This was surfaced while extracting the inline block into its own function;
+# added here as the regression net for that extraction.
+# ---------------------------------------------------------------------------
+
+class TestApplyControllerUpdate:
+    def test_applies_scales_syncs_model_and_logs_metrics(self):
+        from src.training.engine import _apply_controller_update
+
+        optimizer = MagicMock()
+        scheduler = MagicMock()
+        scheduler.get_last_lr.return_value = [5e-4]
+        scheduler.base_lrs = [1e-3]  # cosine_factor = 5e-4 / 1e-3 = 0.5
+
+        model = MagicMock()
+
+        lr_controller = MagicMock()
+        lr_controller.update.return_value = {
+            "lr_scales": {"encoder_a": 0.0, "encoder_b": 0.5, "projections": 1.0},
+            "best_q": 1.23,
+        }
+
+        reporting = MagicMock()
+        train_cfg = {"lr": 8e-4}
+        val_metrics = {"avg_val_acc": 0.9}
+        hier_metrics_A = {"hierarchy": 0.8, "dist_corr": 0.7, "Q": 1.5}
+        hier_metrics_B = {"hierarchy": 0.75}
+
+        with patch(
+            "src.training.engine.get_optimizer_grad_stats",
+            return_value={"grad_norm_estimate": 0.1},
+        ), patch("src.training.engine.update_optimizer_lr_scales") as mock_update_scales:
+            _apply_controller_update(
+                lr_controller, optimizer, scheduler, model, reporting,
+                train_cfg, epoch=10, val_metrics=val_metrics,
+                hier_metrics_A=hier_metrics_A, hier_metrics_B=hier_metrics_B,
+            )
+
+        # base_lr must come from train_cfg["lr"] * cosine_factor — NOT from
+        # scheduler.base_lrs[0], which is already component-scaled for the
+        # first param group and would silently corrupt the LR-scale math.
+        mock_update_scales.assert_called_once()
+        call_args = mock_update_scales.call_args[0]
+        assert call_args[0] is optimizer
+        assert call_args[1] == pytest.approx(8e-4 * 0.5)
+        assert call_args[2] == lr_controller.update.return_value["lr_scales"]
+
+        model.set_encoder_a_trainable.assert_called_once_with(False)
+        model.set_encoder_b_trainable.assert_called_once_with(True)
+        model.set_projections_trainable.assert_called_once_with(True)
+
+        reporting.log_metrics.assert_called_once()
+        logged_metrics, epoch_arg = reporting.log_metrics.call_args[0]
+        assert epoch_arg == 10
+        assert logged_metrics["best_Q"] == 1.23
+        assert logged_metrics["encoder_b_lr_scale"] == 0.5
+        assert reporting.log_metrics.call_args[1]["prefix"] == "LRController"

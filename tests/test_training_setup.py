@@ -36,10 +36,12 @@ from src.config.statenet_config import StateNetConfig
 from src.core import TERNARY, get_valuation_fn
 from src.losses.lagrangian import LagrangianDualState
 from src.models import MetricBasedLR, TernaryVAEV6Controllable
+from src.training.metrics import GrokkingDetector
 from src.training.setup import (
     _cosine_warmup_restarts_factor,
     setup_controller,
     setup_dataloaders,
+    setup_grokking_detector,
     setup_lagrangian,
     setup_losses,
     setup_optimizer,
@@ -260,6 +262,30 @@ class TestSetupLagrangian:
         assert dual_state.warmup_epochs == 5
         assert dual_state.max_lambda == pytest.approx(2.0)
         assert dual_state.n_levels == 7
+
+
+# ---------------------------------------------------------------------------
+# setup_grokking_detector
+# ---------------------------------------------------------------------------
+
+class TestSetupGrokkingDetector:
+    def test_missing_config_returns_none(self):
+        assert setup_grokking_detector({}) is None
+
+    def test_disabled_returns_none(self):
+        cfg = {"training": {"grokking_detection": {"enabled": False}}}
+        assert setup_grokking_detector(cfg) is None
+
+    def test_enabled_returns_configured_detector(self):
+        cfg = {"training": {"grokking_detection": {
+            "enabled": True, "monitor_window": 15,
+            "plateau_threshold": 5e-4, "accuracy_jump_threshold": 0.05,
+        }}}
+        detector = setup_grokking_detector(cfg)
+        assert isinstance(detector, GrokkingDetector)
+        assert detector.window == 15
+        assert detector.slope_eps == pytest.approx(5e-4)
+        assert detector.val_lift_min == pytest.approx(0.05)
 
 
 # ---------------------------------------------------------------------------

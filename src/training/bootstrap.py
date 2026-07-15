@@ -97,7 +97,7 @@ class DataAuditor:
             # Generate all operations (uses cached LUT from TERNARY singleton)
             all_ops = TERNARY.all_ternary()
             all_indices = torch.arange(len(all_ops), dtype=torch.long)
-        
+
         n = len(all_ops)
 
         # Deterministic split
@@ -186,7 +186,16 @@ class ModelAuditor:
         encoder_b_trainable = initial_cfg.get("encoder_b_trainable", True)
         projections_trainable = initial_cfg.get("projections_trainable", True)
 
-        # Instantiate model
+        # Instantiate model.
+        # NOTE: the fallbacks for projection_layers/projection_dropout/factored
+        # below (2, 0.1, True) intentionally differ from TernaryVAEV6.__init__'s
+        # own bare defaults (1, 0.0, False) -- they reflect the "modern" config
+        # used by every V10+ preset (see e.g. presets/5.12.4.yaml's "Legacy
+        # preset: keep non-factored latent when schema defaults change"), while
+        # the class's bare defaults are pre-V10 and still relied on directly by
+        # tests/test_gradient_flow.py. Every real preset sets these 3 keys
+        # explicitly, so the divergence is inert in practice -- left as-is
+        # rather than risk changing behavior for either side silently.
         model = TernaryVAEV6Controllable(
             latent_dim=model_cfg.get("latent_dim", 16),
             hidden_dim=model_cfg.get("hidden_dim", 64),
@@ -288,8 +297,9 @@ class ModelAuditor:
                 if p.requires_grad:
                     total_params += 1
                     if p.grad is not None:
-                        total_norm += p.grad.norm(2).item()
-                        if p.grad.norm(2).item() == 0:
+                        grad_norm = p.grad.norm(2).item()
+                        total_norm += grad_norm
+                        if grad_norm == 0:
                             dead_params += 1
                     else:
                         dead_params += 1

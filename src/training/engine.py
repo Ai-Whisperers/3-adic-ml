@@ -34,7 +34,8 @@ from .metrics import (
     compute_hierarchy_metrics,
     plot_algebraic_consistency,
 )
-from .reporting import ReportingManager, _build_checkpoint_payload
+from .reporting import ReportingManager
+from .setup import DEFAULT_LR
 
 
 _TRACKED_LOSS_KEYS = {
@@ -51,6 +52,107 @@ def _assert_finite_losses(losses: Dict[str, Any], label: str, epoch: int) -> Non
             raise RuntimeError(
                 f"Numerical instability: {label} {name} loss is {val} at epoch {epoch}"
             )
+
+
+def _apply_controller_update(
+    lr_controller: Any,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Any,
+    model: nn.Module,
+    reporting: ReportingManager,
+    train_cfg: Dict[str, Any],
+    epoch: int,
+    val_metrics: Dict[str, Any],
+    hier_metrics_A: Dict[str, Any],
+    hier_metrics_B: Dict[str, Any],
+) -> None:
+    """Update the StateNet LR controller and apply its output.
+
+    Mutates `optimizer` param-group LRs/requires_grad (via
+    update_optimizer_lr_scales) and the model's internal trainable flags in
+    place, and logs controller metrics to `reporting`.
+    """
+    grad_stats = get_optimizer_grad_stats(optimizer, "projections")
+    controller_grad_norm = grad_stats.get("grad_norm_estimate", 0.0)
+
+    metrics = TrainingMetrics(
+        epoch=epoch,
+        coverage=val_metrics["avg_val_acc"],
+        hierarchy_a=hier_metrics_A["hierarchy"],
+        hierarchy_b=hier_metrics_B["hierarchy"],
+        dist_corr_a=hier_metrics_A["dist_corr"],
+        q_value=hier_metrics_A["Q"],
+        grad_norm_projections=controller_grad_norm,
+        hierarchy_a_collapsed=bool(hier_metrics_A.get("hierarchy_collapsed", False)),
+        hierarchy_b_collapsed=bool(hier_metrics_B.get("hierarchy_collapsed", False)),
+    )
+    controller_state = lr_controller.update(metrics)
+
+    # Apply new scales — also syncs requires_grad for each param group
+    cosine_factor = scheduler.get_last_lr()[0] / scheduler.base_lrs[0]
+    current_base_lr = train_cfg.get("lr", DEFAULT_LR) * cosine_factor
+    new_scales = controller_state["lr_scales"]
+    update_optimizer_lr_scales(optimizer, current_base_lr, new_scales)
+
+    # Keep model's internal _trainable state consistent with LR scales.
+    # requires_grad is already synced by update_optimizer_lr_scales above;
+    # these calls only update the model's _trainable flag (used by
+    # is_trainable / get_trainable_params for introspection).
+    model.set_encoder_a_trainable(new_scales.get('encoder_a', 0.0) > 0)
+    model.set_encoder_b_trainable(new_scales.get('encoder_b', 0.0) > 0)
+    model.set_projections_trainable(new_scales.get('projections', 0.0) > 0)
+
+    reporting.log_metrics({
+        "encoder_a_lr_scale": new_scales.get("encoder_a", 0),
+        "encoder_b_lr_scale": new_scales.get("encoder_b", 0),
+        "projections_lr_scale": new_scales.get("projections", 0),
+        "best_Q": controller_state.get("best_q", 0),
+    }, epoch, prefix="LRController")
+
+
+def _build_epoch_log_dict(
+    train_metrics: Dict[str, Any],
+    val_metrics: Dict[str, Any],
+    hier_metrics_A: Dict[str, Any],
+    hier_metrics_B: Dict[str, Any],
+    loss_fn: nn.Module,
+) -> Dict[str, float]:
+    """Assemble the flat metrics dict logged to TensorBoard once per eval epoch."""
+    log_dict: Dict[str, float] = {
+        "Accuracy/train": train_metrics["avg_train_acc"],
+        "Accuracy/val": val_metrics["avg_val_acc"],
+        "Loss/train": train_metrics["avg_train_loss"],
+        "Coverage": val_metrics["avg_val_coverage"],
+        "Hierarchy/corr_VAE_A": hier_metrics_A["hierarchy"],
+        "Hierarchy/corr_VAE_B": hier_metrics_B["hierarchy"],
+        "Hierarchy/Q_VAE_A": hier_metrics_A["Q"],
+        "Hierarchy/Q_VAE_B": hier_metrics_B["Q"],
+        "Hierarchy/dist_corr": hier_metrics_A["dist_corr"],
+        "Radius/mean_VAE_A": hier_metrics_A["mean_radius"],
+        "Radius/mean_VAE_B": hier_metrics_B["mean_radius"],
+    }
+
+    # Tracked per-loss metrics (contrastive, surrogate, algebraic coherence),
+    # derived from _TRACKED_LOSS_KEYS so every loss tracked in train_epoch is
+    # logged here without hand-listing each name.
+    for short_name in _TRACKED_LOSS_KEYS.values():
+        for vae in ("A", "B"):
+            key = f"avg_train_{short_name}_{vae}"
+            if key in train_metrics:
+                log_dict[f"Loss/train_{short_name}_{vae}"] = train_metrics[key]
+
+    log_dict["Loss/biological_losses_active"] = (
+        1.0 if getattr(loss_fn, "biological_losses_active", True) else 0.0
+    )
+
+    for v, r_val in hier_metrics_A.get("level_radii", {}).items():
+        if not np.isnan(r_val):
+            log_dict[f"Radius/level_v{v}"] = r_val
+
+    for name, val in val_metrics.get("alg_metrics", {}).items():
+        log_dict[f"Algebraic/{name}"] = val
+
+    return log_dict
 
 
 def train_model(
@@ -97,7 +199,7 @@ def train_model(
 
     # Common args shared by every checkpoint save site below; only epoch/extra vary.
     build_checkpoint = partial(
-        _build_checkpoint_payload,
+        reporting.build_checkpoint_payload,
         model=model, optimizer=optimizer, scheduler=scheduler,
         lr_controller=lr_controller, dual_state=dual_state,
         loss_cfg=loss_cfg, loss_fn=loss_fn, loss_fn_b=loss_fn_b,
@@ -134,7 +236,7 @@ def train_model(
         # track constraint violations without waiting for eval windows.
         if dual_state and train_metrics.get("dual_violation_count", 0) > 0:
             # dual_violation_acc is already the per-epoch mean (train_epoch divides
-            # by n_batches once, line ~416) — do not divide again here.
+            # by n_batches once) — do not divide again here.
             dual_state.update(train_metrics["dual_violation_acc"])
             current_dual_weights = dual_state.get_dual_weights()
 
@@ -160,43 +262,10 @@ def train_model(
 
             # Controller update
             if lr_controller:
-                grad_stats = get_optimizer_grad_stats(optimizer, "projections")
-                controller_grad_norm = grad_stats.get("grad_norm_estimate", 0.0)
-
-                metrics = TrainingMetrics(
-                    epoch=epoch,
-                    coverage=val_metrics["avg_val_acc"],
-                    hierarchy_a=hier_metrics_A["hierarchy"],
-                    hierarchy_b=hier_metrics_B["hierarchy"],
-                    dist_corr_a=hier_metrics_A["dist_corr"],
-                    q_value=hier_metrics_A["Q"],
-                    grad_norm_projections=controller_grad_norm,
-                    hierarchy_a_collapsed=bool(hier_metrics_A.get("hierarchy_collapsed", False)),
-                    hierarchy_b_collapsed=bool(hier_metrics_B.get("hierarchy_collapsed", False)),
+                _apply_controller_update(
+                    lr_controller, optimizer, scheduler, model, reporting,
+                    train_cfg, epoch, val_metrics, hier_metrics_A, hier_metrics_B,
                 )
-                controller_state = lr_controller.update(metrics)
-
-                # Apply new scales — also syncs requires_grad for each param group
-                cosine_factor = scheduler.get_last_lr()[0] / scheduler.base_lrs[0]
-                current_base_lr = train_cfg.get("lr", 1e-3) * cosine_factor
-                new_scales = controller_state["lr_scales"]
-                update_optimizer_lr_scales(optimizer, current_base_lr, new_scales)
-
-                # Keep model's internal _trainable state consistent with LR scales.
-                # requires_grad is already synced by update_optimizer_lr_scales above;
-                # these calls only update the model's _trainable flag (used by
-                # is_trainable / get_trainable_params for introspection).
-                model.set_encoder_a_trainable(new_scales.get('encoder_a', 0.0) > 0)
-                model.set_encoder_b_trainable(new_scales.get('encoder_b', 0.0) > 0)
-                model.set_projections_trainable(new_scales.get('projections', 0.0) > 0)
-
-                # Log controller metrics
-                reporting.log_metrics({
-                    "encoder_a_lr_scale": new_scales.get("encoder_a", 0),
-                    "encoder_b_lr_scale": new_scales.get("encoder_b", 0),
-                    "projections_lr_scale": new_scales.get("projections", 0),
-                    "best_Q": controller_state.get("best_q", 0),
-                }, epoch, prefix="LRController")
 
             # Grokking detection
             if grokking_detector:
@@ -208,42 +277,7 @@ def train_model(
                     print(f"  [GROKKING] Event detected at epoch {epoch}!")
 
             # Log everything to TensorBoard
-            log_dict = {
-                "Accuracy/train": train_metrics["avg_train_acc"],
-                "Accuracy/val": val_metrics["avg_val_acc"],
-                "Loss/train": train_metrics["avg_train_loss"],
-                "Coverage": val_metrics["avg_val_coverage"],
-                "Hierarchy/corr_VAE_A": hier_metrics_A["hierarchy"],
-                "Hierarchy/corr_VAE_B": hier_metrics_B["hierarchy"],
-                "Hierarchy/Q_VAE_A": hier_metrics_A["Q"],
-                "Hierarchy/Q_VAE_B": hier_metrics_B["Q"],
-                "Hierarchy/dist_corr": hier_metrics_A["dist_corr"],
-                "Radius/mean_VAE_A": hier_metrics_A["mean_radius"],
-                "Radius/mean_VAE_B": hier_metrics_B["mean_radius"],
-            }
-
-            # Add new loss metrics to log_dict if available
-            if "avg_train_contrastive_A" in train_metrics:
-                log_dict["Loss/train_contrastive_A"] = train_metrics["avg_train_contrastive_A"]
-            if "avg_train_contrastive_B" in train_metrics:
-                log_dict["Loss/train_contrastive_B"] = train_metrics["avg_train_contrastive_B"]
-            if "avg_train_surrogate_A" in train_metrics:
-                log_dict["Loss/train_surrogate_A"] = train_metrics["avg_train_surrogate_A"]
-            if "avg_train_surrogate_B" in train_metrics:
-                log_dict["Loss/train_surrogate_B"] = train_metrics["avg_train_surrogate_B"]
-            
-            # Log biological losses active status
-            log_dict["Loss/biological_losses_active"] = 1.0 if getattr(loss_fn, "biological_losses_active", True) else 0.0
-
-            # Add per-level radii
-            for v, r_val in hier_metrics_A.get("level_radii", {}).items():
-                if not np.isnan(r_val):
-                    log_dict[f"Radius/level_v{v}"] = r_val
-
-            # Add algebraic metrics
-            for name, val in val_metrics.get("alg_metrics", {}).items():
-                log_dict[f"Algebraic/{name}"] = val
-
+            log_dict = _build_epoch_log_dict(train_metrics, val_metrics, hier_metrics_A, hier_metrics_B, loss_fn)
             reporting.log_metrics(log_dict, epoch)
 
             # Algebraic Consistency Figure
@@ -455,34 +489,30 @@ def validate_epoch(
     hier_A = compute_hierarchy_metrics(z_A_cat, idx_cat, curr_c, seed=42+epoch, valuation_fn=valuation_fn)
     hier_B = compute_hierarchy_metrics(z_B_cat, idx_cat, curr_c, seed=1042+epoch, valuation_fn=valuation_fn)
 
-    # Compute algebraic metrics if loss_fn is provided
-    alg_metrics = {}
+    # Compute algebraic metrics if loss_fn is provided. Sample a subset to
+    # avoid OOM/slow computation on the full validation set.
+    alg_metrics: Dict[str, Any] = {}
     if loss_fn is not None and mu_A_cat is not None:
-        # We sample a subset for algebraic metrics to avoid OOM or slow computation
         n_alg = min(mu_A_cat.size(0), 1024)
         perm = torch.randperm(mu_A_cat.size(0), device=device)[:n_alg]
         mu_sub = mu_A_cat[perm]
         idx_sub = idx_cat[perm]
-        
-        # We can call individual algebraic losses directly or through CombinedLoss if it exposed them
-        # CombinedLoss doesn't expose them directly in a clean way for evaluation without targets
-        # But we can call its forward and just look at the metrics dict.
-        # However, forward expects targets and logits.
-        
-        # Alternatively, we can use the sub-modules directly if they are available
-        if hasattr(loss_fn, 'algebraic_addition_loss') and loss_fn.algebraic_addition_loss:
-            _, m = loss_fn.algebraic_addition_loss(mu_sub, idx_sub, model, epoch)
-            alg_metrics.update(m)
-        if hasattr(loss_fn, 'algebraic_multiplication_loss') and loss_fn.algebraic_multiplication_loss:
-            _, m = loss_fn.algebraic_multiplication_loss(mu_sub, idx_sub, model, epoch)
-            alg_metrics.update(m)
-        if hasattr(loss_fn, 'algebraic_distributive_loss') and loss_fn.algebraic_distributive_loss:
-            _, m = loss_fn.algebraic_distributive_loss(mu_sub, idx_sub, model, epoch)
-            alg_metrics.update(m)
-        if hasattr(loss_fn, 'algebraic_coherence_loss') and loss_fn.algebraic_coherence_loss:
+
+        for attr_name in (
+            "algebraic_addition_loss",
+            "algebraic_multiplication_loss",
+            "algebraic_distributive_loss",
+        ):
+            sub_loss = getattr(loss_fn, attr_name, None)
+            if sub_loss:
+                _, m = sub_loss(mu_sub, idx_sub, model, epoch)
+                alg_metrics.update(m)
+
+        coherence_loss = getattr(loss_fn, "algebraic_coherence_loss", None)
+        if coherence_loss:
             z_sub = z_A_cat[perm]
             r_sub = z_sub.norm(dim=-1)
-            _, m = loss_fn.algebraic_coherence_loss(z_sub, r_sub, idx_sub, epoch, model=model)
+            _, m = coherence_loss(z_sub, r_sub, idx_sub, epoch, model=model)
             alg_metrics.update(m)
 
     return {

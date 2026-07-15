@@ -21,6 +21,14 @@ from ..geometry import get_riemannian_optimizer
 from ..losses import CombinedLoss
 from ..losses.lagrangian import LagrangianDualState
 from ..models import MetricBasedLR
+from .metrics import GrokkingDetector
+
+# Single source of truth for the optimizer base LR default. engine.py needs
+# the same value (to recompute the pre-component-scaling base LR for the
+# controller) — importing this constant keeps the two in sync instead of
+# duplicating the literal, which drifted out of sync in the past.
+DEFAULT_LR = 8e-4
+DEFAULT_WEIGHT_DECAY = 1e-5
 
 
 def setup_dataloaders(
@@ -118,8 +126,8 @@ def setup_optimizer(
     """Setup Riemannian or standard optimizer."""
     train_cfg = config.get("training") or {}
     riemannian_cfg = config.get("riemannian") or {}
-    base_lr = train_cfg.get("lr", 8e-4)
-    weight_decay = train_cfg.get("weight_decay", 1e-5)
+    base_lr = train_cfg.get("lr", DEFAULT_LR)
+    weight_decay = train_cfg.get("weight_decay", DEFAULT_WEIGHT_DECAY)
 
     param_groups = model.get_param_groups(base_lr)
     if loss_params:
@@ -247,3 +255,17 @@ def setup_lagrangian(
     if lagrangian_cfg.get('enabled', False):
         return LagrangianDualState.from_config(lagrangian_cfg)
     return None
+
+
+def setup_grokking_detector(
+    config: Dict[str, Any],
+) -> Optional[GrokkingDetector]:
+    """Construct the grokking detector from `training.grokking_detection`, if enabled."""
+    grokking_cfg = (config.get("training") or {}).get("grokking_detection", {})
+    if not grokking_cfg.get("enabled", False):
+        return None
+    return GrokkingDetector(
+        window=grokking_cfg.get("monitor_window", 20),
+        slope_eps=grokking_cfg.get("plateau_threshold", 1e-4),
+        val_lift_min=grokking_cfg.get("accuracy_jump_threshold", 0.02),
+    )

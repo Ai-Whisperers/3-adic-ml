@@ -15,69 +15,8 @@ import torch.nn as nn
 from ..utils import TensorBoardLogger
 
 
-def _build_checkpoint_payload(
-    epoch: int,
-    model: nn.Module,
-    optimizer: torch.optim.Optimizer,
-    scheduler: Any,
-    lr_controller: Any = None,
-    dual_state: Any = None,
-    loss_cfg: Optional[Dict[str, Any]] = None,
-    loss_fn: Optional[nn.Module] = None,
-    loss_fn_b: Optional[nn.Module] = None,
-    grokking_detector: Any = None,
-    extra: Optional[Mapping[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Build a checkpoint payload dict with all resumable state.
-
-    Centralises the checkpoint construction that was previously duplicated
-    at best-Q, periodic, and final saving sites.
-
-    Args:
-        epoch: Current epoch number.
-        model: The VAE model.
-        optimizer: Optimizer with state dict.
-        scheduler: LR scheduler with state dict.
-        lr_controller: Optional MetricBasedLR controller.
-        dual_state: Optional LagrangianDualState.
-        loss_cfg: Optional loss configuration dict.
-        loss_fn: Optional CombinedLoss instance (for VAE-A).
-        loss_fn_b: Optional CombinedLoss instance (for VAE-B).
-        grokking_detector: Optional GrokkingDetector instance.
-        extra: Optional dict of extra metrics/metadata.
-
-    Returns:
-        Checkpoint payload dictionary.
-    """
-    payload = {
-        "epoch": epoch,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "scheduler_state_dict": scheduler.state_dict(),
-    }
-    if extra:
-        payload.update(extra)
-    if lr_controller:
-        payload["lr_controller_state"] = lr_controller.state_dict()
-    if dual_state:
-        payload["lagrangian_state"] = dual_state.state_dict()
-    if loss_cfg:
-        payload["loss_config"] = loss_cfg
-    if loss_fn and hasattr(loss_fn, "state_dict"):
-        payload["loss_fn_state_dict"] = loss_fn.state_dict()
-    if loss_fn_b and hasattr(loss_fn_b, "state_dict"):
-        payload["loss_fn_b_state_dict"] = loss_fn_b.state_dict()
-    if grokking_detector:
-        payload["grokking_state"] = grokking_detector.state_dict()
-        # Also include events summary for easy parsing without full load
-        payload["grokking_events"] = [
-            {"epoch": e.epoch, "lift": e.val_lift} for e in grokking_detector.events
-        ]
-    return payload
-
-
 class ReportingManager:
-    """Manages TensorBoard, console logging, and result persistence."""
+    """Manages TensorBoard logging, checkpoint payloads, and result persistence."""
 
     def __init__(
         self,
@@ -91,11 +30,72 @@ class ReportingManager:
         self.results_path = log_dir / "results.json"
 
     def log_metrics(self, metrics: Dict[str, float], step: int, prefix: str = "") -> None:
-        """Log metrics to TensorBoard and console."""
+        """Log metrics to TensorBoard (no-op if no logger was configured)."""
         if self.tb_logger and self.tb_logger.is_available:
             for name, val in metrics.items():
                 tag = f"{prefix}/{name}" if prefix else name
                 self.tb_logger.log_scalar(tag, val, step)
+
+    def build_checkpoint_payload(
+        self,
+        epoch: int,
+        model: nn.Module,
+        optimizer: torch.optim.Optimizer,
+        scheduler: Any,
+        lr_controller: Any = None,
+        dual_state: Any = None,
+        loss_cfg: Optional[Dict[str, Any]] = None,
+        loss_fn: Optional[nn.Module] = None,
+        loss_fn_b: Optional[nn.Module] = None,
+        grokking_detector: Any = None,
+        extra: Optional[Mapping[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Build a checkpoint payload dict with all resumable state.
+
+        Centralises the checkpoint construction that was previously duplicated
+        at best-Q, periodic, and final saving sites.
+
+        Args:
+            epoch: Current epoch number.
+            model: The VAE model.
+            optimizer: Optimizer with state dict.
+            scheduler: LR scheduler with state dict.
+            lr_controller: Optional MetricBasedLR controller.
+            dual_state: Optional LagrangianDualState.
+            loss_cfg: Optional loss configuration dict.
+            loss_fn: Optional CombinedLoss instance (for VAE-A).
+            loss_fn_b: Optional CombinedLoss instance (for VAE-B).
+            grokking_detector: Optional GrokkingDetector instance.
+            extra: Optional dict of extra metrics/metadata.
+
+        Returns:
+            Checkpoint payload dictionary.
+        """
+        payload = {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+        }
+        if extra:
+            payload.update(extra)
+        if lr_controller:
+            payload["lr_controller_state"] = lr_controller.state_dict()
+        if dual_state:
+            payload["lagrangian_state"] = dual_state.state_dict()
+        if loss_cfg:
+            payload["loss_config"] = loss_cfg
+        if loss_fn and hasattr(loss_fn, "state_dict"):
+            payload["loss_fn_state_dict"] = loss_fn.state_dict()
+        if loss_fn_b and hasattr(loss_fn_b, "state_dict"):
+            payload["loss_fn_b_state_dict"] = loss_fn_b.state_dict()
+        if grokking_detector:
+            payload["grokking_state"] = grokking_detector.state_dict()
+            # Also include events summary for easy parsing without full load
+            payload["grokking_events"] = [
+                {"epoch": e.epoch, "lift": e.val_lift} for e in grokking_detector.events
+            ]
+        return payload
 
     def save_results(self, results: Mapping[str, Any]) -> None:
         """Persist results to JSON."""

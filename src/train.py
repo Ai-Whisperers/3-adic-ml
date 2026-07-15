@@ -25,11 +25,11 @@ import yaml
 from src.config.schema import normalize_config
 from src.training.bootstrap import DataAuditor, ModelAuditor, get_timestamp, set_determinism
 from src.training.engine import train_model
-from src.training.metrics import GrokkingDetector
 from src.training.reporting import ReportingManager
 from src.training.setup import (
     setup_controller,
     setup_dataloaders,
+    setup_grokking_detector,
     setup_lagrangian,
     setup_losses,
     setup_optimizer,
@@ -157,14 +157,8 @@ def main():
     atexit.register(tb_logger.close)
 
     # 9. Optional grokking detection
-    grokking_cfg = config.get("training", {}).get("grokking_detection", {})
-    grokking_detector = None
-    if grokking_cfg.get("enabled", False):
-        grokking_detector = GrokkingDetector(
-            window=grokking_cfg.get("monitor_window", 20),
-            slope_eps=grokking_cfg.get("plateau_threshold", 1e-4),
-            val_lift_min=grokking_cfg.get("accuracy_jump_threshold", 0.02),
-        )
+    grokking_detector = setup_grokking_detector(config)
+    if grokking_detector:
         print(f"  [OK] Grokking detector enabled (window={grokking_detector.window})")
 
     # 10. Training Execution

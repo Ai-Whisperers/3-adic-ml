@@ -6,21 +6,15 @@
 """Tests for src/training/metrics.py.
 
 Written incrementally, part by part, in the order the file's functions
-appear. See conversation history for the per-part analysis notes; the short
-version:
+appear. See conversation history for the per-part analysis notes.
 
-  - compute_hyperbolic_coverage is dead code (no caller anywhere in the
-    codebase) and is intentionally NOT covered here.
-
-  - compute_hierarchy_metrics has an inconsistent return-dict contract: the
-    n<2 early-exit path returns only 5 keys, while the normal path returns
-    13 (including "mean_radius"). src/training/engine.py reads
-    hier_metrics_A["mean_radius"] with direct bracket access (not .get()),
-    so a validation split with 0 or 1 samples would raise KeyError and
-    crash training. This is a real, currently-unfixed latent bug -- flagged
-    to and confirmed with the user, who asked to document it with a test
-    for now rather than change production code. See
-    TestComputeHierarchyMetrics.test_early_exit_dict_is_missing_keys_the_full_path_provides.
+Historical note: compute_hyperbolic_coverage was dead code (no caller
+anywhere in the codebase) and has since been removed. compute_hierarchy_metrics
+used to have an inconsistent return-dict contract (n<2 early-exit returned only
+5 keys vs. 12 on the normal path, missing "mean_radius" which
+src/training/engine.py reads via direct bracket access) -- fixed so both paths
+return the same key set; see
+TestComputeHierarchyMetrics.test_early_exit_dict_has_same_keys_as_full_path.
 """
 
 from __future__ import annotations
@@ -341,15 +335,12 @@ class TestComputeHierarchyMetrics:
         assert m_a["dist_corr"] == m_b["dist_corr"]
         assert m_a["dist_corr"] != m_c["dist_corr"]
 
-    def test_early_exit_dict_is_missing_keys_the_full_path_provides(self):
-        """KNOWN GAP (not fixed, documented on purpose -- see module
-        docstring): the n<2 early-exit path returns only 5 keys, while the
-        normal path returns 13, including 'mean_radius'.
-        src/training/engine.py reads hier_metrics_A["mean_radius"] with
-        direct bracket access (not .get()), so a validation split with 0 or
-        1 samples would raise KeyError and crash training. This test
-        documents the current (inconsistent) contract so a future fix is a
-        deliberate, visible change rather than an accidental one.
+    def test_early_exit_dict_has_same_keys_as_full_path(self):
+        """The n<2 early-exit path must return the same key set as the
+        normal path (including 'mean_radius'), since src/training/engine.py
+        reads hier_metrics_A["mean_radius"] via direct bracket access -- a
+        validation split with 0 or 1 samples must degrade gracefully
+        (neutral defaults) instead of raising KeyError and crashing training.
         """
         z_small = torch.randn(1, 8, dtype=torch.float64)
         idx_small = torch.tensor([0])
@@ -359,8 +350,7 @@ class TestComputeHierarchyMetrics:
         idx_full = torch.arange(50)
         full = compute_hierarchy_metrics(z_full, idx_full, curvature=1.0)
 
-        assert set(small.keys()) == {
-            "hierarchy", "dist_corr", "Q", "hierarchy_collapsed", "dist_corr_collapsed",
-        }
-        assert "mean_radius" in full.keys()
-        assert "mean_radius" not in small.keys()
+        assert set(small.keys()) == set(full.keys())
+        assert small["mean_radius"] == 0.0
+        assert small["hierarchy_collapsed"] is True
+        assert small["dist_corr_collapsed"] is True

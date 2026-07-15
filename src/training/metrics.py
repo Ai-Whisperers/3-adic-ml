@@ -19,6 +19,18 @@ from ..models import compute_Q
 from ..utils.scatter_utils import level_scatter_std
 
 
+def _decode_preds(logits: torch.Tensor) -> Optional[torch.Tensor]:
+    """Decode logits to discrete ternary predictions in {-1, 0, 1}.
+
+    Supports (B, 9, 3) and (B, 27) logit layouts; returns None for anything else.
+    """
+    if logits.shape[-1] == 3:
+        return torch.argmax(logits, dim=-1) - 1
+    if logits.shape[-1] == 27:
+        return torch.argmax(logits.view(-1, 9, 3), dim=-1) - 1
+    return None
+
+
 def compute_accuracy(logits: torch.Tensor, targets: torch.Tensor) -> float:
     """Compute reconstruction accuracy.
 
@@ -30,16 +42,10 @@ def compute_accuracy(logits: torch.Tensor, targets: torch.Tensor) -> float:
         Accuracy as fraction [0, 1]
     """
     with torch.no_grad():
-        if logits.shape[-1] == 3:
-            # (B, 9, 3) format
-            preds = torch.argmax(logits, dim=-1) - 1
-            return (preds == targets.long()).float().mean().item()
-        elif logits.shape[-1] == 27:
-            # (B, 27) format
-            logits_3 = logits.view(-1, 9, 3)
-            preds = torch.argmax(logits_3, dim=-1) - 1
-            return (preds == targets.long()).float().mean().item()
-        return 0.0
+        preds = _decode_preds(logits)
+        if preds is None:
+            return 0.0
+        return (preds == targets.long()).float().mean().item()
 
 
 def compute_coverage(logits: torch.Tensor, targets: torch.Tensor) -> float:
@@ -53,32 +59,11 @@ def compute_coverage(logits: torch.Tensor, targets: torch.Tensor) -> float:
         Coverage as fraction of samples with perfect reconstruction
     """
     with torch.no_grad():
-        if logits.shape[-1] == 3:
-            preds = torch.argmax(logits, dim=-1) - 1
-        elif logits.shape[-1] == 27:
-            logits_3 = logits.view(-1, 9, 3)
-            preds = torch.argmax(logits_3, dim=-1) - 1
-        else:
+        preds = _decode_preds(logits)
+        if preds is None:
             return 0.0
-
         correct_per_sample = (preds == targets.long()).float().mean(dim=1)
-        perfect = (correct_per_sample == 1.0).float().mean().item()
-        return perfect
-
-
-def compute_hyperbolic_coverage(z_hyp: torch.Tensor, curvature: float = 1.0) -> float:
-    """Compute hyperbolic coverage via radial entropy/spread."""
-    with torch.no_grad():
-        # Normalize hyperbolic radius [0, inf) -> [0, 1) using 1 - exp(-r)
-        radii_raw = hyperbolic_radius(z_hyp, c=curvature)
-        radii = 1.0 - torch.exp(-radii_raw)  # Maps [0, inf) -> [0, 1)
-        radii = radii.clamp(min=0.001, max=0.999)
-        hist = torch.histc(radii, bins=10, min=0.0, max=1.0)
-        probs = (hist / hist.sum().clamp(min=1)) + 1e-10
-        probs = probs / probs.sum()
-        entropy = -(probs * torch.log(probs)).sum()
-        max_entropy = torch.log(torch.tensor(10, dtype=torch.float64))
-        return (entropy / max_entropy).item()
+        return (correct_per_sample == 1.0).float().mean().item()
 
 
 def compute_tree_coherence(
@@ -204,10 +189,20 @@ def compute_hierarchy_metrics(
     with torch.no_grad():
         n = z_hyp.size(0)
         if n < 2:
+            # Same key set as the full path below (engine.py reads e.g.
+            # "mean_radius" via direct bracket access) so a validation split
+            # with 0-1 samples degrades gracefully instead of raising KeyError.
             return {
                 "hierarchy": 0.0,
                 "dist_corr": 0.0,
                 "Q": 0.0,
+                "mean_radius": 0.0,
+                "std_radius": 0.0,
+                "tree_coherence": 0.0,
+                "level_hierarchy": {},
+                "level_radii": {},
+                "worst_level": 0,
+                "mean_level_hierarchy": 0.0,
                 "hierarchy_collapsed": True,
                 "dist_corr_collapsed": True,
             }
@@ -439,9 +434,7 @@ class GrokkingDetector:
             if self.plateau_start is None:
                 self.plateau_start = epoch
             out["plateau"] = True
-        else:
-            # We don't reset plateau_start immediately to allow for "lift" detection
-            pass
+        # else: plateau_start is intentionally NOT reset here, to allow "lift" detection.
 
         # Grokking potential: train accuracy near 1.0, val accuracy still low/flat
         train_near_one = np.mean(recent_train[-self.sustain_k:]) > 0.98
