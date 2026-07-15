@@ -1,11 +1,8 @@
 from .poincare import (
     ManifoldParameter,
-    ManifoldTensor,
     RiemannianAdam,
     RiemannianSGD,
     clamp_to_max_norm,
-    create_manifold_parameter,
-    create_manifold_tensor,
     exp_map_zero,
     geodesic,
     geodesic_interpolation,
@@ -37,9 +34,6 @@ __all__ = [
     "parallel_transport",
     "geodesic",
     "geodesic_interpolation",
-    "create_manifold_parameter",
-    "create_manifold_tensor",
-    "ManifoldTensor",
     "RiemannianAdam",
     "RiemannianSGD",
 ]

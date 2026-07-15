@@ -18,7 +18,7 @@ Available:     project_to_poincare, mobius_add, parallel_transport, geodesic,
 from typing import Any, Union
 
 import geoopt
-from geoopt import ManifoldParameter, ManifoldTensor
+from geoopt import ManifoldParameter
 from geoopt import PoincareBall as GeooptPoincareBall
 from geoopt.optim import RiemannianAdam, RiemannianSGD
 import torch
@@ -136,18 +136,6 @@ def geodesic_interpolation(x: torch.Tensor, y: torch.Tensor, steps: int = 10, c:
     manifold = get_manifold(c, device=x.device)
     t_values = torch.linspace(0, 1, steps, device=x.device, dtype=x.dtype)
     return torch.stack([manifold.geodesic(t.item(), x, y) for t in t_values])
-
-
-def create_manifold_parameter(data: torch.Tensor, c: Union[float, torch.Tensor] = 1.0, requires_grad: bool = True) -> ManifoldParameter:
-    """Learnable ManifoldParameter on the Poincaré ball (projected on creation)."""
-    manifold = get_manifold(c, device=data.device)
-    return ManifoldParameter(manifold.projx(data), manifold=manifold, requires_grad=requires_grad)
-
-
-def create_manifold_tensor(data: torch.Tensor, c: Union[float, torch.Tensor] = 1.0) -> ManifoldTensor:
-    """Non-learnable ManifoldTensor on the Poincaré ball (projected on creation)."""
-    manifold = get_manifold(c, device=data.device)
-    return ManifoldTensor(manifold.projx(data), manifold=manifold)
 
 
 def get_riemannian_optimizer(
