@@ -124,7 +124,7 @@ class RadialHierarchyLoss(HierarchyLossBase):
             "radius_max": actual_radius.max().item(),
             "radius_range": radius_range.item(),
             "primary_loss": primary_loss.item(),
-            "margin_loss": margin_loss.item() if isinstance(margin_loss, torch.Tensor) else margin_loss,
+            "margin_loss": margin_loss.item(),
         }
         return total_loss, metrics
 
@@ -283,6 +283,10 @@ class RichHierarchyLoss(RichHierarchyLossBase):
         present_mask = level_has_data(valuations, dim_size=dim_size)
         means_all = level_scatter_mean(radii, valuations, dim_size=dim_size)
 
+        # Population variance computed by hand rather than via level_scatter_std:
+        # that helper is explicitly documented as unsafe for differentiable loss
+        # terms (NaN gradient at std=0 on its torch_scatter fast path), and
+        # variance_loss below is a live loss term, not a diagnostic.
         deviations = radii - means_all[valuations]
         variance_all = torch.zeros(dim_size, dtype=radii.dtype, device=device)
         counts_all = torch.zeros(dim_size, dtype=radii.dtype, device=device)
