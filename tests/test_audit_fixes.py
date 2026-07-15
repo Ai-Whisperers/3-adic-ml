@@ -309,6 +309,24 @@ class TestCombinedLossRegistryCompleteness:
         assert "algebraic_multiplication" not in enabled
         assert "algebraic_distributive" not in enabled
 
+    def test_hyperbolic_contrastive_appears_in_enabled_list(self) -> None:
+        """Regression: get_enabled_losses() was built from an independent
+        if-chain that never listed hyperbolic_contrastive or
+        surrogate_property at all (not even omitted-by-typo — just never
+        written), unlike the algebraic_* cases above which were at least
+        attempted. Now both share _LOSS_NAME_ATTRS with the "at least one
+        loss enabled" guard in _init_losses(), so they can't drift apart."""
+        from src.losses.combined import CombinedLoss
+        cfg = {"hyperbolic_contrastive": {"enabled": True, "weight": 1.0}}
+        fn = CombinedLoss(cfg)
+        assert "hyperbolic_contrastive" in fn.get_enabled_losses()
+
+    def test_surrogate_property_appears_in_enabled_list(self) -> None:
+        from src.losses.combined import CombinedLoss
+        cfg = {"surrogate_property": {"enabled": True, "weight": 1.0}}
+        fn = CombinedLoss(cfg)
+        assert "surrogate_property" in fn.get_enabled_losses()
+
 
 # ---------------------------------------------------------------------------
 # Quality gate: bootstrap factored default must match schema default

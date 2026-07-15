@@ -455,16 +455,7 @@ class CombinedLoss(nn.Module):
             self.surrogate_phase_start = 0
 
         # Guard: at least one loss must be enabled, or training will be gradient-free
-
-        active = [
-            self.rich_hierarchy, self.radial_loss, self.geodesic_loss,
-            self.rank_loss, self.monotonic_loss, self.kl_loss, self.valuation_prior,
-            self.wlc_loss, self.angular_coherence, self.algebraic_coherence_loss,
-            self.algebraic_addition_loss, self.algebraic_multiplication_loss,
-            self.algebraic_distributive_loss,
-            getattr(self, 'hyperbolic_contrastive', None),
-            getattr(self, 'surrogate_loss', None),
-        ]
+        active = [getattr(self, attr, None) for attr, _ in self._LOSS_NAME_ATTRS]
         if not any(x is not None for x in active):
             raise ValueError(
                 "CombinedLoss: all losses are disabled. "
@@ -495,6 +486,30 @@ class CombinedLoss(nn.Module):
             raise ValueError(
                 f"CombinedLoss: algebraic_coherence.weight is negative ({self.algebraic_coherence_loss.weight})."
             )
+
+    # Single source of truth for "every optional loss attribute CombinedLoss
+    # can hold" -> its reported name. Drives both the "at least one loss
+    # enabled" guard in _init_losses() and get_enabled_losses(); previously
+    # those were two independently-maintained lists that drifted out of sync
+    # (get_enabled_losses() was missing hyperbolic_contrastive and
+    # surrogate_property — see TestCombinedLossRegistryCompleteness).
+    _LOSS_NAME_ATTRS: List[Tuple[str, str]] = [
+        ('rich_hierarchy', 'rich_hierarchy'),
+        ('radial_loss', 'radial'),
+        ('geodesic_loss', 'geodesic'),
+        ('rank_loss', 'rank'),
+        ('monotonic_loss', 'monotonic'),
+        ('kl_loss', 'kl'),
+        ('valuation_prior', 'valuation_prior'),
+        ('wlc_loss', 'within_level_contrastive'),
+        ('angular_coherence', 'angular_coherence'),
+        ('algebraic_coherence_loss', 'algebraic_coherence'),
+        ('algebraic_addition_loss', 'algebraic_addition'),
+        ('algebraic_multiplication_loss', 'algebraic_multiplication'),
+        ('algebraic_distributive_loss', 'algebraic_distributive'),
+        ('hyperbolic_contrastive', 'hyperbolic_contrastive'),
+        ('surrogate_loss', 'surrogate_property'),
+    ]
 
     # Registry driving the learnable-weight bookkeeping methods below.
     # Each entry: (reported_name, log_sigma_attr, enabled_attr, weight_source, reported)
@@ -862,34 +877,7 @@ class CombinedLoss(nn.Module):
 
     def get_enabled_losses(self) -> List[str]:
         """Return list of enabled loss names."""
-        enabled = []
-        if self.rich_hierarchy is not None:
-            enabled.append('rich_hierarchy')
-        if self.radial_loss is not None:
-            enabled.append('radial')
-        if self.geodesic_loss is not None:
-            enabled.append('geodesic')
-        if self.rank_loss is not None:
-            enabled.append('rank')
-        if self.monotonic_loss is not None:
-            enabled.append('monotonic')
-        if self.kl_loss is not None:
-            enabled.append('kl')
-        if self.valuation_prior is not None:
-            enabled.append('valuation_prior')
-        if self.wlc_loss is not None:
-            enabled.append('within_level_contrastive')
-        if self.angular_coherence is not None:
-            enabled.append('angular_coherence')
-        if self.algebraic_coherence_loss is not None:
-            enabled.append('algebraic_coherence')
-        if self.algebraic_addition_loss is not None:
-            enabled.append('algebraic_addition')
-        if self.algebraic_multiplication_loss is not None:
-            enabled.append('algebraic_multiplication')
-        if self.algebraic_distributive_loss is not None:
-            enabled.append('algebraic_distributive')
-        return enabled
+        return [name for attr, name in self._LOSS_NAME_ATTRS if getattr(self, attr, None) is not None]
 
     def get_learned_weights(self) -> Dict[str, float]:
         """Return current effective weights (if using learnable weights).
