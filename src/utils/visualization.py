@@ -236,27 +236,37 @@ def compute_hyperbolic_distance_matrix(
 # Dimensionality reduction
 # ---------------------------------------------------------------------------
 
+def _diagonal_to_large_finite(D: np.ndarray) -> np.ndarray:
+    """Return a copy of D with the diagonal set to a large-but-finite value.
+
+    D's diagonal is 0 (self-distance), which is always the row-wise minimum —
+    so naive argsort/kNN selection would always pick each point as its own
+    nearest neighbour. Pushing the diagonal above every real distance makes
+    self-matches rank last instead. A finite value (not np.inf) is used
+    because some libraries (UMAP) reject inf entries during float32
+    validation. Shared by the UMAP and PaCMAP neighbour-selection steps below.
+    """
+    D_out = D.copy()
+    large_val = float(np.nanmax(D_out[D_out < np.inf])) * 10.0 + 1.0
+    np.fill_diagonal(D_out, large_val)
+    return D_out
+
+
 def _run_umap(D: np.ndarray, n_components: int = 3, n_neighbors: int = 15) -> Optional[np.ndarray]:
     """UMAP on precomputed hyperbolic distance matrix.
 
     Uses metric='precomputed' so UMAP respects Poincaré distances, not
-    Euclidean embedding coordinates.
-
-    Critical: UMAP's fast_knn_indices() does row-wise argsort; with diagonal=0
-    point i is always its own nearest neighbour (D[i,i]=0 is minimum). We set
-    diagonal to np.inf on a copy so UMAP picks genuine neighbours — the original
-    D is unchanged and still correct for ripser/TriMAP.
+    Euclidean embedding coordinates. The original D (with a real zero
+    diagonal) is left unchanged for the other steps (ripser, TriMAP); only
+    the copy passed to UMAP gets its diagonal pushed to a large finite value
+    — see _diagonal_to_large_finite.
 
     Returns (N, n_components) float32 or None if unavailable/fails.
     """
     if not _HAS_UMAP:
         return None
     try:
-        # Copy and push diagonal to a large finite value so self-loops rank last
-        # in UMAP's row-wise argsort (np.inf fails float32 validation in UMAP).
-        D_umap = D.copy()
-        large_val = float(np.nanmax(D_umap[D_umap < np.inf])) * 10.0 + 1.0
-        np.fill_diagonal(D_umap, large_val)
+        D_umap = _diagonal_to_large_finite(D)
         reducer = umap_lib.UMAP(
             n_components=n_components,
             metric="precomputed",
@@ -301,11 +311,8 @@ def _run_pacmap(
         return None
     try:
         k = min(n_neighbors, z_np.shape[0] - 2)
-        # Extract kNN from hyperbolic distance matrix (exclude self: push diagonal
-        # to large finite so self ranks last in argsort — np.inf causes issues)
-        D_no_self = D.copy()
-        large_val = float(np.nanmax(D_no_self)) * 10.0 + 1.0
-        np.fill_diagonal(D_no_self, large_val)
+        # Extract kNN from hyperbolic distance matrix, excluding self.
+        D_no_self = _diagonal_to_large_finite(D)
         knn_idx = np.argsort(D_no_self, axis=1)[:, :k]  # (N, k)
         n = z_np.shape[0]
         rows = np.repeat(np.arange(n), k)
