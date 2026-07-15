@@ -28,7 +28,6 @@ from ..models import (
     get_optimizer_grad_stats,
     update_optimizer_lr_scales,
 )
-from ..utils import HardwareMonitor
 from .metrics import (
     compute_accuracy,
     compute_coverage,
@@ -68,7 +67,6 @@ def train_model(
     lr_controller: Optional[Any] = None,
     grokking_detector: Optional[Any] = None,
     dual_state: Optional[Any] = None,
-    hw_monitor: Optional[HardwareMonitor] = None,
     vis_pipeline: Optional[Any] = None,
     use_amp: bool = False,
     start_epoch: int = 0,
@@ -124,7 +122,7 @@ def train_model(
         train_metrics = train_epoch(
             epoch, model, train_loader, optimizer, loss_fn, loss_fn_b,
             device, scaler, max_grad_norm, use_amp,
-            dual_state, current_dual_weights, hw_monitor, reporting, global_step
+            dual_state, current_dual_weights, reporting, global_step
         )
         global_step += len(train_loader)
 
@@ -314,7 +312,6 @@ def train_epoch(
     use_amp: bool,
     dual_state: Optional[Any],
     current_dual_weights: Optional[Any],
-    hw_monitor: Optional[HardwareMonitor],
     reporting: ReportingManager,
     global_step_start: int,
 ) -> Dict[str, Any]:
@@ -331,6 +328,14 @@ def train_epoch(
         dual_state.step_epoch(epoch)
 
     batch_iter = tqdm(loader, desc=f"Ep {epoch:03d}", leave=False, unit="batch") if TQDM_AVAILABLE else loader
+
+    # Parameter identities are fixed for the duration of the epoch; build once
+    # instead of re-concatenating three lists on every batch.
+    all_params = (
+        list(model.parameters())
+        + list(loss_fn.parameters())
+        + list(loss_fn_b.parameters())
+    )
 
     for batch_ops, batch_idx in batch_iter:
         batch_ops, batch_idx = batch_ops.to(device), batch_idx.to(device)
@@ -360,12 +365,7 @@ def train_epoch(
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
-        # Include learnable loss weight params in clip so they're bounded if enabled.
-        all_params = (
-            list(model.parameters())
-            + list(loss_fn.parameters())
-            + list(loss_fn_b.parameters())
-        )
+        # Includes learnable loss weight params so they're bounded if enabled.
         grad_norm = torch.nn.utils.clip_grad_norm_(all_params, max_grad_norm)
         scaler.step(optimizer)
         scaler.update()

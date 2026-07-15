@@ -45,7 +45,7 @@ class TestNumericalStability:
                 loss_fn=loss_fn, loss_fn_b=loss_fn_b, device=device,
                 scaler=scaler, max_grad_norm=1.0, use_amp=False,
                 dual_state=None, current_dual_weights=None,
-                hw_monitor=None, reporting=MagicMock(), global_step_start=0
+                reporting=MagicMock(), global_step_start=0
             )
 
     def test_inf_sanitizer_catches_vae_b_instability(self):
@@ -72,7 +72,7 @@ class TestNumericalStability:
                 loss_fn=loss_fn, loss_fn_b=loss_fn_b, device=device,
                 scaler=scaler, max_grad_norm=1.0, use_amp=False,
                 dual_state=None, current_dual_weights=None,
-                hw_monitor=None, reporting=MagicMock(), global_step_start=0
+                reporting=MagicMock(), global_step_start=0
             )
 
 

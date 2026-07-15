@@ -35,7 +35,7 @@ from src.training.setup import (
     setup_optimizer,
     setup_scheduler,
 )
-from src.utils import HardwareMonitor, TensorBoardLogger, VisualizationPipeline
+from src.utils import TensorBoardLogger, VisualizationPipeline
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -156,9 +156,7 @@ def main():
     # 8. Late Registration (Ensure cleanup on crash)
     atexit.register(tb_logger.close)
 
-    # 9. Optional monitoring & grokking detection
-    hw_monitor = HardwareMonitor(device)
-
+    # 9. Optional grokking detection
     grokking_cfg = config.get("training", {}).get("grokking_detection", {})
     grokking_detector = None
     if grokking_cfg.get("enabled", False):
@@ -184,7 +182,6 @@ def main():
         config=config,
         lr_controller=lr_controller,
         dual_state=dual_state,
-        hw_monitor=hw_monitor,
         grokking_detector=grokking_detector,
         vis_pipeline=vis_pipeline,
         use_amp=use_amp,

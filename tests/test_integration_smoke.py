@@ -158,7 +158,6 @@ def smoke_results(tmp_path_factory):
         config=cfg,
         lr_controller=None,
         dual_state=None,
-        hw_monitor=None,
         grokking_detector=None,
         vis_pipeline=None,
         use_amp=False,

@@ -78,7 +78,7 @@ class TestTrainEpochViolationAccumulation:
             loss_fn=loss_fn, loss_fn_b=loss_fn_b, device=torch.device("cpu"),
             scaler=scaler, max_grad_norm=1.0, use_amp=False,
             dual_state=None, current_dual_weights=None,
-            hw_monitor=None, reporting=MagicMock(), global_step_start=0,
+            reporting=MagicMock(), global_step_start=0,
         )
 
     def test_violations_averaged_across_batches(self):
@@ -285,7 +285,7 @@ class TestDualStateWiredIntoTrainModel:
             optimizer=optimizer, scheduler=scheduler,
             loss_fn=loss_fn, loss_fn_b=loss_fn_b, device=device,
             reporting=reporting, config=cfg,
-            lr_controller=None, dual_state=spy, hw_monitor=None,
+            lr_controller=None, dual_state=spy,
             grokking_detector=None, vis_pipeline=None, use_amp=False,
         )
 
