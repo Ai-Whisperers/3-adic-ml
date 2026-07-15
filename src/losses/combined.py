@@ -57,10 +57,7 @@ from .hierarchy import (
 )
 from .hyperbolic_kl import HyperbolicKLDivergence
 from .prior import ValuationPriorLoss
-from .radius_defaults import (
-    auto_share_radius_config,
-    compare_radius_configs,
-)
+from .radius_defaults import auto_share_radius_config
 from .rank import GlobalRankLoss
 from .contrastive import HyperbolicContrastiveLoss
 from .surrogate import SurrogatePropertyLoss, SurrogateRegressor
@@ -191,13 +188,13 @@ class CombinedLoss(nn.Module):
             if cfg.get('enabled', False):
                 loss_configs[name] = cfg
 
-        # Auto-share radius hyperparameters across all radial losses
+        # Auto-share radius hyperparameters across all radial losses.
+        # auto_share_radius_config already warns (via warnings.warn) when
+        # multiple blocks specify conflicting radii before unifying them, so
+        # there is nothing left to validate afterward — a post-hoc
+        # compare_radius_configs(radius_configs) call here would compare the
+        # now-identical shared object against itself and could never fire.
         radius_configs = auto_share_radius_config(loss_configs)
-
-        # Validate consistency
-        consistent, msg = compare_radius_configs(radius_configs)
-        if not consistent:
-            print(f"[CombinedLoss] {msg}")
 
         # RichHierarchyLoss (primary unified loss)
         rich_cfg = self.config.get('rich_hierarchy', {})
