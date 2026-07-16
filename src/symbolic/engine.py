@@ -136,12 +136,13 @@ class FiniteTernaryGroupEngine:
             valuations[anchor_pos].tolist(),
             canon[anchor_pos].tolist(),
         ):
+            other_orbit = torch.where(canon != anchor_canon)[0]
             if match_valuation_negatives:
                 candidates = torch.where((valuations == valuation) & (canon != anchor_canon))[0]
+                if len(candidates) == 0:
+                    candidates = other_orbit
             else:
-                candidates = torch.where(canon != anchor_canon)[0]
-            if len(candidates) == 0:
-                candidates = torch.where(canon != anchor_canon)[0]
+                candidates = other_orbit
             if len(candidates) == 0:
                 negatives.append(anchor)
                 continue

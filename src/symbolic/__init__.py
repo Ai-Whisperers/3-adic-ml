@@ -5,6 +5,7 @@ from .subsystem import (
     DisabledSymbolicSubsystem,
     GroupOrbitSymbolicSubsystem,
     SymbolicRuntimeConfig,
+    SymbolicSubsystem,
     build_symbolic_subsystem,
 )
 
@@ -14,6 +15,7 @@ __all__ = [
     "GroupElement",
     "GroupOrbitSymbolicSubsystem",
     "SymbolicRuntimeConfig",
+    "SymbolicSubsystem",
     "TERNARY_GROUP_ENGINE",
     "build_symbolic_subsystem",
 ]

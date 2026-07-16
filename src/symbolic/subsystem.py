@@ -8,11 +8,23 @@ symbolic subsystem.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 
 import torch
 
 from .engine import TERNARY_GROUP_ENGINE
+
+
+class SymbolicSubsystem(Protocol):
+    """Common interface implemented by every symbolic subsystem backend."""
+
+    enabled: bool
+    name: str
+
+    def describe(self) -> str: ...
+    def canonicalize(self, indices: torch.Tensor) -> torch.Tensor: ...
+    def choose_non_identity_partner(self, indices: torch.Tensor, seed: int | None = None) -> torch.Tensor: ...
+    def sample_feedback_pairs(self, indices: torch.Tensor, sample_size: int | None = None) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -104,7 +116,7 @@ def normalize_symbolic_config(config: Mapping[str, Any] | None = None) -> Symbol
     )
 
 
-def build_symbolic_subsystem(config: Mapping[str, Any] | None = None) -> DisabledSymbolicSubsystem | GroupOrbitSymbolicSubsystem:
+def build_symbolic_subsystem(config: Mapping[str, Any] | None = None) -> SymbolicSubsystem:
     """Build an optional symbolic subsystem with a disabled default."""
     normalized = normalize_symbolic_config(config)
     if not normalized.enabled:
