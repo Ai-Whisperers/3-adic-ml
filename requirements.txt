@@ -40,6 +40,10 @@ pillow>=10.0.0     # Image backend for matplotlib
 # Data Analysis
 pandas>=2.0.0
 
+# Phylogeny validation pipeline (docs/plans/PHYLOGENY-VALIDATION-PIPELINE.md):
+# UniProt/NCBI REST API calls in scripts/data/fetch_cytochrome_c.py, fetch_taxonomy.py
+requests>=2.28.0
+
 # Testing
 pytest>=7.3.0
 pytest-cov>=4.1.0

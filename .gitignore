@@ -88,8 +88,17 @@ runs/
 Thumbs.db
 
 # Project specific (Ignore data/ at root level only (not src/data/)
-/data/          
+# Note: /data/* (not /data/) so git still descends into subdirectories --
+# an ignored *directory* can't be selectively un-ignored below, only its contents can.
+/data/*
 local/
+
+# Cytochrome C phylogeny pipeline (Phase 1, docs/plans/PHYLOGENY-VALIDATION-PIPELINE.md):
+# commit only the fetch manifest for provenance auditing; raw sequences/taxonomy/
+# derived tensors are regenerable from it via scripts/data/fetch_cytochrome_c.py.
+!/data/cytochrome_c/
+/data/cytochrome_c/*
+!/data/cytochrome_c/manifest.csv
 src/c/*.o
 src/c/*.so
 src/c/*.pyd
