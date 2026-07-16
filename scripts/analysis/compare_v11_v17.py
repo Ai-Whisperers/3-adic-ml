@@ -1,6 +1,5 @@
 import torch
 import sys
-import os
 import yaml
 from pathlib import Path
 

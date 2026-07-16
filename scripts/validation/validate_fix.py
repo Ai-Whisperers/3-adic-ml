@@ -12,6 +12,11 @@ import torch
 
 from src.models.hyperbolic_projection import HyperbolicProjection
 
+# Deterministic: with an unseeded RNG, test_expmap0_saturation's
+# boundary_ratio < 1.0 assertion coin-flips on a 16-sample batch (all 16
+# landing above the 0.9 threshold by chance is not rare enough to ignore).
+torch.manual_seed(42)
+
 
 def test_tangent_net_output():
     """Test that tangent_net produces non-zero output with init_identity=False"""
@@ -67,9 +72,11 @@ def test_expmap0_saturation():
     # Check effective scale is ~0.1
     assert abs(proj.tangent_scale.item() - 0.1) < 1e-6
 
-    # Test with various input scales
+    # Test with various input scales. Batch of 200 (not 16): the
+    # boundary_ratio < 1.0 assertion below is a population statistic, and at
+    # n=16 it coin-flips on whether every sample happens to land above 0.9.
     for scale_factor in [1.0, 2.0, 3.0, 4.0, 5.0]:
-        z_tangent = torch.randn(16, 16, dtype=torch.float64) * scale_factor
+        z_tangent = torch.randn(200, 16, dtype=torch.float64) * scale_factor
         with torch.no_grad():
             z_hyp = proj(z_tangent, as_manifold=False)
             hyp_norm = torch.norm(z_hyp, dim=-1)

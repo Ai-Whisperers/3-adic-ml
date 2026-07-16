@@ -15,6 +15,7 @@ Output: Markdown table to stdout + optional JSON to --output.
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -182,10 +183,7 @@ def main():
         if row["sig"] == 0:
             continue
         cls_mask = sigs == row["sig"]
-        purity = _knn_purity(z_all, sigs, k=min(args.k, row["n_ops"] - 1))
-        # Only measure purity for this class's ops
         z_cls_only = z_all[cls_mask]
-        sigs_cls_only = sigs[cls_mask]
         # Since all same class, purity within class is always 1; measure purity of
         # the class's kNN among the full population instead (lift over baseline).
         # knn_purity_global: for ops in this class, what fraction of their k-NNs share the same class?
@@ -208,7 +206,8 @@ def main():
     print(f"{'sig':>4} | {'name':<20} | {'n_ops':>6} | {'mean_r':>7} | {'within_sim':>10} | {'knn_purity':>10}")
     print("-" * 72)
     for row in rows:
-        knn = f"{row.get('knn_purity', float('nan')):.4f}" if not (isinstance(row.get('knn_purity'), float) and row.get('knn_purity') != row.get('knn_purity')) else "   nan"
+        knn_purity = row.get("knn_purity", float("nan"))
+        knn = "   nan" if math.isnan(knn_purity) else f"{knn_purity:.4f}"
         print(f"{row['sig']:>4} | {row['name']:<20} | {row['n_ops']:>6} | {row['mean_radius']:>7.4f} | {row['within_cos_sim']:>10.4f} | {knn:>10}")
 
     results = {

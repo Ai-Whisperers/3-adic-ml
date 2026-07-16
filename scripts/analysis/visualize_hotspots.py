@@ -4,13 +4,13 @@ import plotly.graph_objects as go
 from pathlib import Path
 import sys
 import yaml
-import os
 import glob
 
 # Add project root to sys.path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from src.models.vae import TernaryVAEV6Controllable
+from scripts.data.peptide_encoding import encode_peptide_window
 
 def find_latest_run_paths(run_prefix="v19.1_peptide_retrain"):
     base_dir = Path(__file__).resolve().parents[2]
@@ -40,13 +40,10 @@ def get_hotspot_embeddings(model, device):
         "Antihyper(T-CURS1-Hit2)", "Antiox(T-DCS-Hit)", "Antiox(T-DCS-Hit2)"
     ]
     
-    AA_MAP = {'D': -1, 'E': -1, 'N': -1, 'Q': -1, 'K': -1, 'R': -1, 'G': 0, 'S': 0, 'T': 0, 'Y': 0, 'P': 0, 'H': 0, 'V': 1, 'L': 1, 'I': 1, 'M': 1, 'F': 1, 'W': 1, 'C': 1, 'A': 1}
-    
     embs = []
     with torch.no_grad():
         for seq in peptides:
-            seq_padded = seq[:9].ljust(9, 'G')
-            digits = [AA_MAP.get(aa.upper(), 0) for aa in seq_padded]
+            digits = encode_peptide_window(seq)
             x = torch.tensor(digits, dtype=torch.float64).unsqueeze(0).to(device)
             # The model's forward pass handles positional encoding internally
             out = model(x)

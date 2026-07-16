@@ -9,6 +9,7 @@ PROJECT_ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.analysis.test_hierarchical_search import setup_model
+from scripts.data.prepare_codon_data import seq_to_ternary_index
 from src.geometry import poincare_distance
 
 def generate_anomaly():
@@ -50,14 +51,6 @@ def probe_anomaly_detection(checkpoint_path, normal_indices_path, k=5):
         
     # 3. Generate and project anomalies
     anomalies = [generate_anomaly() for _ in range(20)]
-    NUC_MAP = {'A': 0, 'C': 1, 'G': 2, 'T': 2}
-    def seq_to_ternary_index(sequence):
-        digits = [NUC_MAP[nuc] for nuc in sequence]
-        index = 0
-        for i, digit in enumerate(digits):
-            index += digit * (3 ** (8 - i))
-        return index
-
     anomaly_indices = torch.tensor([seq_to_ternary_index(s) for s in anomalies], device=device)
     
     with torch.no_grad():

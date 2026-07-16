@@ -21,6 +21,5 @@ def check_pos_weights(checkpoint_path):
         print("No pos_weights found in state_dict.")
 
 if __name__ == "__main__":
-    import sys
     path = sys.argv[1] if len(sys.argv) > 1 else "runs/v10.1_algebraic_index_20260517_124236/checkpoints/epoch_50.pt"
     check_pos_weights(path)

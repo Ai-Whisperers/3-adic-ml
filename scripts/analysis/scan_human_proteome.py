@@ -9,9 +9,7 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from src.models.vae import TernaryVAEV6Controllable
 from src.core import TERNARY
-
-# AA Mapping (Hydropathy-based)
-AA_MAP = {'D': -1, 'E': -1, 'N': -1, 'Q': -1, 'K': -1, 'R': -1, 'G': 0, 'S': 0, 'T': 0, 'Y': 0, 'P': 0, 'H': 0, 'V': 1, 'L': 1, 'I': 1, 'M': 1, 'F': 1, 'W': 1, 'C': 1, 'A': 1}
+from scripts.data.peptide_encoding import AA_MAP
 
 def encode_window(seq):
     digits = [AA_MAP.get(aa.upper(), 0) for aa in seq]

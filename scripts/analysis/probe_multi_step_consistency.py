@@ -12,7 +12,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.core import TERNARY
 from src.models.vae import TernaryVAEV6Controllable
-from src.utils.checkpoint import load_checkpoint_compat
 
 def probe_multi_step_consistency(checkpoint_path, n_samples=1000):
     print(f"Loading checkpoint: {checkpoint_path}")
@@ -76,9 +75,9 @@ def probe_multi_step_consistency(checkpoint_path, n_samples=1000):
 
     print("")
     print("Results:")
-    print("  Mu-Space MSE (pred vs gt):   " + "{:.6f}".format(mse))
-    print("  Mu-Space Cosine Sim:        " + "{:.6f}".format(cos_sim))
-    print("  Final Digit Accuracy:       " + "{:.4%}".format(acc))
+    print(f"  Mu-Space MSE (pred vs gt):   {mse:.6f}")
+    print(f"  Mu-Space Cosine Sim:        {cos_sim:.6f}")
+    print(f"  Final Digit Accuracy:       {acc:.4%}")
 
 if __name__ == "__main__":
     import argparse

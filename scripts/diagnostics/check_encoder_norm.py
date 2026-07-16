@@ -27,8 +27,10 @@ batch_ternary = TERNARY.to_ternary(batch_indices)  # Shape: (8, 9)
 # Forward pass
 out = model(batch_ternary)
 
-# Latents
-z_hyp = out["z_hyp"]
-z_norm = torch.norm(z_hyp, dim=-1)
+# Pre-projection tangent-space norms (see check_actual_encoder_norms.py for
+# the post-projection Poincaré ball norms).
+z_A_norm = torch.norm(out["z_A_tangent"], dim=-1)
+z_B_norm = torch.norm(out["z_B_tangent"], dim=-1)
 
-print(f"Latent norm: {z_norm.mean().item():.6f} ± {z_norm.std().item():.6f}")
+print(f"Encoder A z_tangent norm: {z_A_norm.mean().item():.4f}")
+print(f"Encoder B z_tangent norm: {z_B_norm.mean().item():.4f}")

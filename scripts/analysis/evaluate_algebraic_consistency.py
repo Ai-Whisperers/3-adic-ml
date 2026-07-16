@@ -11,10 +11,8 @@ import sys
 from pathlib import Path
 
 import torch
-import numpy as np
 
 from src.core import TERNARY
-from src.utils.checkpoint import load_checkpoint_compat
 from src.models.vae import TernaryVAEV6Controllable
 from src.training.metrics import compute_accuracy
 

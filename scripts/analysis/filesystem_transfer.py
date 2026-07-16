@@ -33,7 +33,7 @@ from src.models.vae import TernaryVAEV6
 # C ternary hash bridge
 # ---------------------------------------------------------------------------
 
-_LIB_PATH = Path(__file__).parent.parent / "src" / "c" / "ternary_hash.so"
+_LIB_PATH = Path(__file__).resolve().parents[2] / "src" / "c" / "ternary_hash.so"
 _lib = ctypes.CDLL(str(_LIB_PATH))
 
 _lib.hash_string_to_ternary.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int8)]

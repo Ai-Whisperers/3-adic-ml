@@ -27,18 +27,17 @@ batch_ternary = TERNARY.to_ternary(batch_indices)  # Shape: (16, 9)
 # Forward pass
 out = model(batch_ternary)
 
-# Latents
-z_hyp = out["z_hyp"]
-z_norm = torch.norm(z_hyp, dim=-1)
+# Latents (VAE-A; VAE-B follows the same shape)
+z_norm = torch.norm(out["z_A_hyp"], dim=-1)
 
 print(f"Latent norm: {z_norm.mean().item():.6f} ± {z_norm.std().item():.6f}")
 
 # Change effective tangent_scale to 10.0 (stored as log(10) in log_tangent_scale)
-model.projection.proj_A.log_tangent_scale.data.fill_(math.log(10.0))
-model.projection.proj_B.log_tangent_scale.data.fill_(math.log(10.0))
+model.projections.proj_A.log_tangent_scale.data.fill_(math.log(10.0))
+model.projections.proj_B.log_tangent_scale.data.fill_(math.log(10.0))
 
 # Forward pass again
 out2 = model(batch_ternary)
-z_norm2 = torch.norm(out2["z_hyp"], dim=-1)
+z_norm2 = torch.norm(out2["z_A_hyp"], dim=-1)
 
 print(f"Latent norm (scale=10): {z_norm2.mean().item():.6f} ± {z_norm2.std().item():.6f}")

@@ -9,24 +9,20 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from src.models.vae import TernaryVAEV6Controllable
 from src.core import TERNARY
+from scripts.data.peptide_encoding import encode_peptide_window
 import yaml
 
 def get_hotspot_embeddings(model, device):
     # Load known bioactive peptides
     peptides = ["WTLTPLTPA", "SVAGRAQGM", "CACGGV", "VTYM", "AVLGSSEGV", "ISLSEQQLV"]
-    
-    # Simple hydropathy encoding
-    AA_MAP = {'D': -1, 'E': -1, 'N': -1, 'Q': -1, 'K': -1, 'R': -1, 'G': 0, 'S': 0, 'T': 0, 'Y': 0, 'P': 0, 'H': 0, 'V': 1, 'L': 1, 'I': 1, 'M': 1, 'F': 1, 'W': 1, 'C': 1, 'A': 1}
-    
+
     # Initialize positional weights if model has them
     # Note: Confirmed model does not use pos_weights in current checkpoint
-    
+
     embs = []
     with torch.no_grad():
         for seq in peptides:
-            # Pad or truncate to 9
-            seq_padded = seq[:9].ljust(9, 'G') 
-            digits = [AA_MAP.get(aa.upper(), 0) for aa in seq_padded]
+            digits = encode_peptide_window(seq)
             x = torch.tensor(digits, dtype=torch.float64).unsqueeze(0).to(device)
             # Manually replicate the positional encoding logic that the model expects
             # based on its checkpoint structure (which expects 18 dims)

@@ -13,7 +13,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.core import TERNARY
 from src.models.vae import TernaryVAEV6Controllable
-from src.utils.checkpoint import load_checkpoint_compat
 
 def probe_lsb_accuracy(checkpoint_path):
     print(f"Analyzing LSB accuracy for: {checkpoint_path}")
@@ -58,17 +57,17 @@ def probe_lsb_accuracy(checkpoint_path):
 
     print("Accuracy by digit position (0=LSB, 8=MSB):")
     for i, acc in enumerate(pos_acc):
-        print("  Pos " + str(i) + ": " + "{:.4%}".format(acc))
+        print(f"  Pos {i}: {acc:.4%}")
 
     valuations = TERNARY.valuation(all_indices).cpu().numpy()
-    
+
     print("LSB (Pos 0) Accuracy vs Valuation:")
     lsb_correct = correct[:, 0].float().cpu().numpy()
     for v in range(TERNARY.MAX_VALUATION + 1):
         mask = (valuations == v)
         if mask.any():
             val_acc = lsb_correct[mask].mean()
-            print("  v=" + str(v) + ": " + "{:.4%}".format(val_acc) + " (n=" + str(mask.sum()) + ")")
+            print(f"  v={v}: {val_acc:.4%} (n={mask.sum()})")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

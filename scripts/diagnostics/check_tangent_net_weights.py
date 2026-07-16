@@ -10,7 +10,7 @@ proj = HyperbolicProjection(
     latent_dim=16,
     hidden_dim=64,
     init_identity=False,  # Our fix
-    # tangent_scale defaults to 0.05 now
+    # tangent_scale_init defaults to 0.1
 )
 
 print("Tangent net architecture:")

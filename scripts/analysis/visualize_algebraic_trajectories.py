@@ -13,7 +13,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.core import TERNARY
 from src.models.vae import TernaryVAEV6Controllable
-from src.utils.checkpoint import load_checkpoint_compat
 
 def visualize_trajectories(checkpoint_path):
     print(f"Exporting algebraic trajectories for: {checkpoint_path}")
