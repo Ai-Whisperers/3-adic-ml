@@ -10,3 +10,4 @@ This directory contains design proposals, roadmaps, and feature plans. These doc
 | [GRAPH-TOPOLOGY-VISUALIZATION-PLAN.md](GRAPH-TOPOLOGY-VISUALIZATION-PLAN.md) | Topology visualization pipeline plan |
 | [ALGEBRAIC-VISUALIZATION-ROADMAP.md](ALGEBRAIC-VISUALIZATION-ROADMAP.md) | Algebraic visualization roadmap |
 | [EXTERNAL-VALIDATION-ROADMAP.md](EXTERNAL-VALIDATION-ROADMAP.md) | Open question: does the p-adic/hyperbolic prior help on real (non-synthetic) data vs. baselines? |
+| [PHYLOGENY-VALIDATION-PIPELINE.md](PHYLOGENY-VALIDATION-PIPELINE.md) | Concrete plan: Cytochrome C phylogeny + 3-condition baseline comparison (Euclidean / generic-hyperbolic / p-adic), addressing the roadmap above. Not started. |
