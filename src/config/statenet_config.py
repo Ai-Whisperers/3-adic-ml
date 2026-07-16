@@ -40,7 +40,10 @@ class CoverageThresholds:
     """
     fix_threshold: float = 0.35       # Below this: freeze encoder_A (near random=0.33)
     train_threshold: float = 0.45     # Above this + stalled: unfreeze
-    floor: float = 0.3                # Minimum allowed (annealing limit)
+    # Legacy: annealing floor for fix_threshold under the removed AnnealingConfig
+    # heuristic (see CLAUDE.md "Dead Code Removed"). MetricBasedLR never reads
+    # it. Kept because many preset YAMLs still set it explicitly.
+    floor: float = 0.3
 
     def __post_init__(self) -> None:
         if not (0.0 <= self.fix_threshold < self.train_threshold <= 1.0):
@@ -56,7 +59,10 @@ class HierarchyThresholds:
     """Thresholds for encoder_B (hierarchy-gated) control."""
     plateau_threshold: float = 0.0005  # Improvement below this = plateau
     plateau_patience: int = 10         # Epochs of plateau before freeze
-    patience_ceiling: int = 25         # Max patience (annealing limit)
+    # Legacy: annealing ceiling for plateau_patience under the removed
+    # AnnealingConfig heuristic. MetricBasedLR never reads it. Kept because
+    # many preset YAMLs still set it explicitly.
+    patience_ceiling: int = 25
     stall_patience: int = 5            # For encoder_A hierarchy stall detection
 
 
@@ -65,7 +71,10 @@ class ControllerThresholds:
     """Thresholds for projections (gradient-gated) control."""
     grad_threshold: float = 0.005     # Grad norm below this = stable
     grad_patience: int = 5            # Epochs of low grad before freeze
-    patience_ceiling: int = 20        # Max patience (annealing limit)
+    # Legacy: annealing ceiling for grad_patience under the removed
+    # AnnealingConfig heuristic. MetricBasedLR never reads it. Kept because
+    # many preset YAMLs still set it explicitly.
+    patience_ceiling: int = 20
     spike_multiplier: float = 2.0     # Grad spike = current > avg * this
 
 

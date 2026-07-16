@@ -126,6 +126,9 @@ class StateNetCoverageConfig(StrictConfigModel):
 
     fix_threshold: float = Field(default=0.35, ge=0, le=1.0)
     train_threshold: float = Field(default=0.45, ge=0, le=1.0)
+    # Legacy: was the annealing floor for fix_threshold under the removed
+    # AnnealingConfig heuristic (see CLAUDE.md "Dead Code Removed"). MetricBasedLR
+    # never reads it. Kept because many preset YAMLs still set it explicitly.
     floor: float = Field(default=0.3, ge=0, le=1.0)
 
 
@@ -134,6 +137,9 @@ class StateNetHierarchyConfig(StrictConfigModel):
 
     plateau_threshold: float = Field(default=0.0005, ge=0)
     plateau_patience: int = Field(default=10, ge=1)
+    # Legacy: annealing ceiling for plateau_patience under the removed
+    # AnnealingConfig heuristic. MetricBasedLR never reads it. Kept because
+    # many preset YAMLs still set it explicitly.
     patience_ceiling: int = Field(default=25, ge=10)
     stall_patience: int = Field(default=5, ge=1)
 
@@ -143,6 +149,9 @@ class StateNetControllerConfig(StrictConfigModel):
 
     grad_threshold: float = Field(default=0.005, ge=0)
     grad_patience: int = Field(default=5, ge=1)
+    # Legacy: annealing ceiling for grad_patience under the removed
+    # AnnealingConfig heuristic. MetricBasedLR never reads it. Kept because
+    # many preset YAMLs still set it explicitly.
     patience_ceiling: int = Field(default=20, ge=5)
     spike_multiplier: float = Field(default=2.0, ge=1.0)
 
@@ -575,6 +584,9 @@ class TrainingConfig(StrictConfigModel):
     )
     val_frac: float = Field(default=0.1, ge=0.0, le=0.5)
     num_workers: int = Field(default=4, ge=0, le=16)
+    # Legacy: stratified/adaptive sampling-by-valuation-level fields. No code
+    # under src/training/ reads any of these four; kept because several
+    # preset YAMLs still set them explicitly.
     use_stratified: bool = False
     high_v_budget_ratio: float = Field(default=0.25, ge=0, le=1.0)
     use_adaptive: bool = False
