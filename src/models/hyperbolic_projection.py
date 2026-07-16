@@ -265,6 +265,12 @@ class HyperbolicProjection(nn.Module):
         z_tangent = z_tangent.to(torch.float64)
 
         if self.factored:
+            if as_manifold:
+                raise ValueError(
+                    "HyperbolicProjection: as_manifold=True is not supported in "
+                    "factored mode (there is no single ManifoldParameter — "
+                    "forward returns a (z_hyp, r) tuple instead)."
+                )
             return self._forward_factored(z_tangent)
 
         # --- Non-factored mode (V6 expmap0 approach) ---
