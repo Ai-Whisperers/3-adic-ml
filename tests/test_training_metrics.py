@@ -130,14 +130,18 @@ class TestComputeCoverage:
 
 class TestComputeTreeCoherence:
     def test_mean_matches_hand_computed_pairwise_distances(self):
-        """indices=[0(root), 1(child of 0), 4(child of 1)]: two valid
+        """indices=[0(root), 3(child of 0), 4(child of 3)]: two valid
         parent-child pairs. The returned value must equal the exact mean of
-        their individually-computed Poincaré distances."""
-        idx = torch.tensor([0, 1, 4])
+        their individually-computed Poincaré distances.
+
+        parent(n) clears n's pivot digit (position v=valuation(n)): 3 has
+        v=1 and parent 0; 4 has v=0 and parent 3 (verified via TERNARY.parent).
+        """
+        idx = torch.tensor([0, 3, 4])
         z = torch.tensor([
             [0.0, 0.0],   # pos0 -> idx 0 (root, parent=-1, excluded as a child)
-            [0.3, 0.0],   # pos1 -> idx 1 (parent=0 -> pos0)
-            [0.3, 0.2],   # pos2 -> idx 4 (parent=1 -> pos1)
+            [0.3, 0.0],   # pos1 -> idx 3 (parent=0 -> pos0)
+            [0.3, 0.2],   # pos2 -> idx 4 (parent=3 -> pos1)
         ], dtype=torch.float64)
 
         result = compute_tree_coherence(z, idx, curvature=1.0)
@@ -159,13 +163,13 @@ class TestComputeTreeCoherence:
         """If a child's true parent index isn't present in this batch, that
         pair must be silently skipped rather than matched to some other
         position or raising."""
-        idx = torch.tensor([0, 4])  # index 4's parent (1) is absent
+        idx = torch.tensor([0, 4])  # index 4's parent (3) is absent
         z = torch.tensor([[0.0, 0.0], [0.3, 0.2]], dtype=torch.float64)
         assert compute_tree_coherence(z, idx, curvature=1.0) == 0.0
 
     def test_no_valid_pairs_returns_zero_not_nan(self):
-        idx = torch.tensor([0, 3, 6])  # none of these are parents of each other
-        # (parent(3)=1, parent(6)=2 -- neither 1 nor 2 is in idx)
+        idx = torch.tensor([3, 6, 9])  # none of these are parents of each other
+        # (parent(3)=parent(6)=parent(9)=0 -- 0 is not in idx)
         z = torch.randn(3, 2, dtype=torch.float64) * 0.1
         result = compute_tree_coherence(z, idx, curvature=1.0)
         assert result == 0.0

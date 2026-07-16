@@ -115,7 +115,14 @@ class TestPropertyAccessorsAgainstDirectComputation:
                 last_nz = i
                 break
 
-        parent = n // 3 if n > 0 else -1
+        # Parent = n with its pivot digit (first non-(-1) digit from LSB)
+        # cleared, i.e. rounded down to the nearest multiple of 3^(v+1).
+        v = TERNARY.N_DIGITS
+        for i, d in enumerate(digits):
+            if d != -1:
+                v = i
+                break
+        parent = (n // 3 ** (v + 1)) * 3 ** (v + 1) if n > 0 else -1
 
         return {
             'digits': digits,
@@ -192,7 +199,7 @@ class TestPropertyAccessorsAgainstDirectComputation:
         )
 
     def test_parent_matches_direct(self):
-        """parent accessor matches n // 3 (or -1 for n=0)."""
+        """parent accessor matches clearing n's pivot digit (or -1 for n=0)."""
         all_indices = torch.arange(TERNARY.N_OPERATIONS)
         accessor_parents = TERNARY.parent(all_indices)
 
@@ -225,27 +232,36 @@ class TestTreeStructureRelationships:
     """Test tree structure via internal consistency, not assumed values."""
 
     def test_parent_child_relationship(self):
-        """If parent(n) = p, then n must be in {3p, 3p+1, 3p+2}."""
-        all_indices = torch.arange(TERNARY.N_OPERATIONS)
-        parents = TERNARY.parent(all_indices)
+        """parent(n) must equal n with its pivot digit (position v =
+        valuation(n)) cleared to -1, leaving every digit above v unchanged.
+
+        This is the structural invariant that makes parent() consistent with
+        the ultrametric distance()/valuation() use elsewhere: coarsening to
+        the parent can only ever increase valuation, never touch digits
+        above the pivot.
+        """
+        torch.manual_seed(0)
+        sample = torch.randint(1, TERNARY.N_OPERATIONS, (500,))  # exclude root (0)
+        v = TERNARY.valuation(sample)
+        p = TERNARY.parent(sample)
+
+        digits_n = TERNARY.to_ternary(sample)
+        digits_p = TERNARY.to_ternary(p.clamp(min=0))
 
         violations = []
-        for n in range(TERNARY.N_OPERATIONS):
-            p = parents[n].item()
-
-            if n == 0:
-                # Root has parent -1
-                if p != -1:
-                    violations.append((n, p, "root should have parent -1"))
-            else:
-                # Non-root: n should be one of {3p, 3p+1, 3p+2}
-                expected_children = {3 * p, 3 * p + 1, 3 * p + 2}
-                if n not in expected_children:
-                    violations.append((n, p, f"n not in children of p: {expected_children}"))
+        for i in range(len(sample)):
+            vi = v[i].item()
+            if not torch.equal(digits_n[i, vi + 1:], digits_p[i, vi + 1:]):
+                violations.append((sample[i].item(), "digits above pivot changed"))
+            if digits_p[i, vi].item() != -1:
+                violations.append((sample[i].item(), "pivot digit not cleared"))
 
         assert len(violations) == 0, (
-            f"Parent-child relationship violated: {violations[:5]}..."
+            f"Parent structure violated: {violations[:5]}..."
         )
+
+        # Root is the one special case: it has no coarser ancestor.
+        assert TERNARY.parent(torch.tensor([0])).item() == -1
 
     def test_parent_chain_reaches_root(self):
         """Following parent links from any node reaches 0 (root)."""
@@ -314,43 +330,43 @@ class TestTreeStructureRelationships:
                 )
 
     def test_prefix_formula(self):
-        """Verify prefix(n, level) = n // 3^(9-level)."""
+        """Verify prefix(n, level) = n % 3^level."""
         test_indices = torch.tensor([0, 1, 9, 27, 100, 1000, 19682])
 
         for level in range(10):
             computed = TERNARY.prefix(test_indices, level)
-            divisor = 3 ** (TERNARY.N_DIGITS - level)
-            expected = test_indices // divisor
+            modulus = 3 ** level
+            expected = test_indices % modulus
 
             assert torch.equal(computed, expected), (
                 f"Prefix formula mismatch at level {level}"
             )
 
     def test_sibling_relationship(self):
-        """Nodes with same parent are siblings: they differ only in last digit.
+        """At a fixed valuation level, nodes sharing a parent are siblings
+        that differ only in their pivot digit — and per DATA-SEMANTICS.md's
+        level-population formula (2 x 3^(depth-v-1)), every (level, parent)
+        group has exactly 2 members (the pivot digit is 0 or +1, never -1).
 
-        Note: Index 0 is special - it's the root with parent=-1.
-        Children of p are {3p, 3p+1, 3p+2}, but we exclude 0 from this check
-        since 0 is the root node.
+        Level 9 (the index-0 singleton) has no siblings and is excluded.
         """
-        # For any p > 0, children are 3p, 3p+1, 3p+2
-        # For p = 0, children are {0, 1, 2} but 0 is the root (parent=-1)
-        test_parents = [1, 10, 100, 1000, 6560]  # Skip 0, start from 1
+        all_indices = torch.arange(TERNARY.N_OPERATIONS)
+        valuations = TERNARY.valuation(all_indices)
+        parents = TERNARY.parent(all_indices)
 
-        for p in test_parents:
-            children = [3*p, 3*p + 1, 3*p + 2]
-            valid_children = [c for c in children if c < TERNARY.N_OPERATIONS]
+        for v in range(TERNARY.MAX_VALUATION):  # 0..8; skip the v=9 singleton
+            mask = valuations == v
+            level_idx = all_indices[mask]
+            level_parents = parents[mask]
 
-            if len(valid_children) < 2:
-                continue
+            groups: dict[int, list[int]] = {}
+            for idx, p in zip(level_idx.tolist(), level_parents.tolist(), strict=False):
+                groups.setdefault(p, []).append(idx)
 
-            # All valid children should have the same parent
-            child_tensor = torch.tensor(valid_children)
-            parents = TERNARY.parent(child_tensor)
-
-            assert (parents == p).all(), (
-                f"Children of {p} don't all report {p} as parent: got {parents.tolist()}"
-            )
+            for p, members in groups.items():
+                assert len(members) == 2, (
+                    f"level {v} parent {p} has {len(members)} children, expected 2: {members}"
+                )
 
     def test_root_special_case(self):
         """Index 0 is the root with parent=-1, but 1 and 2 have parent=0."""

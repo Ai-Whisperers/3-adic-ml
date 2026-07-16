@@ -89,7 +89,7 @@ class TernarySpace:
     PROP_DIGIT_SUM = 2       # Sum of digits (shifted: actual + 9 to be non-negative)
     PROP_FIRST_NONZERO = 3   # Position of first non-zero digit (9 if all zero)
     PROP_LAST_NONZERO = 4    # Position of last non-zero digit (-1 if all zero)
-    PROP_PARENT = 5          # Parent index in 3-adic tree (n // 3)
+    PROP_PARENT = 5          # Parent index in 3-adic tree (coarser residue; see _build_properties_lut)
     PROP_LEVEL_RANK = 6      # Rank within same-valuation cohort
     N_PROPERTIES = 7         # Total number of properties
 
@@ -214,8 +214,18 @@ class TernarySpace:
                     break
             props[n, self.PROP_LAST_NONZERO] = last_nz
 
-            # Parent in 3-adic tree (n // 3, or -1 for n=0)
-            parent = n // 3 if n > 0 else -1
+            # Parent in 3-adic tree: the coarser residue class obtained by
+            # clearing n's pivot digit (position v = valuation(n)), i.e.
+            # n rounded down to the nearest multiple of 3^(v+1). This is
+            # the ancestor consistent with the ultrametric distance()/
+            # valuation() use (d_3(i,j) = 3^-v_3(i-j)) — n // 3 groups by
+            # high-order digits instead and does NOT match that metric.
+            # -1 for n=0 (already at MAX_VALUATION, no coarser ancestor).
+            if n > 0:
+                pow_v1 = 3 ** (v + 1)
+                parent = (n // pow_v1) * pow_v1
+            else:
+                parent = -1
             props[n, self.PROP_PARENT] = parent
 
             # Level rank (position within same-valuation cohort)
@@ -619,10 +629,12 @@ class TernarySpace:
     def prefix(self, indices: torch.Tensor, level: int) -> torch.Tensor:
         """Compute tree prefix for given level (vectorized).
 
-        In the 3-adic tree, nodes at level k share the same prefix.
-        prefix(n, k) = n // 3^(9-k)
-
-        This is used by HyperbolicCentroidLoss for tree structure.
+        Nodes at level k share the same prefix iff they agree on their low k
+        digits, i.e. n mod 3^k. This is the residue class consistent with
+        the ultrametric distance()/valuation() use elsewhere in this file
+        (d_3(i,j) = 3^-v_3(i-j)): two indices share a level-k prefix exactly
+        when v_3(i-j) >= k.
+        prefix(n, k) = n % 3^k
 
         Args:
             indices: Operation indices, any shape
@@ -632,8 +644,8 @@ class TernarySpace:
             Prefix indices, same shape as input
         """
         level = max(0, min(level, self.N_DIGITS))
-        divisor = 3 ** (self.N_DIGITS - level)
-        return indices.long() // divisor
+        modulus = 3 ** level
+        return indices.long() % modulus
 
     def level_mask(self, indices: torch.Tensor, level: int) -> torch.Tensor:
         """Get mask for indices at specific tree level.
@@ -721,7 +733,13 @@ class TernarySpace:
         return self._get_property(indices, self.PROP_LAST_NONZERO)
 
     def parent(self, indices: torch.Tensor) -> torch.Tensor:
-        """Parent index in 3-adic tree (n // 3), or -1 for index 0 (root)."""
+        """Coarser 3-adic ancestor: n rounded down to the nearest multiple of
+        3^(v+1), where v = valuation(n) — i.e. n with its pivot digit cleared.
+        -1 for index 0 (root; already at MAX_VALUATION, no coarser ancestor).
+
+        Note: valuation(parent(n)) is guaranteed > valuation(n), but can jump
+        by more than 1 when n's higher digits happen to already be zero.
+        """
         return self._get_property(indices, self.PROP_PARENT)
 
     def level_rank(self, indices: torch.Tensor) -> torch.Tensor:
