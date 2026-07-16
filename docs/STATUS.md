@@ -356,6 +356,6 @@ See `docs/DATA-SEMANTICS.md §4`. Research track — not a tuning fix.
 | `docs/DATA-SEMANTICS.md` | Indexing-derived vs intrinsic hierarchy; v=9 singleton; expansion |
 | `docs/audits/23-03-2026-LEVEL-PREFIX-AUDIT.md` | Full AC experiment log (Runs 1–10) |
 | `docs/audits/22-03-2026-Q-CEILING-ANALYSIS.md` | Q=2.163 ceiling mathematical proof |
-| `docs/plans/NEXT-STEPS-ROADMAP.md` | Phase execution tracker |
+| `docs/plans/archive/NEXT-STEPS-ROADMAP.md` | Phase execution tracker (archived — resolved) |
 | `tests/conftest.py` | YAML syntax/lint/schema tests (12 parametrized) |
 | `.github/workflows/ci.yml` | CI: yamllint + pytest on push/PR |

@@ -26,7 +26,7 @@ all explicitly push each point's radius toward a `target_radius(v_3(n))`
 computed from a fixed formula. `AngularCoherenceLoss` similarly pulls
 same-digit-prefix points together directionally. So results like "radius is
 perfectly ordered by valuation" (Spearman ceiling documented at 0.8335,
-structural per `docs/plans/NEXT-STEPS-ROADMAP.md`) or "ARI=1.0 between
+structural per `docs/plans/archive/NEXT-STEPS-ROADMAP.md`) or "ARI=1.0 between
 learned direction clusters and `digit_prefix_class`" (V21.0, see CLAUDE.md)
 are close to *proving the loss functions do what they were written to do*,
 not evidence that hyperbolic geometry helped the model discover a hierarchy

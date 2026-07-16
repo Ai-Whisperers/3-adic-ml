@@ -1,4 +1,12 @@
 # Next Steps Roadmap
+
+> **ARCHIVED 2026-07-16.** Superseded — the project progressed through V8–V24
+> since this was written (see CLAUDE.md for current architecture/results).
+> The two items this doc still listed as pending are both resolved: Pydantic
+> validation is implemented (`src/config/schema.py`), and the "Run 10"
+> `v7_large.yaml` 1500-epoch run completed (see `runs/v7_large_*`). Kept for
+> historical record of the V6→V7 Q-ceiling investigation.
+
 **Date:** 2026-03-22
 **Status:** Q=2.163 confirmed as structural ceiling — survives V7 factored latent architecture. Ceiling is from 3-adic group size distribution (66% at v=0 → tied Spearman ranks), not architecture.
 
@@ -378,4 +386,4 @@ epochs: 1500
 
 ### Pydantic Validation (in progress)
 
-Review `src/config/` for schema-based YAML validation. See `docs/planning/PYDANTIC_VALIDATION.md` for analysis.
+Review `src/config/` for schema-based YAML validation. See `docs/plans/archive/PYDANTIC_VALIDATION.md` for analysis. Resolved — see `src/config/schema.py`.

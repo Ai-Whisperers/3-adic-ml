@@ -1,5 +1,9 @@
 # Phase 17: The Rosetta Manifold (Grand Master Run)
 
+> **ARCHIVED 2026-07-16.** Executed — `v17.0_rosetta_manifold` and
+> `v17.1_rosetta_manifold_resume` both ran (see `runs/v17.*`). Kept for
+> historical record of the run's stated goals/config.
+
 ## Vision
 To train a single, high-capacity hyperbolic manifold that reconciles **Pure 3-Adic Algebra** with **Biological Genomic Grammar**. By merging synthetic ternary operations with Human and Peptide sequences, we aim to discover if the "Ultrametric-to-Hyperbolic" bridge is a universal descriptor of structural hierarchy in nature.
 

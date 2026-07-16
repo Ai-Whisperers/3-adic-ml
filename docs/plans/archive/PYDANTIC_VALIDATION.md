@@ -1,5 +1,11 @@
 # Pydantic Validation — Implementation Plan
 
+> **ARCHIVED 2026-07-16.** Resolved — implemented as `src/config/schema.py`
+> (`StrictConfigModel` + a Pydantic model per config section, i.e. Option B
+> "Full Schema", beyond the "Option C hybrid" this doc recommended). Wired
+> into `train.py` via `normalize_config`. Kept for historical record of the
+> validation-gap analysis.
+
 **Date:** 2026-03-23
 **Status:** Analysis
 

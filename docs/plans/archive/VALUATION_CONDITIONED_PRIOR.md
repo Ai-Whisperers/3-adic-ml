@@ -1,5 +1,13 @@
 # Valuation-Conditioned Prior: Full Architecture Plan
 
+> **ARCHIVED 2026-07-16.** Resolved — Phase 1 (`ValuationPriorLoss`,
+> `src/losses/prior.py`), Phase 2 validation, and Phase 3B (Lagrangian dual
+> ascent, `src/losses/lagrangian.py`) are all implemented and confirmed
+> working (see CLAUDE.md V23.0 notes: "17/29 lambdas active"). Phase 3A
+> (per-valuation σ targets) was explicitly skipped. Phase 4A (positional
+> encoding) shipped as `v8_positional.yaml`/`v9_digit_count.yaml`. Kept for
+> historical record of the prior-design reasoning.
+
 **Date:** 2026-03-20
 **Status:** Design — awaiting implementation
 **Prerequisite:** Fixes 5A/5B/5C (variance_weight, geodesic reweight, scatter penalty) already merged
