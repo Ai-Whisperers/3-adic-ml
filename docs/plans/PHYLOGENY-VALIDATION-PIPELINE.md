@@ -272,3 +272,55 @@ Después: Fase 5 (documentar el resultado real, positivo o negativo, en
 selección de checkpoint (mismo sesgo todas las épocas) pero el número
 impreso no es comparable a `train_loss`. Detectado 2026-07-17, no arreglado
 todavía.
+
+## Actualización 2026-07-17: full runs ejecutados, Fase 5 completa
+
+La nota "bloqueado, necesita GPU" de arriba estaba desactualizada — esta
+máquina sí tiene una RTX 3050 (la misma que documenta CLAUDE.md como target
+de hardware), simplemente no se había chequeado `torch.cuda.is_available()`
+antes. Se subieron `training.epochs` a valores de full run (A=500, B=500,
+C=1000 — con `warmup_epochs`/`phase_start_epoch` del currículum de C
+finalmente con margen para activar) y se corrieron las 3 condiciones + Fase
+4 de punta a punta en background (~20 min total en GPU).
+
+También se agregó `raw_encoding_baseline` (Condición 0, sin modelo) a
+`evaluate_phylogeny_recovery.py` — distancia Euclidiana directa sobre las
+secuencias alineadas codificadas por hidropatía, sin VAE — después de que
+revisar la fuga de datos train/val de Fase 3 destapara algo más importante:
+esa señal trivial, sola, ya correlaciona ~0.72 con la taxonomía real. Sin
+ese control, un resultado positivo de A/B/C sería imposible de interpretar.
+
+**Resultado real (no smoke test):** ninguna de las 3 condiciones supera el
+baseline sin modelo (raw=0.7228 vs. A=0.6285, B=0.6538, C=0.4955 — C queda
+último). Detalle completo, metodología y qué significa en
+`docs/plans/EXTERNAL-VALIDATION-ROADMAP.md` (sección "Result (2026-07-17):
+cytochrome c phylogeny") — ese documento es la Fase 5 (reporte honesto) que
+pedía este plan.
+
+**Checkpoints + config + resultados completos, públicos:**
+https://huggingface.co/geestaltt/3-adic-vae-cytochrome-c
+
+**Hallazgo 2026-07-17 (revisión de la fuga de datos), ya corregido:** al
+investigar la fuga de fila train/val de Fase 3 (confirmada real pero
+confinada a las métricas de monitoreo de Fase 3 — `evaluate_phylogeny_recovery.py`
+usa `indices.pt` completo, sin split, así que la Fase 4 no está contaminada
+por eso) apareció algo más importante: la colisión de índices entre especies
+(73.9% de las 429 ventanas, ya reportada por `index_collision_report`)
+correlaciona **por sí sola, sin ningún modelo entrenado**, con la taxonomía
+real: `Spearman(similitud trivial por codificación, distancia taxonómica) =
+0.72` (n=741 pares, p≈1e-117 — motivo obvio: secuencia conservada ↔
+pariente cercano, es la premisa de la filogenia molecular). Esto pone un
+piso alto: cualquier resultado de A/B/C que no supere ese ~0.72 no
+demuestra que la arquitectura aprendió nada, solo que codificación +
+distancia ya recuperan filogenia trivialmente.
+
+Agregado `raw_encoding_baseline` (Condición 0) a
+`evaluate_phylogeny_recovery.py`: distancia Euclidiana directa sobre las
+secuencias alineadas codificadas por hidropatía, sin VAE, corre siempre
+(no necesita ningún checkpoint) y ahora el script imprime un veredicto
+explícito por condición ("BEATS baseline" / "does NOT beat baseline").
+Verificado end-to-end: con los checkpoints smoke-test de 60 épocas (Fase 3),
+ninguna de las 3 condiciones supera el baseline todavía (A=0.649, B=0.625,
+C=0.451 vs baseline=0.723) — resultado esperado dado que ninguna llegó a
+converger; sirve como prueba de que el veredicto funciona antes de gastar
+cómputo GPU en los full runs.

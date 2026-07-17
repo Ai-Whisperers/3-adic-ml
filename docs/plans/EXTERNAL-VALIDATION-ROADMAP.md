@@ -1,9 +1,12 @@
 # External Validation Roadmap
 
-**Date:** 2026-07-15 (updated 2026-07-16)
-**Status:** Partially attempted, unevenly — see "Prior art found in `scripts/`"
-below. Not a committed plan; still requires a decision on which thread (if
-any) to pursue deliberately.
+**Date:** 2026-07-15 (updated 2026-07-17)
+**Status:** Item 1 (real, non-injected-hierarchy data) and Item 2 (baseline
+comparison) both now done for one concrete thread — the cytochrome c
+phylogeny pipeline (`docs/plans/PHYLOGENY-VALIDATION-PIPELINE.md`) — with a
+**negative result**: see "Result (2026-07-17): cytochrome c phylogeny" below.
+The broader question below (is this true in general, on other real domains?)
+remains open.
 
 ## The question
 
@@ -60,6 +63,66 @@ different milestones, and only the first one has been reached so far.
    prior earns its complexity (better accuracy, fewer samples needed, more
    interpretable latents) versus a simpler baseline achieving the same
    downstream result. No such comparison exists yet.
+
+## Result (2026-07-17): cytochrome c phylogeny
+
+`docs/plans/PHYLOGENY-VALIDATION-PIPELINE.md` executed both items above for
+one concrete domain: 39 cytochrome c orthologs (bacteria → human, UniProt
+Pfam PF00034, aligned against the human reference), evaluated against real
+NCBI taxonomic distance never injected into any loss. Three trained
+conditions (Condition A: flat Euclidean VAE; B: same architecture as C with
+every p-adic-specific loss/structural bias disabled; C: full p-adic/
+hyperbolic curriculum, config near-identical to `v24.0_tangent_fix.yaml`)
+plus a zero-model control (`raw_encoding_baseline`: Euclidean distance on
+raw hydropathy-encoded aligned sequences, no VAE at all) were each
+correlated against taxonomy via a Mantel permutation test (not naive
+Spearman — distance-matrix entries share species and aren't independent).
+
+**Full run (500-1000 epochs, RTX 3050, not the smoke test), Spearman vs.
+real taxonomic distance, n=741 species pairs, all Mantel p=0.0001:**
+
+| Condition | Spearman | Beats zero-model baseline (0.7228)? |
+|---|---|---|
+| raw_encoding_baseline (zero model) | 0.7228 | — |
+| B_hyperbolic_generic | 0.6538 | No |
+| A_euclidean | 0.6285 | No |
+| C_padic | 0.4955 | No |
+
+**Verdict: negative, and directionally informative.** None of the three
+trained conditions beat a control that involves no model at all — a result
+foreshadowed by "Why this is a fair question" above: real biological
+sequence conservation already correlates with taxonomic distance
+(Spearman≈0.72 from raw hydropathy encoding alone, p≈1e-117), so the bar for
+"the architecture learned real structure" was never "beat zero," it was
+"beat 0.72." More strikingly, **C_padic (the full p-adic/hyperbolic
+curriculum) scored lowest of the three trained conditions**, despite
+achieving its own best internal training objective (Q=1.943, hierarchy
+Spearman=0.8185 against `v_3(index)` — the ceiling this codebase has chased
+since V6). This is consistent with the core worry this roadmap opened with:
+`v_3(index)` for a windowed-amino-acid ternary index has no causal
+relationship to species identity (explicitly warned about in
+`docs/plans/PHYLOGENY-VALIDATION-PIPELINE.md`'s Condición C description) —
+optimizing hard for that self-referential target appears to have *actively
+pulled the embedding away from* the real taxonomic structure that A/B (with
+weaker or no such pressure) captured comparatively better.
+
+**Caveats that keep this from being a clean final answer** (full detail and
+live numbers in `evaluate_phylogeny_recovery.py`'s output/caveats):
+no species-level train/eval holdout (every species with any window was seen
+in training); the coarse 3-symbol hydropathy encoding collapses 73.9% of
+windows into cross-species-identical digit patterns (this is exactly what
+`raw_encoding_baseline` was built to quantify, not a confound it's blind to);
+B/C's reported distances use VAE-A (coverage pathway) only.
+
+**What this does and doesn't settle:** it does not prove the p-adic/
+hyperbolic prior is useless in general — this is one dataset, one coarse
+3-symbol amino-acid encoding, one architecture snapshot. It does concretely
+answer this roadmap's opening question *for this thread*: on real,
+non-injected taxonomic structure, the p-adic curriculum did not "earn its
+complexity" — a plain Euclidean VAE and a generic hyperbolic VAE both did
+directionally better, and all three lost to doing no training at all.
+Checkpoints, configs, and the full results JSON:
+https://huggingface.co/geestaltt/3-adic-vae-cytochrome-c.
 
 ## Explicitly out of scope for now
 

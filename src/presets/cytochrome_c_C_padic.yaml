@@ -207,7 +207,7 @@ statenet:
 
 training:
   batch_size: 64          # was 1024 in v24 (>19k dataset); 429 samples here
-  epochs: 60               # Fase 3 smoke-test value -- raise for the full run
+  epochs: 1000              # full run (GPU confirmed available 2026-07-17)
   eval_every: 10
   grokking_detection:
     accuracy_jump_threshold: 0.02
@@ -221,7 +221,7 @@ training:
   high_v_budget_ratio: 0.3
   lr: 0.0005
   max_grad_norm: 1.0
-  min_epochs: 60
+  min_epochs: 300
   num_workers: 4
   patience: 500
   print_every: 10

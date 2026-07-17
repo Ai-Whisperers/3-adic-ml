@@ -125,7 +125,7 @@ statenet:
 
 training:
   batch_size: 64
-  epochs: 60               # Fase 3 smoke-test value -- raise for the full run
+  epochs: 500               # full run (GPU confirmed available 2026-07-17)
   eval_every: 10
   grokking_detection:
     enabled: false
@@ -133,7 +133,7 @@ training:
   high_v_budget_ratio: 0.3
   lr: 0.0005
   max_grad_norm: 1.0
-  min_epochs: 60
+  min_epochs: 200
   num_workers: 4
   patience: 500
   print_every: 10

@@ -11,6 +11,19 @@ Poincare geodesic for B/C. Correlated against taxonomic_distance.npy
 species and are not independent -- a naive Spearman p-value would be
 inflated. Bootstrap over species gives a correlation confidence interval.
 
+Condition 0 (raw_encoding_baseline): Euclidean distance between species'
+raw hydropathy-encoded aligned sequences (window_map.json residues,
+concatenated in window_idx order) -- zero model, zero training. Always
+computed. This exists because conserved-sequence-implies-close-relative is
+textbook molecular phylogenetics: a 2026-07-17 check found that this trivial
+signal alone (fraction of aligned positions with an identical ternary digit
+between two species) already gives Spearman~0.72 against real taxonomic
+distance (n=741 species pairs, p~1e-117). Without this baseline, a positive
+Mantel result for A/B/C is uninterpretable -- it could mean the architecture
+learned something, or it could mean the encoding alone already carries most
+of the signal. The bar for "the architecture helped" is beating this number,
+not beating zero.
+
 Known limitations (also recorded in `caveats` in the output JSON, not just
 here, so a reader of the JSON alone still sees them):
 - No species-level train/eval holdout exists yet. Fase 3's training scripts
@@ -20,9 +33,8 @@ here, so a reader of the JSON alone still sees them):
   excluded before training -- deferred to a follow-up run, not faked here.
 - Window indices collide across species (see `index_collision` in the
   output), a direct consequence of the coarse 3-symbol hydropathy encoding
-  collapsing conserved regions to the same digit pattern. A high correlation
-  isn't proof of learned structure on its own -- it may partly reflect
-  encoding coarseness shared verbatim between species.
+  collapsing conserved regions to the same digit pattern. This is exactly
+  what raw_encoding_baseline quantifies directly -- see above.
 - Conditions B/C's distance matrix is built from VAE-A only (the primary
   coverage pathway); VAE-B is checked separately for directional collapse
   (`vae_b_health` per condition) but does not otherwise contribute to the
@@ -44,6 +56,7 @@ from scipy.stats import spearmanr
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from scripts.analysis.project_audit import build_model_from_config, load_yaml
+from scripts.data.peptide_encoding import AA_MAP
 from scripts.data.prepare_cytochrome_c_dataset import encode_window_to_index
 from src.geometry.poincare import exp_map_zero, log_map_zero, poincare_distance_matrix
 from src.models.vae_baseline import TernaryVAEEuclideanBaseline
@@ -57,7 +70,9 @@ CAVEATS = [
     "not species).",
     "Index collisions across species exist (see index_collision below) due "
     "to the coarse 3-symbol hydropathy encoding; correlation may partly "
-    "reflect encoding coarseness rather than learned structure.",
+    "reflect encoding coarseness rather than learned structure. "
+    "raw_encoding_baseline quantifies this directly -- A/B/C must beat it, "
+    "not beat zero, to demonstrate the architecture learned anything.",
     "B/C distance matrices are built from VAE-A only; see vae_b_health per "
     "condition for a directional-collapse check on VAE-B.",
 ]
@@ -152,6 +167,27 @@ def _vae_b_collapse_check(z_b_hyp: torch.Tensor, collapse_threshold: float = 0.9
         "mean_pairwise_cosine_similarity": mean_cos_sim,
         "collapsed": mean_cos_sim > collapse_threshold,
     }
+
+
+def embed_condition_raw(window_map: list[dict], species_order: list[str]) -> np.ndarray:
+    """Condition 0: zero-model baseline. Per-species raw hydropathy-encoded
+    aligned sequence (windows concatenated in window_idx order -- the same
+    reference-coordinate alignment every other condition uses), Euclidean
+    distance between species. No VAE, no training, bypasses indices.pt
+    entirely (works straight from window_map.json residues) so it isolates
+    how much of any correlation is attributable to the alignment + encoding
+    alone versus anything a model learned."""
+    by_species: dict[str, dict[int, str]] = defaultdict(dict)
+    for w in window_map:
+        by_species[w["species"]][w["window_idx"]] = w["residues"]
+
+    vectors = []
+    for sp in species_order:
+        windows = by_species[sp]
+        full_seq = "".join(windows[i] for i in range(len(windows)))
+        vectors.append([AA_MAP.get(aa.upper(), 0) for aa in full_seq])
+    points = torch.tensor(vectors, dtype=torch.float64)
+    return torch.cdist(points, points).cpu().numpy()
 
 
 def embed_condition_a(
@@ -306,8 +342,9 @@ def main() -> None:
     parser.add_argument("--out", default="data/cytochrome_c/phylogeny_recovery_results.json")
     args = parser.parse_args()
 
-    if not any([args.run_a_checkpoint, args.run_b_dir, args.run_c_dir]):
-        raise SystemExit("Provide at least one of --run-a-checkpoint / --run-b-dir / --run-c-dir")
+    # No guard requiring a checkpoint: raw_encoding_baseline (Condition 0)
+    # needs none of them and is worth computing on its own, e.g. before any
+    # A/B/C run exists.
 
     device = torch.device("cpu")
     window_map, indices, species_order, tax_dist = load_species_data(
@@ -322,6 +359,13 @@ def main() -> None:
 
     common_meta = {"seed": args.seed, "git_commit": get_git_commit()}
     new_conditions: dict[str, Any] = {}
+
+    dist_raw = embed_condition_raw(window_map, species_order)
+    new_conditions["raw_encoding_baseline"] = {
+        **evaluate_condition("raw_encoding_baseline", dist_raw, tax_dist, args.n_permutations, args.n_bootstrap, args.seed),
+        "source": "none (zero-model baseline)",
+        **common_meta,
+    }
 
     if args.run_a_checkpoint:
         dist_a = embed_condition_a(Path(args.run_a_checkpoint), indices, window_map, species_order, device)
@@ -355,6 +399,20 @@ def main() -> None:
     if existing_conditions:
         print(f"[merge] {len(existing_conditions)} condition(s) already in {out_path}, "
               f"{len(conditions)} total after this run")
+
+    raw_rho = conditions.get("raw_encoding_baseline", {}).get("observed_spearman")
+    if raw_rho is not None and not np.isnan(raw_rho):
+        print(f"\n[verdict] raw_encoding_baseline Spearman={raw_rho:.4f} -- "
+              f"any condition below must beat this to claim learned structure, "
+              f"not just conserved-sequence-implies-close-relative:")
+        for name, c in conditions.items():
+            if name == "raw_encoding_baseline":
+                continue
+            rho = c.get("observed_spearman")
+            if rho is None or np.isnan(rho):
+                continue
+            verdict = "BEATS baseline" if rho > raw_rho else "does NOT beat baseline"
+            print(f"           {name}: Spearman={rho:.4f} -- {verdict}")
 
     results: dict[str, Any] = {
         "species_order": species_order,
