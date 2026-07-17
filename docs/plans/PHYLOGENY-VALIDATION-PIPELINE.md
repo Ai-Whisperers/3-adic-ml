@@ -211,3 +211,64 @@ Reutilizados sin cambios: `scripts/data/peptide_encoding.py`,
    produzca un p-valor y no solo una correlación cruda.
 5. Confirmar que el resultado (positivo o negativo) queda escrito en el
    roadmap con el mismo nivel de rigor que las entradas existentes.
+
+---
+
+## Estado actual (2026-07-17)
+
+**Fases 1-4: completas y pusheadas a `origin/main`** (commits `966ffd1`,
+`dd294ce`), todo verificado en CPU (esta máquina no tiene GPU con potencia
+suficiente para entrenar):
+
+- **Fase 1** (datos): 41 especies bajadas de UniProt vía Pfam PF00034 +
+  taxonomía NCBI. 2 especies (E. coli, B. subtilis) excluidas de Fase 2 en
+  adelante — sus únicos hits reviewed en UniProt son proteínas no-homólogas
+  (peroxidasa/COX2), detectado y flageado por el propio script de fetch.
+- **Fase 2** (alineamiento): 39 especies × 11 ventanas = 429 ventanas
+  alineadas contra la referencia humana. **Nota importante**: 62% de los
+  índices ternarios colisionan entre especies (encoding de hidropatía de
+  solo 3 símbolos), y el split train/val actual es por fila de ventana, no
+  por especie — hay fuga de datos (49/64 en el smoke test). Esto NO se
+  arregló todavía; afecta cómo interpretar accuracy/val_loss en cualquier
+  run futuro.
+- **Fase 3** (entrenamiento): las 3 condiciones corren limpio en CPU a
+  escala smoke-test (60 épocas). Se encontró y arregló un colapso de
+  posterior real en la Condición A (`train_euclidean_baseline.py`):
+  faltaba `free_bits` (igual que B/C ya usan) — sin eso, val_acc quedaba en
+  0% indefinidamente. Ya arreglado y verificado (val_acc subió a ~80% en
+  el smoke test).
+- **Fase 4** (evaluación): `scripts/analysis/evaluate_phylogeny_recovery.py`
+  escrito, revisado a fondo (8 ángulos de búsqueda + verificación),
+  10 hallazgos reales arreglados — incluye un guard contra p-valores
+  espurios cuando el modelo colapsa, y un chequeo de colapso direccional de
+  VAE-B que **ya detectó un colapso real** en el checkpoint smoke-test de
+  la Condición C (`mean_pairwise_cosine_similarity=0.9999`).
+
+**Bloqueado, necesita GPU:** los full runs (varios cientos de épocas por
+condición, como V21-V24) nunca corrieron — todo lo de arriba fue a escala
+smoke-test (60 épocas), que ni siquiera alcanza para que el currículum de
+la Condición C active sus losses p-ádicas (`warmup_epochs: 100-200`). Los
+números de correlación/Mantel obtenidos hasta ahora **no son el resultado
+real**, solo prueban que el pipeline corre de punta a punta sin errores.
+
+**Próximo paso exacto** (retomar en la máquina con GPU):
+```bash
+git pull
+python3 scripts/applications/train_euclidean_baseline.py --epochs 500 \
+  --checkpoint-out runs/cytochrome_c_A_euclidean/full.pt
+python3 src/train.py --config src/presets/cytochrome_c_B_hyperbolic_generic.yaml   # subir epochs en el YAML primero
+python3 src/train.py --config src/presets/cytochrome_c_C_padic.yaml               # subir epochs en el YAML primero
+python3 scripts/analysis/evaluate_phylogeny_recovery.py \
+  --run-a-checkpoint runs/cytochrome_c_A_euclidean/full.pt \
+  --run-b-dir runs/cytochrome_c_B_hyperbolic_generic_<timestamp> \
+  --run-c-dir runs/cytochrome_c_C_padic_<timestamp>
+```
+Después: Fase 5 (documentar el resultado real, positivo o negativo, en
+`docs/plans/EXTERNAL-VALIDATION-ROADMAP.md`).
+
+**Pendiente menor, no bloqueante:** `evaluate()` en
+`train_euclidean_baseline.py` calcula `val_loss = recon + kl` sin aplicar
+`kl_weight` (inconsistente con la loss de entrenamiento) — no afecta la
+selección de checkpoint (mismo sesgo todas las épocas) pero el número
+impreso no es comparable a `train_loss`. Detectado 2026-07-17, no arreglado
+todavía.
