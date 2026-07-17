@@ -50,7 +50,13 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--latent-dim", type=int, default=128, help="matches Conditions B/C model.latent_dim")
     parser.add_argument("--hidden-dim", type=int, default=256, help="matches Conditions B/C model.hidden_dim")
-    parser.add_argument("--kl-weight", type=float, default=1.0)
+    parser.add_argument(
+        "--kl-weight", type=float, default=0.05,
+        help="Default matches Conditions B/C's hyperbolic_kl.weight=0.05. At 1.0 "
+             "(unweighted, no free-bits/warmup) the 128-dim latent posterior collapses "
+             "to the prior within ~5 epochs on this 429-sample dataset -- confirmed via "
+             "Fase 3 smoke test: mu_norm 0.37->0.05, recon loss stuck at ln(3), val_acc=0.",
+    )
     parser.add_argument("--val-frac", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval-every", type=int, default=20)
