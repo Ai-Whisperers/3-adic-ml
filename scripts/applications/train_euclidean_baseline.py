@@ -21,11 +21,16 @@ from src.models.vae_baseline import TernaryVAEEuclideanBaseline
 from src.training.bootstrap import DataAuditor, set_determinism
 
 
-def kl_divergence(mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-    return 0.5 * torch.mean(torch.sum(mu.pow(2) + logvar.exp() - logvar - 1.0, dim=-1))
+def kl_divergence(mu: torch.Tensor, logvar: torch.Tensor, free_bits: float = 0.0) -> torch.Tensor:
+    kl_per_dim = 0.5 * (mu.pow(2) + logvar.exp() - logvar - 1.0)
+    if free_bits > 0:
+        kl_per_dim = torch.clamp(kl_per_dim, min=free_bits)
+    return torch.mean(torch.sum(kl_per_dim, dim=-1))
 
 
-def evaluate(model: TernaryVAEEuclideanBaseline, loader: DataLoader, device: torch.device) -> tuple[float, float]:
+def evaluate(
+    model: TernaryVAEEuclideanBaseline, loader: DataLoader, device: torch.device, free_bits: float,
+) -> tuple[float, float]:
     model.eval()
     total_loss, total_correct, total_n = 0.0, 0, 0
     with torch.no_grad():
@@ -33,7 +38,7 @@ def evaluate(model: TernaryVAEEuclideanBaseline, loader: DataLoader, device: tor
             x = x.to(device)
             out = model(x)
             recon = compute_coverage_loss(out["logits"], x)
-            kl = kl_divergence(out["mu"], out["logvar"])
+            kl = kl_divergence(out["mu"], out["logvar"], free_bits)
             total_loss += (recon + kl).item() * x.size(0)
             preds = out["logits"].view(-1, 9, 3).argmax(-1) - 1
             total_correct += (preds == x).all(dim=-1).sum().item()
@@ -52,10 +57,13 @@ def main() -> None:
     parser.add_argument("--hidden-dim", type=int, default=256, help="matches Conditions B/C model.hidden_dim")
     parser.add_argument(
         "--kl-weight", type=float, default=0.05,
-        help="Default matches Conditions B/C's hyperbolic_kl.weight=0.05. At 1.0 "
-             "(unweighted, no free-bits/warmup) the 128-dim latent posterior collapses "
-             "to the prior within ~5 epochs on this 429-sample dataset -- confirmed via "
-             "Fase 3 smoke test: mu_norm 0.37->0.05, recon loss stuck at ln(3), val_acc=0.",
+        help="At 1.0 with free_bits=0, the 128-dim posterior collapses to the "
+             "prior and reconstruction never improves. Not equivalent to B/C's "
+             "effective multiplier (weight=0.05 * beta=0.1 = 0.005) -- see also --free-bits.",
+    )
+    parser.add_argument(
+        "--free-bits", type=float, default=0.5,
+        help="Per-dimension KL floor, same mechanism/default as B/C's hyperbolic_kl.free_bits.",
     )
     parser.add_argument("--val-frac", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=42)
@@ -86,14 +94,14 @@ def main() -> None:
             optimizer.zero_grad()
             out = model(x)
             recon = compute_coverage_loss(out["logits"], x)
-            kl = kl_divergence(out["mu"], out["logvar"])
+            kl = kl_divergence(out["mu"], out["logvar"], args.free_bits)
             train_loss = recon + args.kl_weight * kl
             train_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
         if epoch % args.eval_every == 0 or epoch == args.epochs:
-            val_loss, val_acc = evaluate(model, val_loader, device)
+            val_loss, val_acc = evaluate(model, val_loader, device, args.free_bits)
             print(f"[epoch {epoch}/{args.epochs}] train_loss={train_loss.item():.4f} "
                   f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
             if val_loss < best_val_loss:
@@ -101,7 +109,8 @@ def main() -> None:
                 torch.save(
                     {"model_state_dict": model.state_dict(), "epoch": epoch,
                      "val_loss": val_loss, "val_acc": val_acc,
-                     "latent_dim": args.latent_dim, "hidden_dim": args.hidden_dim},
+                     "latent_dim": args.latent_dim, "hidden_dim": args.hidden_dim,
+                     "kl_weight": args.kl_weight, "free_bits": args.free_bits, "lr": args.lr},
                     out_path,
                 )
 

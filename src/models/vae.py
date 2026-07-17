@@ -457,11 +457,15 @@ class TernaryVAEV6(nn.Module):
         """Return parameter groups for optimizer."""
         return [{"params": self.parameters(), "lr": base_lr}]
 
-    def get_mu_representations(self, indices: torch.Tensor, device: torch.device) -> torch.Tensor:
+    def get_mu_representations(
+        self, indices: torch.Tensor, device: torch.device, head: str = "A",
+    ) -> torch.Tensor:
         """Get raw mu representations for given indices.
 
         Used by AlgebraicAdditionLoss to compute representations of sums
-        within the forward pass while preserving gradients.
+        within the forward pass while preserving gradients. `head` defaults
+        to "A" (the primary coverage pathway) to preserve every existing
+        caller's behavior; pass "B" to read the hierarchy encoder instead.
         """
         x = TERNARY.to_ternary(indices).to(device).to(torch.float64)
 
@@ -469,22 +473,28 @@ class TernaryVAEV6(nn.Module):
         if self.positional_encoding:
             x = torch.cat([x, x * self.pos_weights], dim=-1)
 
-        # Get mu from head_A (primary coverage pathway)
-        mu_A, _ = self.head_A(x)
-        return mu_A
+        encoder = self.head_A if head == "A" else self.head_B
+        mu, _ = encoder(x)
+        return mu
 
-    def get_hyperbolic_representations(self, indices: torch.Tensor, device: torch.device) -> torch.Tensor:
+    def get_hyperbolic_representations(
+        self, indices: torch.Tensor, device: torch.device, head: str = "A",
+    ) -> torch.Tensor:
         """Get Poincaré ball embeddings (z_hyp) for arbitrary indices.
 
         Used by AlgebraicCoherenceLoss to sample from full algebraic-class
         populations, not just the current batch. Gradients flow through.
-        Deterministic (uses mu, no reparameterization).
+        Deterministic (uses mu, no reparameterization). `head` defaults to
+        "A" to preserve every existing caller's behavior; pass "B" to read
+        the hierarchy encoder/projection instead (e.g. to check VAE-B for
+        the directional collapse documented in CLAUDE.md's V24.0 section).
         """
-        mu_A = self.get_mu_representations(indices, device)
-        # projections expects (z_A_tangent, z_B_tangent); pass mu_A for both,
-        # return only z_A_hyp (first output).
-        z_A_hyp, _, _, _ = self.projections(mu_A, mu_A, as_manifold=False)
-        return z_A_hyp
+        mu = self.get_mu_representations(indices, device, head=head)
+        # projections expects (z_A_tangent, z_B_tangent); pass mu for both
+        # slots and return only the requested head's output -- proj_A/proj_B
+        # are independent submodules so this doesn't cross-contaminate.
+        z_A_hyp, z_B_hyp, _, _ = self.projections(mu, mu, as_manifold=False)
+        return z_A_hyp if head == "A" else z_B_hyp
 
 
 # =============================================================================

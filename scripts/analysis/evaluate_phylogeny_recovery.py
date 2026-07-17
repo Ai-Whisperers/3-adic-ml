@@ -11,22 +11,27 @@ Poincare geodesic for B/C. Correlated against taxonomic_distance.npy
 species and are not independent -- a naive Spearman p-value would be
 inflated. Bootstrap over species gives a correlation confidence interval.
 
-Known limitations (stated here rather than glossed over in the results):
+Known limitations (also recorded in `caveats` in the output JSON, not just
+here, so a reader of the JSON alone still sees them):
 - No species-level train/eval holdout exists yet. Fase 3's training scripts
   split by *window row*, not by species, so every species that has any
   window in indices.pt was seen during training. A genuine held-out-species
   evaluation requires regenerating indices.pt with some species' windows
   excluded before training -- deferred to a follow-up run, not faked here.
-- 62% of window indices collide across species (161 unique / 429 windows),
-  a direct consequence of the coarse 3-symbol hydropathy encoding collapsing
-  conserved regions to the same digit pattern. This script reports the
-  collision rate explicitly (see `index_collision` in the output) so a high
-  correlation isn't misread as proof of learned structure when it may partly
-  reflect encoding coarseness shared verbatim between species.
+- Window indices collide across species (see `index_collision` in the
+  output), a direct consequence of the coarse 3-symbol hydropathy encoding
+  collapsing conserved regions to the same digit pattern. A high correlation
+  isn't proof of learned structure on its own -- it may partly reflect
+  encoding coarseness shared verbatim between species.
+- Conditions B/C's distance matrix is built from VAE-A only (the primary
+  coverage pathway); VAE-B is checked separately for directional collapse
+  (`vae_b_health` per condition) but does not otherwise contribute to the
+  reported distances.
 """
 
 import argparse
 import json
+import subprocess
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -39,11 +44,32 @@ from scipy.stats import spearmanr
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from scripts.analysis.project_audit import build_model_from_config, load_yaml
+from scripts.data.prepare_cytochrome_c_dataset import encode_window_to_index
 from src.geometry.poincare import exp_map_zero, log_map_zero, poincare_distance_matrix
 from src.models.vae_baseline import TernaryVAEEuclideanBaseline
 from src.utils.checkpoint import get_model_state_dict, load_checkpoint_compat
 
-Condition = dict[str, Any]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+CAVEATS = [
+    "No species-level train/eval holdout: every species with a window in "
+    "indices.pt was seen during training (Fase 3's split is by window row, "
+    "not species).",
+    "Index collisions across species exist (see index_collision below) due "
+    "to the coarse 3-symbol hydropathy encoding; correlation may partly "
+    "reflect encoding coarseness rather than learned structure.",
+    "B/C distance matrices are built from VAE-A only; see vae_b_health per "
+    "condition for a directional-collapse check on VAE-B.",
+]
+
+
+def get_git_commit() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT, text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return "unknown"
 
 
 def load_species_data(
@@ -53,6 +79,21 @@ def load_species_data(
     indices = torch.load(indices_path, weights_only=True).long()
     if len(window_map) != len(indices):
         raise ValueError(f"window_map ({len(window_map)}) and indices ({len(indices)}) length mismatch")
+
+    # Length matching alone doesn't prove the two files were produced
+    # together -- recompute each index from window_map's own recorded
+    # residues (same encoding prepare_cytochrome_c_dataset.py used) and
+    # compare, so a stale/mismatched pair of coincidentally equal length
+    # is caught instead of silently mispairing species with embeddings.
+    recomputed = torch.tensor(
+        [encode_window_to_index(w["residues"]) for w in window_map], dtype=torch.long,
+    )
+    mismatches = int((recomputed != indices).sum().item())
+    if mismatches > 0:
+        raise ValueError(
+            f"{mismatches}/{len(indices)} indices don't match the residues recorded in window_map.json "
+            "-- window_map.json and indices.pt appear to come from different prepare_cytochrome_c_dataset.py runs"
+        )
 
     species_order_all = json.loads((taxonomy_dir / "species_order.json").read_text())
     tax_dist_all = np.load(taxonomy_dir / "taxonomic_distance.npy")
@@ -69,20 +110,48 @@ def load_species_data(
 
 def index_collision_report(window_map: list[dict], indices: torch.Tensor) -> dict[str, Any]:
     idx_to_species: dict[int, set] = defaultdict(set)
+    idx_counts: dict[int, int] = defaultdict(int)
     for w, idx in zip(window_map, indices.tolist()):
         idx_to_species[idx].add(w["species"])
-    cross_species = sum(1 for sp in idx_to_species.values() if len(sp) > 1)
+        idx_counts[idx] += 1
     n_unique = len(idx_to_species)
+    cross_species_indices = [idx for idx, sp in idx_to_species.items() if len(sp) > 1]
+    windows_in_cross_species_collision = sum(idx_counts[idx] for idx in cross_species_indices)
     return {
         "n_windows": len(window_map),
         "n_unique_indices": n_unique,
-        "n_indices_shared_across_species": cross_species,
-        "collision_rate": round(1.0 - n_unique / len(window_map), 4),
+        "n_indices_shared_across_species": len(cross_species_indices),
+        # Any repeated index, including two windows of the *same* species
+        # landing on the same digit pattern -- not species-comparison noise.
+        "any_duplicate_rate": round(1.0 - n_unique / len(window_map), 4),
+        # The rate that actually matters for "did the encoding make distinct
+        # species look identical": only windows whose index recurs under a
+        # *different* species.
+        "cross_species_collision_rate": round(windows_in_cross_species_collision / len(window_map), 4),
     }
 
 
 def _species_masks(window_map: list[dict], species_order: list[str]) -> list[list[int]]:
     return [[i for i, w in enumerate(window_map) if w["species"] == sp] for sp in species_order]
+
+
+def _vae_b_collapse_check(z_b_hyp: torch.Tensor, collapse_threshold: float = 0.999) -> dict[str, Any]:
+    """Directional-collapse check for VAE-B, independent of the distance
+    matrix above (which is VAE-A only). CLAUDE.md's V24.0 section documents
+    a real prior case: tangent_scale_B collapsed to ~6e-8 and all z_B_hyp
+    directions converged to pairwise cosine similarity 1.000000, while
+    VAE-A stayed healthy throughout -- a failure this script would
+    otherwise have no way to notice."""
+    norm = z_b_hyp.norm(dim=-1, keepdim=True).clamp(min=1e-10)
+    direction = (z_b_hyp / norm).cpu().numpy()
+    cos_sim = direction @ direction.T
+    n = cos_sim.shape[0]
+    iu = np.triu_indices(n, k=1)
+    mean_cos_sim = float(cos_sim[iu].mean())
+    return {
+        "mean_pairwise_cosine_similarity": mean_cos_sim,
+        "collapsed": mean_cos_sim > collapse_threshold,
+    }
 
 
 def embed_condition_a(
@@ -106,7 +175,7 @@ def embed_condition_a(
 def embed_condition_hyperbolic(
     run_dir: Path, indices: torch.Tensor, window_map: list[dict],
     species_order: list[str], device: torch.device,
-) -> np.ndarray:
+) -> tuple[np.ndarray, dict[str, Any]]:
     config = load_yaml(run_dir / "config.yaml")
     model = build_model_from_config(config).to(device)
     ckpt = load_checkpoint_compat(run_dir / "checkpoints" / "best_Q.pt", map_location=device)
@@ -114,13 +183,16 @@ def embed_condition_hyperbolic(
     model.eval()
     c = model.projections.get_curvature()
     with torch.no_grad():
-        z_hyp = model.get_hyperbolic_representations(indices, device)
-        tangent = log_map_zero(z_hyp, c=c)
+        z_a_hyp = model.get_hyperbolic_representations(indices, device, head="A")
+        z_b_hyp = model.get_hyperbolic_representations(indices, device, head="B")
+        tangent = log_map_zero(z_a_hyp, c=c)
 
     masks = _species_masks(window_map, species_order)
     mean_tangent = torch.stack([tangent[m].mean(dim=0) for m in masks])
     hyp_points = exp_map_zero(mean_tangent, c=c)
-    return poincare_distance_matrix(hyp_points, c=c).cpu().numpy()
+    dist = poincare_distance_matrix(hyp_points, c=c).cpu().numpy()
+    vae_b_health = _vae_b_collapse_check(z_b_hyp)
+    return dist, vae_b_health
 
 
 def mantel_test(
@@ -132,21 +204,41 @@ def mantel_test(
     tax_flat = dist_taxonomy[iu]
     observed, _ = spearmanr(model_flat, tax_flat)
 
+    if np.isnan(observed):
+        # Degenerate embedding distances (e.g. posterior collapse -> every
+        # species point identical) make Spearman undefined. Reporting a
+        # p-value here would be meaningless: NaN comparisons are always
+        # False in numpy, so `null_corrs >= observed` would silently give a
+        # spuriously "significant" p-value instead of surfacing the collapse.
+        return {
+            "observed_spearman": float("nan"),
+            "p_value_one_sided": float("nan"),
+            "null_mean": float("nan"),
+            "null_std": float("nan"),
+            "n_permutations": 0,
+            "n_species_pairs": int(len(model_flat)),
+            "note": "observed_spearman is NaN (degenerate/constant model distances); Mantel test skipped.",
+        }
+
     rng = np.random.default_rng(seed)
     null_corrs = np.empty(n_permutations)
     for i in range(n_permutations):
         perm = rng.permutation(n)
         permuted = dist_taxonomy[np.ix_(perm, perm)][iu]
         null_corrs[i], _ = spearmanr(model_flat, permuted)
+    null_corrs = null_corrs[~np.isnan(null_corrs)]
 
     # One-sided: alternative hypothesis is a positive correlation (embedding
     # distance grows with real taxonomic distance).
-    p_value = float((np.sum(null_corrs >= observed) + 1) / (n_permutations + 1))
+    if len(null_corrs) == 0:
+        p_value = float("nan")
+    else:
+        p_value = float((np.sum(null_corrs >= observed) + 1) / (len(null_corrs) + 1))
     return {
         "observed_spearman": float(observed),
         "p_value_one_sided": p_value,
-        "null_mean": float(null_corrs.mean()),
-        "null_std": float(null_corrs.std()),
+        "null_mean": float(null_corrs.mean()) if len(null_corrs) else float("nan"),
+        "null_std": float(null_corrs.std()) if len(null_corrs) else float("nan"),
         "n_permutations": n_permutations,
         "n_species_pairs": int(len(model_flat)),
     }
@@ -157,10 +249,10 @@ def bootstrap_ci(
 ) -> dict[str, Any]:
     n = dist_model.shape[0]
     rng = np.random.default_rng(seed)
+    iu = np.triu_indices(n, k=1)
     boots = np.full(n_boot, np.nan)
     for i in range(n_boot):
         sample = rng.choice(n, size=n, replace=True)
-        iu = np.triu_indices(n, k=1)
         # Bootstrap-resampled species pairs where sample[i] == sample[j] are
         # self-distances (0 by construction) and carry no signal; drop them.
         keep = sample[iu[0]] != sample[iu[1]]
@@ -170,6 +262,8 @@ def bootstrap_ci(
         sub_tax = dist_taxonomy[np.ix_(sample, sample)][iu][keep]
         boots[i], _ = spearmanr(sub_model, sub_tax)
     boots = boots[~np.isnan(boots)]
+    if len(boots) == 0:
+        return {"ci_low": float("nan"), "ci_high": float("nan"), "n_valid_bootstrap": 0}
     lo, hi = np.percentile(boots, [2.5, 97.5])
     return {"ci_low": float(lo), "ci_high": float(hi), "n_valid_bootstrap": int(len(boots))}
 
@@ -187,6 +281,15 @@ def evaluate_condition(
         f"n_pairs={mantel['n_species_pairs']})"
     )
     return {**mantel, **ci}
+
+
+def _load_existing_conditions(out_path: Path) -> dict[str, Any]:
+    if not out_path.exists():
+        return {}
+    try:
+        return json.loads(out_path.read_text()).get("conditions", {})
+    except (json.JSONDecodeError, OSError):
+        return {}
 
 
 def main() -> None:
@@ -214,30 +317,51 @@ def main() -> None:
     print(
         f"[data] {len(species_order)} species, {collisions['n_windows']} windows, "
         f"{collisions['n_unique_indices']} unique indices "
-        f"(collision_rate={collisions['collision_rate']:.2%})"
+        f"(cross_species_collision_rate={collisions['cross_species_collision_rate']:.2%})"
     )
 
-    results: dict[str, Any] = {"species_order": species_order, "index_collision": collisions, "conditions": {}}
+    common_meta = {"seed": args.seed, "git_commit": get_git_commit()}
+    new_conditions: dict[str, Any] = {}
 
     if args.run_a_checkpoint:
         dist_a = embed_condition_a(Path(args.run_a_checkpoint), indices, window_map, species_order, device)
-        results["conditions"]["A_euclidean"] = evaluate_condition(
-            "A_euclidean", dist_a, tax_dist, args.n_permutations, args.n_bootstrap, args.seed,
-        )
+        new_conditions["A_euclidean"] = {
+            **evaluate_condition("A_euclidean", dist_a, tax_dist, args.n_permutations, args.n_bootstrap, args.seed),
+            "source": str(args.run_a_checkpoint),
+            **common_meta,
+        }
 
     if args.run_b_dir:
-        dist_b = embed_condition_hyperbolic(Path(args.run_b_dir), indices, window_map, species_order, device)
-        results["conditions"]["B_hyperbolic_generic"] = evaluate_condition(
-            "B_hyperbolic_generic", dist_b, tax_dist, args.n_permutations, args.n_bootstrap, args.seed,
-        )
+        dist_b, vae_b_health = embed_condition_hyperbolic(Path(args.run_b_dir), indices, window_map, species_order, device)
+        new_conditions["B_hyperbolic_generic"] = {
+            **evaluate_condition("B_hyperbolic_generic", dist_b, tax_dist, args.n_permutations, args.n_bootstrap, args.seed),
+            "source": str(args.run_b_dir),
+            "vae_b_health": vae_b_health,
+            **common_meta,
+        }
 
     if args.run_c_dir:
-        dist_c = embed_condition_hyperbolic(Path(args.run_c_dir), indices, window_map, species_order, device)
-        results["conditions"]["C_padic"] = evaluate_condition(
-            "C_padic", dist_c, tax_dist, args.n_permutations, args.n_bootstrap, args.seed,
-        )
+        dist_c, vae_b_health = embed_condition_hyperbolic(Path(args.run_c_dir), indices, window_map, species_order, device)
+        new_conditions["C_padic"] = {
+            **evaluate_condition("C_padic", dist_c, tax_dist, args.n_permutations, args.n_bootstrap, args.seed),
+            "source": str(args.run_c_dir),
+            "vae_b_health": vae_b_health,
+            **common_meta,
+        }
 
     out_path = Path(args.out)
+    existing_conditions = _load_existing_conditions(out_path)
+    conditions = {**existing_conditions, **new_conditions}
+    if existing_conditions:
+        print(f"[merge] {len(existing_conditions)} condition(s) already in {out_path}, "
+              f"{len(conditions)} total after this run")
+
+    results: dict[str, Any] = {
+        "species_order": species_order,
+        "index_collision": collisions,
+        "caveats": CAVEATS,
+        "conditions": conditions,
+    }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2))
     print(f"\n[OK] Saved: {out_path}")

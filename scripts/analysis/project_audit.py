@@ -120,6 +120,7 @@ def build_model_kwargs(config: dict[str, Any]) -> dict[str, Any]:
         "factored": model_cfg.get("factored", False),
         "radial_dims": model_cfg.get("radial_dims", 4),
         "positional_encoding": model_cfg.get("positional_encoding", False),
+        "pos_weight_base": model_cfg.get("pos_weight_base", 3.0),
         "encoder_a_lr_scale": option_c_cfg.get("encoder_a_lr_scale", 0.05),
         "encoder_b_lr_scale": option_c_cfg.get("encoder_b_lr_scale", 0.1),
         "projections_lr_scale": option_c_cfg.get("projections_lr_scale", 1.0),
