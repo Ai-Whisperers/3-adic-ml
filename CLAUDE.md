@@ -679,3 +679,24 @@ Changes applied:
 Identical to V23.0 in all other respects. The fix isolates the `tangent_scale` change.
 
 Expected improvement: VAE-B develops diverse directions (ARI_B should be > 0), confirming both VAEs contribute genuinely to the hierarchy signal.
+
+---
+
+## External Validation Result — Cytochrome C Phylogeny (2026-07-17)
+
+**Important caveat on every hierarchy/ARI/Q number above**: they measure whether the loss functions do what they were written to do (`v_3(index)` is handed to the loss as a target, not inferred). `docs/plans/EXTERNAL-VALIDATION-ROADMAP.md` asked whether this buys anything on real, non-synthetic data where the hierarchy is *not* injected into the loss. First real test, run 2026-07-17:
+
+**Setup:** 39 real cytochrome c orthologs (bacteria → human, UniProt Pfam PF00034, aligned to human reference), evaluated against real NCBI taxonomic distance via a Mantel permutation test. Three trained conditions (A: flat Euclidean VAE; B: same architecture as C with all p-adic-specific losses/structure off; C: full p-adic/hyperbolic curriculum, config ≈ `v24.0_tangent_fix.yaml`) plus a zero-model control (`raw_encoding_baseline`: raw hydropathy-encoded sequence distance, no VAE).
+
+**Result — none of the three trained conditions beat doing no training at all:**
+
+| Condition | Spearman vs. real taxonomy |
+|---|---|
+| raw_encoding_baseline (zero model) | **0.7228** |
+| B_hyperbolic_generic | 0.6538 |
+| A_euclidean | 0.6285 |
+| C_padic | 0.4955 |
+
+**C_padic — the full p-adic curriculum — scored lowest**, despite hitting its own best internal objective (Q=1.943, hierarchy Spearman=0.8185, matching this doc's V21+ ceiling). Consistent with the roadmap's core worry: `v_3(index)` for a windowed-amino-acid ternary index has no causal relationship to species identity, and optimizing hard for it appears to actively pull the embedding away from real taxonomic structure that A/B captured comparatively better.
+
+**Do not read this as "the architecture is broken."** It's one dataset, one coarse 3-symbol amino-acid encoding, one snapshot. It does mean: don't cite this project's internal hierarchy/ARI/Q metrics as evidence of real-world usefulness without this result alongside them. Full methodology, caveats (no species-level holdout yet, 73.9% cross-species index collision rate), and numbers: `docs/plans/EXTERNAL-VALIDATION-ROADMAP.md`. Checkpoints + configs + results JSON: https://huggingface.co/geestaltt/3-adic-vae-cytochrome-c.
