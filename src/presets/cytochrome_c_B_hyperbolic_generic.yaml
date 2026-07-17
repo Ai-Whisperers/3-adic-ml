@@ -1,0 +1,166 @@
+# cytochrome_c_B_hyperbolic_generic.yaml
+#
+# Condition B ("generic hyperbolic") of docs/plans/PHYLOGENY-VALIDATION-PIPELINE.md
+# Fase 3. Same TernaryVAEV6Controllable architecture class as Condition C, but:
+#   - All p-adic-specific losses OFF (radial, monotonic, geodesic, rank,
+#     angular_coherence, algebraic_*, hyperbolic_contrastive, dynamic_curriculum,
+#     lagrangian). Only rich_hierarchy.coverage_weight (reconstruction) and
+#     hyperbolic_kl (standard hyperbolic VAE regularization) remain active.
+#   - model.factored: false -- the r=sigmoid(linear(z_r)) factored-latent split
+#     is itself p-adic-specific structural bias (a dedicated "radial" subspace
+#     built for the valuation hypothesis). A genuinely generic hyperbolic VAE
+#     uses the plain tangent -> expmap0 projection, radius emerges from the
+#     encoder, not from an architected subspace.
+#   - model.positional_encoding: false -- the 1/3^k positional weighting is
+#     also p-adic-specific (biases toward valuation-relevant input positions).
+#   - statenet.enabled / option_c.enabled: false, and option_c LR scales set
+#     to 1.0 -- StateNet's encoder_a="coverage"/encoder_b="hierarchy" gating
+#     and the differential LR scales are p-adic curriculum machinery with no
+#     role once hierarchy losses are off; both encoders train uniformly.
+#     NOTE: statenet.initial.* is still read by model construction even with
+#     statenet.enabled=false (bootstrap.py sets initial trainability once,
+#     unconditionally) -- kept explicit and true here for both encoders.
+#
+# This is the control condition: same architecture class, same dataset, same
+# training loop, minus everything that specifically encodes the p-adic
+# hierarchy hypothesis. If Condition C's taxonomy correlation (Fase 4) isn't
+# meaningfully better than this, the p-adic-specific machinery isn't earning
+# its complexity on this dataset.
+#
+anchor_checkpoint: null
+data:
+  indices_path: data/cytochrome_c/indices.pt
+  valuation_type: index
+device:
+  cuda_device: 0
+  use_amp: false
+logging:
+  enhanced_metrics:
+    effective_rank: true
+    enabled: true
+    gradient_flow_analysis: true
+    log_activations: true
+    log_gradients: true
+    log_weights: true
+  histogram_every: 50
+  verbose: false
+loss:
+  dynamic_curriculum:
+    enabled: false
+  hyperbolic_contrastive:
+    enabled: false
+  surrogate_property:
+    enabled: false
+  algebraic_addition:
+    enabled: false
+  algebraic_multiplication:
+    enabled: false
+  algebraic_coherence:
+    enabled: false
+  angular_coherence:
+    enabled: false
+
+  rich_hierarchy:
+    enabled: true
+    coverage_weight: 1.0
+    hierarchy_weight: 0.0
+    separation_weight: 0.0
+    variance_weight: 0.0
+
+  radial:
+    enabled: false
+  geodesic:
+    enabled: false
+  rank:
+    enabled: false
+  monotonic:
+    enabled: false
+
+  hyperbolic_kl:
+    beta: 0.1
+    enabled: true
+    free_bits: 0.5
+    variance_only: false
+    weight: 0.05
+  lagrangian:
+    enabled: false
+  learnable_weights: false
+
+model:
+  curvature: 1.0
+  decoder_type: improved
+  detach_radial: false
+  encoder_type: improved
+  factored: false
+  hidden_dim: 256
+  init_identity: true
+  latent_dim: 128
+  learnable_curvature: true
+  max_radius: 0.99
+  name: TernaryVAEV6Controllable
+  positional_encoding: false
+  projection_dropout: 0.1
+  projection_layers: 3
+  tangent_scale: 0.1
+
+option_c:
+  enabled: false
+  encoder_a_lr_scale: 1.0
+  encoder_b_lr_scale: 1.0
+  projections_lr_scale: 1.0
+
+resume_checkpoint: null
+
+riemannian:
+  enabled: true
+  optimizer: adam
+  stabilize: 10
+
+statenet:
+  enabled: false
+  initial:
+    encoder_a_trainable: true
+    encoder_b_trainable: true
+    projections_trainable: true
+
+training:
+  batch_size: 64
+  epochs: 60               # Fase 3 smoke-test value -- raise for the full run
+  eval_every: 10
+  grokking_detection:
+    enabled: false
+  hierarchy_threshold: -0.85
+  high_v_budget_ratio: 0.3
+  lr: 0.0005
+  max_grad_norm: 1.0
+  min_epochs: 60
+  num_workers: 4
+  patience: 500
+  print_every: 10
+  save_every: 25
+  scheduler:
+    T_0: 500
+    T_mult: 2
+    type: cosine_warmup_restart
+  use_adaptive: true
+  use_stratified: true
+  val_frac: 0.15
+  weight_decay: 0.0001
+
+version:
+  changes:
+  - 'Condition B (generic hyperbolic) of the phylogeny validation pipeline (Fase 3)'
+  - 'Same architecture class as Condition C, all p-adic-specific losses/structure off'
+  - 'Only reconstruction (coverage_weight) + standard hyperbolic_kl active'
+  config: cytochrome_c_B_hyperbolic_generic
+  date: '2026-07-17'
+  model: '24.0-cytochrome_c_B'
+
+visualization:
+  curvature: 1.0
+  html_dir: visualizations/cytochrome_c_B_hyperbolic_generic   # run-specific: default
+                                                                 # 'visualizations' is shared/tracked
+  max_per_level: 1000
+  persist_every: 25
+  save_html: false
+  umap_neighbors: 30
