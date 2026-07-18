@@ -1,0 +1,98 @@
+{
+  "heldout_species": [
+    "Arabidopsis thaliana",
+    "Chlamydomonas reinhardtii",
+    "Oryctolagus cuniculus",
+    "Pan troglodytes",
+    "Plasmodium falciparum",
+    "Pseudomonas aeruginosa",
+    "Saccharomyces cerevisiae",
+    "Strongylocentrotus purpuratus",
+    "Sus scrofa"
+  ],
+  "train_species": [
+    "Anolis carolinensis",
+    "Anopheles gambiae",
+    "Apis mellifera",
+    "Aspergillus nidulans",
+    "Bos taurus",
+    "Caenorhabditis elegans",
+    "Candida albicans",
+    "Canis lupus familiaris",
+    "Ciona intestinalis",
+    "Danio rerio",
+    "Dictyostelium discoideum",
+    "Drosophila melanogaster",
+    "Equus caballus",
+    "Gallus gallus",
+    "Glycine max",
+    "Homo sapiens",
+    "Macaca mulatta",
+    "Meleagris gallopavo",
+    "Mus musculus",
+    "Neurospora crassa",
+    "Nicotiana tabacum",
+    "Oryza sativa",
+    "Physcomitrium patens",
+    "Rattus norvegicus",
+    "Rhodobacter sphaeroides",
+    "Solanum lycopersicum",
+    "Triticum aestivum",
+    "Trypanosoma brucei",
+    "Xenopus laevis",
+    "Zea mays"
+  ],
+  "holdout_frac": 0.2,
+  "seed": 42,
+  "kingdom_groups": {
+    "Metazoa": [
+      "Anolis carolinensis",
+      "Anopheles gambiae",
+      "Apis mellifera",
+      "Bos taurus",
+      "Caenorhabditis elegans",
+      "Canis lupus familiaris",
+      "Ciona intestinalis",
+      "Danio rerio",
+      "Drosophila melanogaster",
+      "Equus caballus",
+      "Gallus gallus",
+      "Homo sapiens",
+      "Macaca mulatta",
+      "Meleagris gallopavo",
+      "Mus musculus",
+      "Oryctolagus cuniculus",
+      "Pan troglodytes",
+      "Rattus norvegicus",
+      "Strongylocentrotus purpuratus",
+      "Sus scrofa",
+      "Xenopus laevis"
+    ],
+    "Viridiplantae": [
+      "Arabidopsis thaliana",
+      "Chlamydomonas reinhardtii",
+      "Glycine max",
+      "Nicotiana tabacum",
+      "Oryza sativa",
+      "Physcomitrium patens",
+      "Solanum lycopersicum",
+      "Triticum aestivum",
+      "Zea mays"
+    ],
+    "Fungi": [
+      "Aspergillus nidulans",
+      "Candida albicans",
+      "Neurospora crassa",
+      "Saccharomyces cerevisiae"
+    ],
+    "unranked": [
+      "Dictyostelium discoideum",
+      "Plasmodium falciparum",
+      "Trypanosoma brucei"
+    ],
+    "Pseudomonadati": [
+      "Pseudomonas aeruginosa",
+      "Rhodobacter sphaeroides"
+    ]
+  }
+}

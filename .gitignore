@@ -96,9 +96,14 @@ local/
 # Cytochrome C phylogeny pipeline (Phase 1, docs/plans/PHYLOGENY-VALIDATION-PIPELINE.md):
 # commit only the fetch manifest for provenance auditing; raw sequences/taxonomy/
 # derived tensors are regenerable from it via scripts/data/fetch_cytochrome_c.py.
+# Also commits heldout_species.json (Fase 2, TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md):
+# which species got excluded from Condition D training is a methodology choice
+# worth tracking, not bulk data -- window_map_train.json/indices_train.pt stay
+# regenerable-only since they're fully derived from it + window_map.json.
 !/data/cytochrome_c/
 /data/cytochrome_c/*
 !/data/cytochrome_c/manifest.csv
+!/data/cytochrome_c/heldout_species.json
 src/c/*.o
 src/c/*.so
 src/c/*.pyd
