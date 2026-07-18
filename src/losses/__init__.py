@@ -7,7 +7,7 @@ from .algebraic import (
 )
 from .base import CombinedLossOutput, HierarchyLossBase, MetricsDict, RichHierarchyLossBase
 from .combined import CombinedLoss
-from .geodesic import PAdicGeodesicLoss
+from .geodesic import PAdicGeodesicLoss, TaxonomyGeodesicLoss
 from .hierarchy import (
     MonotonicRadialLoss,
     RadialHierarchyLoss,
@@ -34,6 +34,7 @@ __all__ = [
     "AlgebraicDistributiveLoss",
     "AlgebraicCoherenceLoss",
     "PAdicGeodesicLoss",
+    "TaxonomyGeodesicLoss",
     "RadialHierarchyLoss",
     "GlobalRankLoss",
     "MonotonicRadialLoss",
