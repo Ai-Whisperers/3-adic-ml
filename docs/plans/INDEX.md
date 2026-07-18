@@ -11,7 +11,7 @@ This directory contains design proposals, roadmaps, and feature plans. These doc
 | [ALGEBRAIC-VISUALIZATION-ROADMAP.md](ALGEBRAIC-VISUALIZATION-ROADMAP.md) | Algebraic visualization roadmap — Phase 1 (probing) partially done; Phase 2 (native D3/Three.js Poincaré renderer) and Phase 3 (dashboard/paper) not started |
 | [EXTERNAL-VALIDATION-ROADMAP.md](EXTERNAL-VALIDATION-ROADMAP.md) | Open question: does the p-adic/hyperbolic prior help on real (non-synthetic) data vs. baselines? Answered for the cytochrome c thread (2026-07-17, negative) — see PHYLOGENY-VALIDATION-PIPELINE.md and TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md for the narrower follow-up question left open |
 | [PHYLOGENY-VALIDATION-PIPELINE.md](PHYLOGENY-VALIDATION-PIPELINE.md) | Cytochrome C phylogeny + 3-condition baseline comparison (Euclidean / generic-hyperbolic / p-adic). Fases 1-5 done, full runs completed 2026-07-17 — negative result, none of A/B/C beat a zero-model baseline |
-| [TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md](TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md) | Follow-up ("Condition D"): does pointing the hyperbolic geodesic loss at real taxonomic distance (instead of `v_3(index)`) generalize to held-out species? Proposed 2026-07-17, not started |
+| [TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md](TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md) | Follow-up ("Condition D"): does pointing the hyperbolic geodesic loss at real taxonomic distance (instead of `v_3(index)`) generalize to held-out species? Fases 0-3 done 2026-07-17 — negative on held-out species (underpowered, n=9), positive on a no-encoder sanity gate |
 
 ## Archived (resolved)
 

@@ -4,9 +4,13 @@
 **Status:** Item 1 (real, non-injected-hierarchy data) and Item 2 (baseline
 comparison) both now done for one concrete thread — the cytochrome c
 phylogeny pipeline (`docs/plans/PHYLOGENY-VALIDATION-PIPELINE.md`) — with a
-**negative result**: see "Result (2026-07-17): cytochrome c phylogeny" below.
-The broader question below (is this true in general, on other real domains?)
-remains open.
+**negative result**: see "Result (2026-07-17): cytochrome c phylogeny"
+below. A follow-up specifically testing whether hyperbolic geometry
+generalizes to *held-out* species when pointed at real taxonomy instead of
+`v_3(index)` (`docs/plans/TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md`) also
+returned negative — see "Result (2026-07-17): taxonomy-conditioned
+held-out generalization" below. The broader question below (is this true in
+general, on other real domains?) remains open.
 
 ## The question
 
@@ -123,6 +127,48 @@ complexity" — a plain Euclidean VAE and a generic hyperbolic VAE both did
 directionally better, and all three lost to doing no training at all.
 Checkpoints, configs, and the full results JSON:
 https://huggingface.co/geestaltt/3-adic-vae-cytochrome-c.
+
+## Result (2026-07-17): taxonomy-conditioned held-out generalization
+
+The result above tested "does the p-adic curriculum help." It left open a
+narrower question: hyperbolic geometry *is* mathematically well-suited to
+tree-like structure — nothing above ever pointed a hyperbolic loss at the
+real tree (taxonomy) instead of `v_3(index)`. `docs/plans/TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md`
+("Condition D") tested exactly that, on the same cytochrome c dataset, with
+a species-level holdout (9/39 species, stratified across all 5 kingdom
+groups present, never included in training) added for the first time in
+this pipeline.
+
+**Fase 0 (sanity gate, no VAE):** a classic Poincaré embedding (39 free
+points, no encoder, fit directly against `taxonomic_distance.npy`) reached
+Spearman=0.9057 against `raw_encoding_baseline`'s 0.7228, with non-
+overlapping bootstrap CIs and no directional collapse. This confirmed the
+geometry itself isn't the obstacle — hyperbolic space can represent this
+specific 39-species tree well when nothing else competes for the embedding.
+
+**Fase 1-3 (the real test — a VAE encoder, generalizing to species it never
+saw):** trained `TernaryVAEV6Controllable` with a new `TaxonomyGeodesicLoss`
+(targets real inter-species taxonomic distance instead of `v_3(index)`) on
+only the 30 non-held-out species (330 windows), then evaluated held-in vs.
+held-out-only Mantel correlation separately:
+
+| Split | Spearman | vs. raw baseline (same subset) |
+|---|---|---|
+| Held-in (30 species, seen in training) | 0.8404 | beats 0.7228 (expected — directly supervised) |
+| **Held-out (9 species, never in training)** | **0.5091** | **loses to 0.7803** |
+
+**Verdict: negative on the test that matters, underpowered to be fully
+conclusive.** Both held-out numbers carry very wide, overlapping bootstrap
+CIs (n=9 species, 36 pairs — [-0.124, 0.874] for the model, [-0.035, 0.944]
+for the baseline), so "D shows no detectable held-out generalization
+advantage" is the accurate statement, not "D is definitively worse." The
+more informative read: Fase 0 already showed the geometry can fit this tree
+when free to place points directly; that advantage evaporates once an
+encoder has to derive the placement from the same collision-heavy 3-symbol
+hydropathy encoding responsible for the 73.9% cross-species index collision
+rate throughout this pipeline. The bottleneck both experiments now point to
+is the encoder/dataset combination, not the geometric prior itself. Full
+methodology, all four splits, and the code: `docs/plans/TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md`.
 
 ## Explicitly out of scope for now
 

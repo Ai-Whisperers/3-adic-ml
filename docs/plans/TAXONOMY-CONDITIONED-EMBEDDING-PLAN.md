@@ -176,3 +176,73 @@ Fase 0: hours. Fases 1-3: comparable to Fases 1-4 of the phylogeny pipeline
 combined (new loss class, new data artifact, new standalone script, eval
 script extension) — call it the same order of magnitude, days not weeks,
 given the dataset is tiny and training itself takes minutes on the RTX 3050.
+
+---
+
+## Result (2026-07-17): Fase 0-3 executed, held-out generalization test negative
+
+**Fase 0** (`scripts/analysis/probe_direct_poincare_embedding.py`, 39 free
+points, no VAE): Spearman=0.9057 vs. `raw_encoding_baseline`=0.7228,
+non-overlapping bootstrap CIs, no directional collapse (mean pairwise cosine
+similarity ≈ -0.01), radii ordered sensibly (mammals near origin, bacteria
+pushed to the boundary). **Gate passed** — proceeded to Fase 1-3.
+
+**Fase 1** (`TaxonomyGeodesicLoss`, `src/losses/geodesic.py`): implemented,
+manually verified (finite nonzero gradient, same-species pairs correctly
+target distance 0, missing `species_ids` raises instead of silently
+no-op-ing). Exported, full test suite unaffected.
+
+**Fase 2** (`scripts/data/select_holdout_species.py`): 9/39 species (23%)
+held out, stratified across all 5 kingdom groups present (Metazoa, Fungi,
+Viridiplantae, Bacteria, unranked protists) — includes both a "near" case
+(*Pan troglodytes*, one node from human) and a "far" case (*Pseudomonas
+aeruginosa*, leaving only one other bacterium in training). Zero overlap
+with the 30-species training set, verified directly.
+
+**Fase 3** (`scripts/applications/train_taxonomy_conditioned.py`, 500
+epochs, RTX 3050, ~5 min): trained successfully (reconstruction accuracy
+~84-90% on the row-level monitoring split; `tax_dist_corr` on training
+batches climbed from ~0 to 0.4-0.8 range, confirming the geodesic loss was
+having a real effect). Extended `evaluate_phylogeny_recovery.py` with
+`embed_condition_d` and `split_evaluate_condition_d` (held-in / held-out /
+mixed reporting).
+
+**The real test — full run, n_permutations=9999:**
+
+| Split | Spearman | Mantel p | Bootstrap 95% CI | n pairs |
+|---|---|---|---|---|
+| D, held-in (30 species, seen in training) | 0.8404 | 0.0001 | — | 435 |
+| D, held-out (9 species, never in training) | **0.5091** | 0.0028 | **[-0.124, 0.874]** | 36 |
+| raw_encoding_baseline, same held-out subset | **0.7803** | 0.0023 | [-0.035, 0.944] | 36 |
+| D, held-in vs. held-out (mixed, descriptive only) | 0.6870 | — (no permutation test built) | — | 270 |
+
+**Verdict: negative on the test that matters, but underpowered.** Condition
+D beats `raw_encoding_baseline` overall (0.7566 vs. 0.7228) and strongly on
+held-in species (0.8404) — unsurprising, since held-in species were directly
+supervised with real taxonomic distance during training. On the actual
+generalization test — species the model never saw — D scores **lower** than
+doing no training at all (0.509 vs. 0.780). Both point estimates come with
+very wide, overlapping bootstrap CIs at n=9 held-out species (36 pairs is
+little data for a permutation test), so this should be read as "D shows no
+detectable held-out generalization advantage," not "D is definitively worse"
+— the sample is too small to distinguish those confidently.
+
+**Interpretation:** consistent with an encoder that fit the training
+species' positions rather than learning a rule that transfers to new
+sequences — plausible given only 30 species / 330 windows and the same
+coarse 3-symbol hydropathy encoding that caused the 73.9% cross-species
+index collision rate throughout this whole pipeline. Fase 0's positive
+result (hyperbolic geometry *can* represent this tree, given unconstrained
+free points) does not transfer once the embedding has to come from an
+encoder generalizing over noisy, collision-heavy biological input — the
+bottleneck was never the geometry, it was the encoder/dataset combination.
+
+**What this does and doesn't settle:** it doesn't rule out that a taxonomy-
+conditioned geodesic loss could work with more species, less collision-prone
+encoding, or more training data — Fase 0 already showed the geometry itself
+isn't the obstacle. It does mean this specific implementation, on this
+specific dataset, provides no evidence that directly supervising with real
+taxonomy generalizes better than trivial sequence identity. Combined with
+the Condition A/B/C result (`EXTERNAL-VALIDATION-ROADMAP.md`), the pattern
+across both experiments on this dataset is the same: nothing trained so far
+has beaten the zero-model baseline on data it wasn't directly fit to.

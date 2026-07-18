@@ -59,6 +59,7 @@ from scripts.analysis.project_audit import build_model_from_config, load_yaml
 from scripts.data.peptide_encoding import AA_MAP
 from scripts.data.prepare_cytochrome_c_dataset import encode_window_to_index
 from src.geometry.poincare import exp_map_zero, log_map_zero, poincare_distance_matrix
+from src.models.vae import TernaryVAEV6Controllable
 from src.models.vae_baseline import TernaryVAEEuclideanBaseline
 from src.utils.checkpoint import get_model_state_dict, load_checkpoint_compat
 
@@ -208,6 +209,82 @@ def embed_condition_a(
     return torch.cdist(points, points).cpu().numpy()
 
 
+def embed_condition_d(
+    checkpoint_path: Path, indices: torch.Tensor, window_map: list[dict],
+    species_order: list[str], device: torch.device,
+) -> np.ndarray:
+    """Condition D (docs/plans/TAXONOMY-CONDITIONED-EMBEDDING-PLAN.md): loads
+    the standalone train_taxonomy_conditioned.py checkpoint (no config.yaml,
+    like Condition A -- unlike B/C which go through build_model_from_config).
+    Embeds `indices`/`window_map` for ALL species passed in, including ones
+    the checkpoint's training set excluded (Fase 2 holdout) -- that's the
+    whole point: inference works the same regardless of whether a species'
+    windows were in training, only the correlation-at-evaluation differs."""
+    ckpt = load_checkpoint_compat(checkpoint_path, map_location=device)
+    model = TernaryVAEV6Controllable(
+        latent_dim=ckpt["latent_dim"], hidden_dim=ckpt["hidden_dim"],
+        factored=ckpt.get("factored", False), positional_encoding=ckpt.get("positional_encoding", False),
+        curvature=ckpt.get("curvature", 1.0), max_radius=ckpt.get("max_radius", 0.99),
+        n_projection_layers=ckpt.get("n_projection_layers", 3),
+        projection_dropout=ckpt.get("projection_dropout", 0.1),
+        encoder_type=ckpt.get("encoder_type", "improved"),
+        decoder_type=ckpt.get("decoder_type", "improved"),
+        init_identity=ckpt.get("init_identity", True),
+        tangent_scale_init=ckpt.get("tangent_scale_init", 0.1),
+    ).to(device)
+    model.load_state_dict(get_model_state_dict(ckpt))
+    model.eval()
+    c = model.projections.get_curvature()
+    with torch.no_grad():
+        z_a_hyp = model.get_hyperbolic_representations(indices, device, head="A")
+        tangent = log_map_zero(z_a_hyp, c=c)
+
+    masks = _species_masks(window_map, species_order)
+    mean_tangent = torch.stack([tangent[m].mean(dim=0) for m in masks])
+    hyp_points = exp_map_zero(mean_tangent, c=c)
+    return poincare_distance_matrix(hyp_points, c=c).cpu().numpy()
+
+
+def split_evaluate_condition_d(
+    name: str, dist_full: np.ndarray, tax_dist_full: np.ndarray,
+    species_order: list[str], heldout_species: list[str],
+    n_permutations: int, n_bootstrap: int, seed: int,
+) -> dict[str, Any]:
+    """Reports Condition D's Mantel correlation separately for held-in vs.
+    held-out-only species pairs (Fase 2/3 of the plan) -- held-in numbers
+    have the same training-exposure shape as Conditions A/B/C, held-out-only
+    is the actual generalization test."""
+    held_out_mask = np.array([s in heldout_species for s in species_order])
+    held_in_idx = np.where(~held_out_mask)[0]
+    held_out_idx = np.where(held_out_mask)[0]
+
+    results: dict[str, Any] = {}
+    if len(held_in_idx) >= 3:
+        results["held_in"] = evaluate_condition(
+            f"{name}_held_in", dist_full[np.ix_(held_in_idx, held_in_idx)],
+            tax_dist_full[np.ix_(held_in_idx, held_in_idx)], n_permutations, n_bootstrap, seed,
+        )
+    if len(held_out_idx) >= 3:
+        results["held_out"] = evaluate_condition(
+            f"{name}_held_out", dist_full[np.ix_(held_out_idx, held_out_idx)],
+            tax_dist_full[np.ix_(held_out_idx, held_out_idx)], n_permutations, n_bootstrap, seed,
+        )
+    if len(held_in_idx) >= 1 and len(held_out_idx) >= 1:
+        cross_model = dist_full[np.ix_(held_in_idx, held_out_idx)].flatten()
+        cross_tax = tax_dist_full[np.ix_(held_in_idx, held_out_idx)].flatten()
+        rho, _ = spearmanr(cross_model, cross_tax)
+        print(f"[{name}_mixed] Spearman={rho:.4f} (descriptive only, no permutation p-value, "
+              f"n_pairs={len(cross_model)})")
+        results["mixed_descriptive"] = {
+            "spearman": float(rho) if not np.isnan(rho) else float("nan"),
+            "n_pairs": int(len(cross_model)),
+            "note": "Descriptive only -- no permutation p-value. A rigorous bipartite/mixed "
+                    "Mantel test needs a different permutation scheme than the symmetric "
+                    "same-group case above (held_in/held_out); not built here.",
+        }
+    return results
+
+
 def embed_condition_hyperbolic(
     run_dir: Path, indices: torch.Tensor, window_map: list[dict],
     species_order: list[str], device: torch.device,
@@ -336,6 +413,8 @@ def main() -> None:
     parser.add_argument("--run-a-checkpoint", default=None, help="Condition A checkpoint .pt (train_euclidean_baseline.py output)")
     parser.add_argument("--run-b-dir", default=None, help="Condition B run dir (src/train.py output, contains config.yaml + checkpoints/best_Q.pt)")
     parser.add_argument("--run-c-dir", default=None, help="Condition C run dir")
+    parser.add_argument("--run-d-checkpoint", default=None, help="Condition D checkpoint .pt (train_taxonomy_conditioned.py output)")
+    parser.add_argument("--heldout-species", default="data/cytochrome_c/heldout_species.json", help="Fase 2 output; used only when --run-d-checkpoint is set")
     parser.add_argument("--n-permutations", type=int, default=9999)
     parser.add_argument("--n-bootstrap", type=int, default=2000)
     parser.add_argument("--seed", type=int, default=42)
@@ -392,6 +471,51 @@ def main() -> None:
             "vae_b_health": vae_b_health,
             **common_meta,
         }
+
+    if args.run_d_checkpoint:
+        dist_d = embed_condition_d(Path(args.run_d_checkpoint), indices, window_map, species_order, device)
+        new_conditions["D_taxonomy_conditioned"] = {
+            **evaluate_condition("D_taxonomy_conditioned", dist_d, tax_dist, args.n_permutations, args.n_bootstrap, args.seed),
+            "source": str(args.run_d_checkpoint),
+            **common_meta,
+        }
+
+        heldout_path = Path(args.heldout_species)
+        if not heldout_path.exists():
+            print(f"[WARN] {heldout_path} not found -- skipping held-in/held-out split "
+                  "(Condition D's overall correlation above still includes held-out species, "
+                  "but can't be separated from held-in without it).")
+        else:
+            heldout_species = json.loads(heldout_path.read_text())["heldout_species"]
+            split_results = split_evaluate_condition_d(
+                "D_taxonomy_conditioned", dist_d, tax_dist, species_order, heldout_species,
+                args.n_permutations, args.n_bootstrap, args.seed,
+            )
+            new_conditions["D_taxonomy_conditioned"]["species_split"] = split_results
+
+            held_out_species_order = sorted(set(heldout_species) & set(species_order))
+            if len(held_out_species_order) >= 3:
+                held_out_window_map = [w for w in window_map if w["species"] in held_out_species_order]
+                keep_idx = [species_order.index(s) for s in held_out_species_order]
+                tax_dist_heldout = tax_dist[np.ix_(keep_idx, keep_idx)]
+                dist_raw_heldout = embed_condition_raw(held_out_window_map, held_out_species_order)
+                raw_heldout_result = evaluate_condition(
+                    "raw_encoding_baseline_held_out_subset", dist_raw_heldout, tax_dist_heldout,
+                    args.n_permutations, args.n_bootstrap, args.seed,
+                )
+                new_conditions["raw_encoding_baseline_held_out_subset"] = {
+                    **raw_heldout_result,
+                    "source": "none (zero-model baseline, held-out species only)",
+                    **common_meta,
+                }
+
+                d_ho = split_results.get("held_out", {}).get("observed_spearman")
+                raw_ho = raw_heldout_result["observed_spearman"]
+                if d_ho is not None and not np.isnan(d_ho) and not np.isnan(raw_ho):
+                    verdict = "BEATS" if d_ho > raw_ho else "does NOT beat"
+                    print(f"\n[verdict] *** THE REAL TEST *** Condition D, held-out species only: "
+                          f"Spearman={d_ho:.4f} {verdict} raw_encoding_baseline on the same "
+                          f"held-out subset (Spearman={raw_ho:.4f}).")
 
     out_path = Path(args.out)
     existing_conditions = _load_existing_conditions(out_path)
