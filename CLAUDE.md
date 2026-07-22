@@ -106,7 +106,7 @@ Training uses **continuous LR scales** via `MetricBasedLR` (not boolean freeze/u
 | `src/config/statenet_config.py` | `StateNetConfig` dataclass (configuration) |
 | `src/geometry/poincare.py` | Riemannian backend (geoopt) |
 | `src/core/ternary.py` | Immutable 3-adic field logic |
-| `src/losses/padic_geodesic.py` | All hierarchy/geodesic losses |
+| `src/losses/geodesic.py`, `hierarchy.py`, `rank.py`, `algebraic.py` | Hierarchy/geodesic/algebraic losses (split by domain; formerly one `padic_geodesic.py`) |
 | `src/losses/combined.py` | Config-driven loss composition |
 | `src/train.py` | Unified training entry point |
 
@@ -406,7 +406,7 @@ update_optimizer_lr_scales(optimizer, base_lr, state['lr_scales'])
 | **Config** | `config/statenet_config.py`, `config/constants.py` |
 | **Core** | `core/ternary.py` (TernarySpace singleton) |
 | **Geometry** | `geometry/poincare.py` (geoopt backend) |
-| **Losses** | `losses/combined.py`, `losses/padic_geodesic.py` |
+| **Losses** | `losses/combined.py`, `losses/geodesic.py`, `losses/hierarchy.py`, `losses/rank.py`, `losses/algebraic.py` |
 | **Utils** | `utils/checkpoint.py`, `utils/tensorboard_logger.py` |
 | **Tests** | `tests/` (280 tests across 8 files) |
 
@@ -505,7 +505,7 @@ Per-level loss details (`r_v0..r_v9`, `angular_coherence_pairs`) are computed by
 
 | File | Change |
 |------|--------|
-| `src/losses/padic_geodesic.py` | `AngularCoherenceLoss`: `level_prefix_k`, `target_sim` params, per-level forward |
+| `src/losses/algebraic.py` | `AngularCoherenceLoss`: `level_prefix_k`, `target_sim` params, per-level forward |
 | `src/losses/combined.py` | Passes `level_prefix_k` and `target_sim` from YAML |
 | `src/presets/v7_large.yaml` | Config for level_prefix_k, target_sim, n_pairs |
 | `src/train.py` | Live ARI computation in eval block |
