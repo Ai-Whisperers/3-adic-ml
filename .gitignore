@@ -134,7 +134,12 @@ sandbox-training/
 sandbox/
 
 # Large model checkpoints (stored on Hugging Face Hub)
-# Use: python -m src.utils.checkpoint_hub download --checkpoint <name>
+# The `checkpoint_hub` download tool this comment used to reference was never
+# actually built -- checkpoints lived only on local disk with no backup until
+# 2026-07-18. Canonical run checkpoints (V15-V23, the ones CLAUDE.md's
+# results sections cite) are now archived at
+# https://huggingface.co/geestaltt/3-adic-vae-checkpoints (download manually,
+# e.g. via huggingface_hub.hf_hub_download -- no CLI wrapper exists yet).
 **/*.pt
 *.7z
 /visualizations/
