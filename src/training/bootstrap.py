@@ -6,6 +6,7 @@
 """Bootstrapping and hardware setup for p-adic VAE training."""
 
 from datetime import datetime
+import json
 import os
 import random
 from typing import Any, Dict, Optional, Tuple
@@ -74,6 +75,8 @@ class DataAuditor:
         val_frac: float = 0.1,
         device: Optional[torch.device] = None,
         custom_indices_path: Optional[str] = None,
+        group_map_path: Optional[str] = None,
+        group_key: str = "species",
     ) -> Tuple[TensorDataset, TensorDataset, torch.Tensor]:
         """Generate data, split, and validate.
 
@@ -81,6 +84,11 @@ class DataAuditor:
             val_frac: Fraction of data for validation
             device: Device for data tensors
             custom_indices_path: Path to a .pt file containing custom indices
+            group_map_path: Optional path to a JSON list, row-aligned with the
+                indices, whose entries carry ``group_key``. When set, the
+                train/val split holds out whole groups (e.g. species) instead
+                of individual rows, so no group leaks into both splits.
+            group_key: Dict key in each group-map entry naming the group.
 
         Returns:
             Tuple of (train_dataset, val_dataset, all_indices)
@@ -102,11 +110,40 @@ class DataAuditor:
 
         # Deterministic split
         rng = np.random.default_rng(self.seed)
-        perm = rng.permutation(n)
-        n_val = max(1, round(n * val_frac))
+        if group_map_path and group_map_path != "null":
+            with open(group_map_path) as f:
+                group_map = json.load(f)
+            if len(group_map) != n:
+                raise ValueError(
+                    f"group_map_path has {len(group_map)} rows but the dataset "
+                    f"has {n}; they must be row-aligned"
+                )
+            groups = np.array([row[group_key] for row in group_map])
+            unique_groups = np.unique(groups)  # sorted -> deterministic
+            n_val_groups = max(1, round(len(unique_groups) * val_frac))
+            if n_val_groups >= len(unique_groups):
+                raise ValueError(
+                    f"val_frac={val_frac} holds out all {len(unique_groups)} "
+                    f"groups; nothing left to train on"
+                )
+            group_perm = rng.permutation(len(unique_groups))
+            val_groups = unique_groups[group_perm[:n_val_groups]]
+            val_mask = np.isin(groups, val_groups)
+            val_idx = np.flatnonzero(val_mask)
+            train_idx = np.flatnonzero(~val_mask)
+            self.audit_log["val_groups"] = sorted(val_groups.tolist())
+            print(
+                f"  [INFO] Group split by '{group_key}': "
+                f"{n_val_groups}/{len(unique_groups)} groups held out for "
+                f"validation ({len(val_idx)}/{n} rows): "
+                f"{self.audit_log['val_groups']}"
+            )
+        else:
+            perm = rng.permutation(n)
+            n_val = max(1, round(n * val_frac))
 
-        val_idx = perm[:n_val]
-        train_idx = perm[n_val:]
+            val_idx = perm[:n_val]
+            train_idx = perm[n_val:]
 
         X_train = all_ops[train_idx]
         X_val = all_ops[val_idx]
@@ -123,8 +160,14 @@ class DataAuditor:
         self.audit_log["data_leakage_count"] = overlap_count
 
         if overlap_count > 0:
+            extra = (
+                " (group split active: these are identical encoded contents "
+                "appearing under different groups, not row leakage)"
+                if "val_groups" in self.audit_log
+                else ""
+            )
             print(
-                f"  [WARN] Data leakage detected: {overlap_count} samples in both sets"
+                f"  [WARN] Data leakage detected: {overlap_count} samples in both sets{extra}"
             )
         else:
             print(f"  [OK] No data leakage (train={len(X_train)}, val={len(X_val)})")

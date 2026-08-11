@@ -26,11 +26,12 @@ not beating zero.
 
 Known limitations (also recorded in `caveats` in the output JSON, not just
 here, so a reader of the JSON alone still sees them):
-- No species-level train/eval holdout exists yet. Fase 3's training scripts
-  split by *window row*, not by species, so every species that has any
-  window in indices.pt was seen during training. A genuine held-out-species
-  evaluation requires regenerating indices.pt with some species' windows
-  excluded before training -- deferred to a follow-up run, not faked here.
+- Species-level holdout depends on the checkpoint: since 2026-08-11 the
+  training scripts split by species (DataAuditor group_map_path, on by
+  default in the cytochrome presets), but checkpoints trained before that
+  -- or with the group map disabled -- split by *window row*, so every
+  species with a window in indices.pt was seen during training. This script
+  cannot tell the two apart from the checkpoint alone; know your run.
 - Window indices collide across species (see `index_collision` in the
   output), a direct consequence of the coarse 3-symbol hydropathy encoding
   collapsing conserved regions to the same digit pattern. This is exactly
@@ -66,9 +67,9 @@ from src.utils.checkpoint import get_model_state_dict, load_checkpoint_compat
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 CAVEATS = [
-    "No species-level train/eval holdout: every species with a window in "
-    "indices.pt was seen during training (Fase 3's split is by window row, "
-    "not species).",
+    "Species-level holdout depends on the checkpoint: runs since 2026-08-11 "
+    "with the default group_map_path split by species; earlier or group-map-"
+    "disabled runs split by window row and saw every species during training.",
     "Index collisions across species exist (see index_collision below) due "
     "to the coarse 3-symbol hydropathy encoding; correlation may partly "
     "reflect encoding coarseness rather than learned structure. "

@@ -29,7 +29,8 @@ def kl_divergence(mu: torch.Tensor, logvar: torch.Tensor, free_bits: float = 0.0
 
 
 def evaluate(
-    model: TernaryVAEEuclideanBaseline, loader: DataLoader, device: torch.device, free_bits: float,
+    model: TernaryVAEEuclideanBaseline, loader: DataLoader, device: torch.device,
+    free_bits: float, kl_weight: float,
 ) -> tuple[float, float]:
     model.eval()
     total_loss, total_correct, total_n = 0.0, 0, 0
@@ -39,7 +40,7 @@ def evaluate(
             out = model(x)
             recon = compute_coverage_loss(out["logits"], x)
             kl = kl_divergence(out["mu"], out["logvar"], free_bits)
-            total_loss += (recon + kl).item() * x.size(0)
+            total_loss += (recon + kl_weight * kl).item() * x.size(0)
             preds = out["logits"].view(-1, 9, 3).argmax(-1) - 1
             total_correct += (preds == x).all(dim=-1).sum().item()
             total_n += x.size(0)
@@ -50,6 +51,12 @@ def evaluate(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--indices-path", default="data/cytochrome_c/indices.pt")
+    parser.add_argument(
+        "--group-map-path", default="data/cytochrome_c/window_map.json",
+        help="JSON list row-aligned with --indices-path; the val split holds out "
+             "whole species instead of window rows. Pass '' to fall back to the "
+             "(leaky) per-row split.",
+    )
     parser.add_argument("--epochs", type=int, default=300)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -76,6 +83,7 @@ def main() -> None:
 
     train_ds, val_ds, _ = DataAuditor(seed=args.seed).prepare_data(
         val_frac=args.val_frac, device=device, custom_indices_path=args.indices_path,
+        group_map_path=args.group_map_path or None,
     )
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
@@ -101,7 +109,7 @@ def main() -> None:
             optimizer.step()
 
         if epoch % args.eval_every == 0 or epoch == args.epochs:
-            val_loss, val_acc = evaluate(model, val_loader, device, args.free_bits)
+            val_loss, val_acc = evaluate(model, val_loader, device, args.free_bits, args.kl_weight)
             print(f"[epoch {epoch}/{args.epochs}] train_loss={train_loss.item():.4f} "
                   f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
             if val_loss < best_val_loss:

@@ -227,10 +227,15 @@ suficiente para entrenar):
 - **Fase 2** (alineamiento): 39 especies × 11 ventanas = 429 ventanas
   alineadas contra la referencia humana. **Nota importante**: 62% de los
   índices ternarios colisionan entre especies (encoding de hidropatía de
-  solo 3 símbolos), y el split train/val actual es por fila de ventana, no
-  por especie — hay fuga de datos (49/64 en el smoke test). Esto NO se
-  arregló todavía; afecta cómo interpretar accuracy/val_loss en cualquier
-  run futuro.
+  solo 3 símbolos). El split por fila de ventana (fuga de especies) se
+  **arregló el 2026-08-11**: `DataAuditor.prepare_data` ahora acepta
+  `group_map_path` y separa por especie entera — activado por defecto en
+  los presets de citocromo (B/C vía `data.group_map_path` en YAML, A vía
+  `--group-map-path`). Con seed=42, las 3 condiciones separan las mismas
+  6 especies de validación. Las colisiones de índice entre especies siguen
+  existiendo (43/429 filas de val comparten contenido codificado con train
+  bajo otra especie) — el auditor las reporta como warning, son inherentes
+  al encoding, no al split.
 - **Fase 3** (entrenamiento): las 3 condiciones corren limpio en CPU a
   escala smoke-test (60 épocas). Se encontró y arregló un colapso de
   posterior real en la Condición A (`train_euclidean_baseline.py`):
@@ -265,13 +270,6 @@ python3 scripts/analysis/evaluate_phylogeny_recovery.py \
 ```
 Después: Fase 5 (documentar el resultado real, positivo o negativo, en
 `docs/plans/EXTERNAL-VALIDATION-ROADMAP.md`).
-
-**Pendiente menor, no bloqueante:** `evaluate()` en
-`train_euclidean_baseline.py` calcula `val_loss = recon + kl` sin aplicar
-`kl_weight` (inconsistente con la loss de entrenamiento) — no afecta la
-selección de checkpoint (mismo sesgo todas las épocas) pero el número
-impreso no es comparable a `train_loss`. Detectado 2026-07-17, no arreglado
-todavía.
 
 ## Actualización 2026-07-17: full runs ejecutados, Fase 5 completa
 
@@ -324,3 +322,31 @@ ninguna de las 3 condiciones supera el baseline todavía (A=0.649, B=0.625,
 C=0.451 vs baseline=0.723) — resultado esperado dado que ninguna llegó a
 converger; sirve como prueba de que el veredicto funciona antes de gastar
 cómputo GPU en los full runs.
+
+## Actualización 2026-08-11: fuga de fila train/val arreglada + val_loss consistente
+
+Los dos pendientes documentados arriba quedaron arreglados (en la máquina
+CPU, en paralelo a los full runs de la máquina GPU — los full runs de
+2026-07-17 se entrenaron todavía con el split por fila; recordar que esa
+fuga estaba confinada a las métricas de monitoreo de Fase 3, la evaluación
+de Fase 4 usa `indices.pt` completo sin split):
+
+- **Split por especie en entrenamiento:** `DataAuditor.prepare_data` ahora
+  acepta `group_map_path`/`group_key` y separa por especie entera en vez
+  de por fila. Activado por defecto en las 3 condiciones (B/C vía
+  `data.group_map_path` en YAML, A vía `--group-map-path`). Con seed=42,
+  las 3 condiciones separan las mismas 6 especies de validación. Las
+  colisiones de índice entre especies siguen existiendo (43/66 filas de
+  val comparten contenido codificado con train bajo otra especie) — el
+  auditor las reporta como warning, son inherentes al encoding. Tests en
+  `tests/test_data_auditor_group_split.py`. Complementario al holdout de
+  9 especies de `select_holdout_species.py` (Condición D): aquel saca
+  especies del dataset entero; esto evita fuga en el split train/val
+  interno de cualquier run. Ojo si se re-entrena la Condición C: su
+  currículum activa las losses stage-2 con `coverage_threshold: 0.80`
+  medido sobre validación — con especies nunca vistas en val ese umbral
+  puede tardar más épocas en alcanzarse.
+- **`evaluate()` en `train_euclidean_baseline.py`** ahora aplica
+  `kl_weight` igual que la loss de entrenamiento
+  (`val_loss = recon + kl_weight * kl`); el número impreso es comparable
+  a `train_loss`. Detectado 2026-07-17.

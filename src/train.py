@@ -108,6 +108,8 @@ def main():
         val_frac=config.get("training", {}).get("val_frac", 0.1),
         device=device,
         custom_indices_path=config.get("data", {}).get("indices_path"),
+        group_map_path=config.get("data", {}).get("group_map_path"),
+        group_key=config.get("data", {}).get("group_key", "species"),
     )
 
     # 4. Component Initialization

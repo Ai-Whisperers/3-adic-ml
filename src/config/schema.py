@@ -615,6 +615,18 @@ class DataConfig(StrictConfigModel):
         default=None,
         description="Path to custom indices .pt file for the Rosetta dataset.",
     )
+    group_map_path: str | None = Field(
+        default=None,
+        description=(
+            "Path to a JSON list row-aligned with indices_path whose entries "
+            "carry group_key. When set, the train/val split holds out whole "
+            "groups (e.g. species) instead of individual rows."
+        ),
+    )
+    group_key: str = Field(
+        default="species",
+        description="Dict key in each group-map entry naming the group.",
+    )
 
 
 class EnhancedMetricsConfig(StrictConfigModel):

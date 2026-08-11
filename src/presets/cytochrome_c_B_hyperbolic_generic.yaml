@@ -30,6 +30,9 @@
 anchor_checkpoint: null
 data:
   indices_path: data/cytochrome_c/indices.pt
+  # Hold out whole species (not window rows) for validation -- fixes the
+  # species leakage flagged in docs/plans/PHYLOGENY-VALIDATION-PIPELINE.md.
+  group_map_path: data/cytochrome_c/window_map.json
   valuation_type: index
 device:
   cuda_device: 0
